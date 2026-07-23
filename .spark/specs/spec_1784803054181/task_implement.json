@@ -1,0 +1,335 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "type": "app_init",
+      "name": "应用初始化任务",
+      "status": "completed",
+      "subtasks": [
+        "初始化布局导航文件Layout",
+        "初始化主题文件",
+        "初始化占位页面和路由"
+      ],
+      "beginTime": 1784803246811,
+      "endTime": 1784803427135
+    },
+    {
+      "id": 2,
+      "name": "代码架构设计与聚合文件预填",
+      "type": "normal",
+      "status": "in_progress",
+      "subtasks": [
+        "读取 coding-guide 和 plugin-guide skill",
+        "创建服务端 bitable 共享层目录与模块骨架",
+        "创建 tracking 模块目录与最小可运行占位",
+        "创建 query-library 模块目录与最小可运行占位",
+        "在 app.module.ts 中注册两个业务模块",
+        "在 shared/api.interface.ts 中定义全部 API 请求响应类型",
+        "在 client/src/app.tsx 中配置三条页面路由（工作台、详情、查询库）与顶部导航 Layout",
+        "在 client/src/api/index.ts 中导出两个命名空间",
+        "创建前端三个页面目录与最小占位组件"
+      ],
+      "requirements": [
+        "1.1",
+        "2.1",
+        "3.1",
+        "10.1"
+      ],
+      "write_scope": [
+        "server/modules/bitable/**",
+        "server/modules/tracking/**",
+        "server/modules/query-library/**",
+        "server/app.module.ts",
+        "shared/api.interface.ts",
+        "client/src/app.tsx",
+        "client/src/api/index.ts",
+        "client/src/components/Layout.tsx",
+        "client/src/pages/workbench/**",
+        "client/src/pages/tracking-detail/**",
+        "client/src/pages/query-library/**"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/app.module.ts",
+        "client/src/app.tsx",
+        "client/src/api/index.ts",
+        "client/src/components/Layout.tsx"
+      ],
+      "acceptance": "三个页面路由可访问、两个服务端模块已注册、shared 类型定义完整、聚合文件预填完毕且项目可编译",
+      "dependencies": [],
+      "beginTime": 1784803427283
+    },
+    {
+      "id": 3,
+      "name": "飞书多维表格插件实例创建与 Schema 确认",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 plugin-guide skill",
+        "创建 bitable-workbench 实例（01 埋点设计工作台表）",
+        "创建 bitable-param-detail 实例（后台-设计参数明细表）",
+        "创建 bitable-quality-gate 实例（后台-发布质量门禁表）",
+        "创建 bitable-lifecycle 实例（后台-埋点生命周期表）",
+        "创建 bitable-query-library 实例（02 App埋点查询库表）",
+        "调用 get_plugin_ai_json 获取每个实例的 Schema 摘录卡",
+        "确认各表字段名与 bizType，输出字段映射表"
+      ],
+      "requirements": [
+        "1.4",
+        "2.1",
+        "5.1",
+        "10.1"
+      ],
+      "write_scope": [
+        "server/capabilities/*.json"
+      ],
+      "read_scope": [
+        ".agent/skills/steering/nestjs-react-fullstack/plugin-guide/SKILL.md"
+      ],
+      "acceptance": "5 个 feishu-bitable 插件实例创建完成，每个实例的 Schema 摘录卡已输出且字段映射表明确",
+      "dependencies": [
+        2
+      ]
+    },
+    {
+      "id": 4,
+      "name": "服务端 Bitable 共享层开发",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 plugin-guide 的 plugin-coding-guide 参考文档",
+        "实现 BitableService 封装 CapabilityService 调用",
+        "实现统一错误处理：Base 权限错误、记录不存在、参数非法的异常转换",
+        "实现字段映射工具：Base 字段名 ↔ 业务字段名双向转换",
+        "实现阶段映射常量与阶段合法性校验函数",
+        "实现权限判断工具：基于 userId 与负责人数组匹配计算各阶段可编辑权限",
+        "编写单元测试验证阶段跳转与权限判断逻辑"
+      ],
+      "requirements": [
+        "8.1",
+        "8.2",
+        "8.3",
+        "9.1",
+        "9.2",
+        "9.3"
+      ],
+      "write_scope": [
+        "server/modules/bitable/**"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/modules/bitable/bitable.service.ts"
+      ],
+      "acceptance": "BitableService 可正常调用 Base、阶段校验与权限判断函数通过单测、错误处理覆盖主要场景",
+      "dependencies": [
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "name": "埋点工作台模块开发（前后端）",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 coding-guide skill 后端与前端规范",
+        "实现 TrackingService：阶段统计（aggregateQuery）、我的待办（searchRecords）、需求列表（searchRecords+筛选）",
+        "实现 TrackingController：三个 GET 接口（统计、待办、列表）",
+        "实现工作台页面顶部阶段统计卡片区域",
+        "实现我的待办列表区域（点击跳转详情）",
+        "实现需求列表表格（含搜索栏与多维度筛选器）",
+        "对接服务端 API，集成 loading/error/empty 状态",
+        "验证 app_launch 记录在列表中可被搜索到"
+      ],
+      "requirements": [
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.4",
+        "2.1",
+        "2.2",
+        "2.3",
+        "2.4"
+      ],
+      "write_scope": [
+        "server/modules/tracking/tracking.service.ts",
+        "server/modules/tracking/tracking.controller.ts",
+        "server/modules/tracking/tracking.module.ts",
+        "client/src/pages/workbench/**",
+        "client/src/api/tracking.ts"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/modules/bitable/bitable.service.ts",
+        "server/modules/tracking/tracking.service.ts"
+      ],
+      "acceptance": "工作台页面展示阶段统计、我的待办、需求列表三大区域，搜索筛选功能可用，点击行可跳转详情页",
+      "dependencies": [
+        4
+      ]
+    },
+    {
+      "id": 6,
+      "name": "需求详情页模块开发（前后端）",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 coding-guide skill 后端与前端规范",
+        "实现 TrackingService 详情查询（getRecord + 权限计算）",
+        "实现 TrackingService 主表字段更新（batchUpdateRecords + 阶段校验 + 权限校验）",
+        "实现 TrackingController：GET 详情、PATCH 更新主表",
+        "实现详情页顶部信息栏（evt_id、事件名、阶段、状态、负责人）",
+        "实现 6 节点流程条（高亮当前阶段、已完成打勾、点击跳转）",
+        "实现左右分栏布局：左侧阶段导航，右侧编辑区",
+        "实现各阶段表单（需求录入/埋点设计/评审/开发/验收/上线/归档），按权限控制可编辑性",
+        "对接服务端 API，集成保存反馈与错误提示",
+        "验证 app_launch 记录详情正常展示"
+      ],
+      "requirements": [
+        "3.1",
+        "3.2",
+        "3.3",
+        "3.4",
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4",
+        "6.1",
+        "6.2",
+        "6.3",
+        "7.1",
+        "7.2",
+        "7.3",
+        "7.4",
+        "8.1",
+        "8.2",
+        "8.3",
+        "9.1",
+        "9.2",
+        "9.3"
+      ],
+      "write_scope": [
+        "server/modules/tracking/tracking.service.ts",
+        "server/modules/tracking/tracking.controller.ts",
+        "client/src/pages/tracking-detail/**",
+        "client/src/api/tracking.ts"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/modules/bitable/bitable.service.ts",
+        "server/modules/tracking/tracking.service.ts"
+      ],
+      "acceptance": "详情页展示完整信息与流程条，各阶段表单按权限可编辑/只读，保存成功后状态更新，非法操作有明确错误提示",
+      "dependencies": [
+        5
+      ]
+    },
+    {
+      "id": 7,
+      "name": "参数设计器模块开发（前后端）",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 coding-guide skill 后端与前端规范",
+        "实现 TrackingService 参数列表查询（按 evt_id 搜索参数明细表）",
+        "实现 TrackingService 参数新增（batchAddRecords）",
+        "实现 TrackingService 参数编辑（batchUpdateRecords）",
+        "实现 TrackingService 参数软删除（更新状态为废弃）",
+        "实现 TrackingController：参数 CRUD 四个接口",
+        "实现参数设计器表格（展示全部字段）",
+        "实现新增参数弹窗表单（14 个字段）",
+        "实现编辑参数弹窗表单",
+        "实现软删除确认弹窗与操作反馈",
+        "验证 app_launch 的 7 条参数正常展示与可编辑",
+        "验证参数保存后可联动更新主表阶段"
+      ],
+      "requirements": [
+        "5.1",
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5"
+      ],
+      "write_scope": [
+        "server/modules/tracking/tracking.service.ts",
+        "server/modules/tracking/tracking.controller.ts",
+        "client/src/pages/tracking-detail/param-designer/**",
+        "client/src/api/tracking.ts"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/modules/bitable/bitable.service.ts",
+        "server/modules/tracking/tracking.service.ts"
+      ],
+      "acceptance": "参数设计器支持新增/编辑/软删除操作，操作后列表实时刷新，软删除不删除 Base 记录仅改状态",
+      "dependencies": [
+        6
+      ]
+    },
+    {
+      "id": 8,
+      "name": "正式查询库模块开发（前后端）",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 coding-guide skill 后端与前端规范",
+        "实现 QueryLibraryService：事件搜索（searchRecords）、参数明细查询（searchRecords）",
+        "实现 QueryLibraryController：两个 GET 接口",
+        "实现正式查询库页面搜索栏",
+        "实现正式事件列表表格（只读）",
+        "实现事件展开/点击查看参数明细（全部只读）",
+        "对接服务端 API，集成 loading/error/empty 状态"
+      ],
+      "requirements": [
+        "10.1",
+        "10.2",
+        "10.3",
+        "10.4"
+      ],
+      "write_scope": [
+        "server/modules/query-library/**",
+        "client/src/pages/query-library/**",
+        "client/src/api/query-library.ts"
+      ],
+      "read_scope": [
+        "shared/api.interface.ts",
+        "server/modules/bitable/bitable.service.ts"
+      ],
+      "acceptance": "正式查询库页面可搜索事件、查看参数明细，所有数据只读不可编辑",
+      "dependencies": [
+        4
+      ]
+    },
+    {
+      "id": 9,
+      "name": "验收测试",
+      "type": "normal",
+      "status": "pending",
+      "subtasks": [
+        "读取 testing-guide skill",
+        "架构与入口检查：检查三页面路由可达、两模块注册正确、聚合文件结构符合规范",
+        "核心验收目标1：工作台 —— 阶段统计有数据、搜索 evt_id 可找到 app_launch、筛选器组合生效、点击行进入详情",
+        "核心验收目标2：需求详情 —— app_launch 详情展示 7 条参数、参数可新增/编辑/软删除、阶段与权限校验报错清晰、保存后状态回写成功",
+        "核心验收目标3：正式查询库 —— 搜索事件返回结果、点击展开参数只读展示、无编辑入口",
+        "非核心降级范围：Base 字段完整度、UI 像素级还原、移动端完美适配、大数据量分页性能"
+      ],
+      "requirements": [
+        "1.1",
+        "2.1",
+        "3.1",
+        "5.1",
+        "5.4",
+        "8.3",
+        "10.1",
+        "10.4"
+      ],
+      "write_scope": [],
+      "read_scope": [],
+      "acceptance": "三个核心验收目标全部通过，架构与入口检查无阻塞问题",
+      "dependencies": [
+        5,
+        7,
+        8
+      ]
+    }
+  ]
+}
