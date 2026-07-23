@@ -30,5 +30,6 @@ declare global {
     userId?: string;
     token?: string;
     csrfToken?: string;
+    __BASENAME__?: string;
   }
 }
