@@ -284,7 +284,6 @@ export class TrackingService {
       '流程阶段': '稳定归档',
       '记录类型': '模板',
       '优先级': 'P2',
-      '端': 'iOS、Android',
       '版本': 'system',
     };
 
@@ -334,7 +333,7 @@ export class TrackingService {
         '流程阶段': '需求录入',
         '记录类型': source === 'web' ? '埋点设计' : '需求',
         '优先级': body.priority || 'P2',
-        '端': source === 'web' ? 'Web' : body.platform || 'iOS、Android',
+        '端': toPlatformCell(body.platform, source),
         '数据负责人': ownerCell ? [ownerCell] : [],
         '研发负责人': [],
         'DS验收人': ownerCell ? [ownerCell] : [],
@@ -401,6 +400,11 @@ export class TrackingService {
       }
       patch['流程阶段'] = targetStage;
       currentStage = targetStage;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, '端')) {
+      patch['端'] = Array.isArray(patch['端'])
+        ? patch['端']
+        : toPlatformCell(cellText(patch['端']), ref.source);
     }
 
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
@@ -482,6 +486,7 @@ export class TrackingService {
       throw new ForbiddenException('无法识别当前用户，不能新增需求');
     }
     if (!config.admins.includes(actor) && !config.dataScientists.includes(actor)) {
+      if (isBootstrapAdmin(actor)) return;
       throw new ForbiddenException('只有管理员或 DS 可以新增埋点需求');
     }
   }
@@ -802,6 +807,21 @@ function isBootstrapAdmin(actorId?: string): boolean {
   return Boolean(actorId && BOOTSTRAP_ADMIN_USER_IDS.has(actorId));
 }
 
+function toPlatformCell(platform?: string, source?: TrackingSource): string[] {
+  const raw = String(platform || '').trim();
+  if (source === 'web' || raw === 'Web' || raw === 'Web通用') {
+    return ['Web'];
+  }
+  if (!raw) return ['iOS', 'Android'];
+  if (raw === 'iOS、Android' || raw === 'iOS,Android' || raw === 'iOS, Android') {
+    return ['iOS', 'Android'];
+  }
+  return raw
+    .split(/[、,，/]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function normalizeSource(value?: string): TrackingSource {
   return value === 'web' ? 'web' : 'app';
 }
@@ -845,6 +865,19 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
   };
 }
 
+function fullStagePermissions(): StagePermissions {
+  return {
+    canEditRequirement: true,
+    canEditDesign: true,
+    canEditReview: true,
+    canEditDev: true,
+    canEditAcceptance: true,
+    canEditLaunch: true,
+    canEditArchive: true,
+    canEditParams: true,
+  };
+}
+
 function calculateRecordPermissions(
   actorId: string,
   actorCandidates: string[],
@@ -859,26 +892,18 @@ function calculateRecordPermissions(
       calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor),
     ),
   );
+  if (candidates.some((candidate) => isBootstrapAdmin(candidate))) {
+    return fullStagePermissions();
+  }
   if (!permissionConfig) return base;
 
-  const isAdmin = permissionConfig.admins.includes(actorId);
-  const isBootstrap = isBootstrapAdmin(actorId);
-  const isDs = permissionConfig.dataScientists.includes(actorId);
-  const isDeveloper = permissionConfig.developers.includes(actorId);
-  const isAcceptor = permissionConfig.acceptors.includes(actorId);
+  const hasRole = (roleIds: string[]) => candidates.some((candidate) => roleIds.includes(candidate));
+  const isAdmin = hasRole(permissionConfig.admins);
+  const isDs = hasRole(permissionConfig.dataScientists);
+  const isDeveloper = hasRole(permissionConfig.developers);
+  const isAcceptor = hasRole(permissionConfig.acceptors);
 
-  if (isAdmin || isBootstrap) {
-    return {
-      canEditRequirement: true,
-      canEditDesign: true,
-      canEditReview: true,
-      canEditDev: true,
-      canEditAcceptance: true,
-      canEditLaunch: true,
-      canEditArchive: true,
-      canEditParams: true,
-    };
-  }
+  if (isAdmin) return fullStagePermissions();
 
   return {
     canEditRequirement: base.canEditRequirement || isDs,
