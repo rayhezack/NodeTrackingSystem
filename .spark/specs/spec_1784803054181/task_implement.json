@@ -134,7 +134,7 @@
       "id": 5,
       "name": "埋点工作台模块开发（前后端）",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 TrackingService：阶段统计（aggregateQuery）、我的待办（searchRecords）、需求列表（searchRecords+筛选）",
@@ -171,13 +171,14 @@
       "dependencies": [
         4
       ],
-      "beginTime": 1784803909932
+      "beginTime": 1784803909932,
+      "endTime": 1784804347980
     },
     {
       "id": 6,
       "name": "需求详情页模块开发（前后端）",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 TrackingService 详情查询（getRecord + 权限计算）",
@@ -227,7 +228,8 @@
       "acceptance": "详情页展示完整信息与流程条，各阶段表单按权限可编辑/只读，保存成功后状态更新，非法操作有明确错误提示",
       "dependencies": [
         5
-      ]
+      ],
+      "beginTime": 1784804348122
     },
     {
       "id": 7,
