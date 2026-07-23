@@ -12,9 +12,10 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 import { Label } from '@client/src/components/ui/label';
+import { UserSelect } from '@client/src/components/business-ui/user-select';
 import { SIDEBAR_STAGES, type StageConfig } from './stage-config';
 import { updateTrackingRecord } from '@client/src/api/tracking';
-import type { TrackingDetail } from '@shared/api.interface';
+import type { TrackingDetail, TrackingUserRef } from '@shared/api.interface';
 
 interface StageFormProps {
   stageId: string;
@@ -33,16 +34,22 @@ const DETAIL_FIELD_GROUPS = [
   'archiveFields',
 ] as const;
 
+type FormValue = string | unknown[];
+
 // 从 detail 的所有阶段字段分组中获取字段值
-function getFieldValue(detail: TrackingDetail, baseField: string): string {
+function getFieldValue(
+  detail: TrackingDetail,
+  field: StageConfig['fields'][number],
+): FormValue {
   let val: unknown;
   for (const groupName of DETAIL_FIELD_GROUPS) {
     const group = detail[groupName] || {};
-    if (Object.prototype.hasOwnProperty.call(group, baseField)) {
-      val = group[baseField];
+    if (Object.prototype.hasOwnProperty.call(group, field.baseField)) {
+      val = group[field.baseField];
       break;
     }
   }
+  if (field.type === 'user') return toUserArray(val);
   if (val == null) return '';
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {
@@ -57,15 +64,15 @@ function getFieldValue(detail: TrackingDetail, baseField: string): string {
 
 const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
   const stageConfig: StageConfig | undefined = SIDEBAR_STAGES.find((s) => s.id === stageId);
-  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, FormValue>>({});
   const [saving, setSaving] = useState(false);
 
   // 初始化表单数据
   useEffect(() => {
     if (!stageConfig) return;
-    const initial: Record<string, string> = {};
+    const initial: Record<string, FormValue> = {};
     for (const field of stageConfig.fields) {
-      initial[field.key] = getFieldValue(detail, field.baseField);
+      initial[field.key] = getFieldValue(detail, field);
     }
     setFormData(initial);
   }, [stageConfig, detail]);
@@ -74,7 +81,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
     return null;
   }
 
-  const handleChange = (key: string, value: string) => {
+  const handleChange = (key: string, value: FormValue) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -84,9 +91,11 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
     try {
       const fields: Record<string, unknown> = {};
       for (const field of stageConfig.fields) {
-        const value = formData[field.key] || '';
+        const value = formData[field.key];
         // 只有值变化了才提交（简化处理：全部提交）
-        fields[field.baseField] = value;
+        fields[field.baseField] = field.type === 'user'
+          ? toStringArray(value)
+          : toTextValue(value);
       }
 
       await updateTrackingRecord(detail.recordId, { fields });
@@ -119,7 +128,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
             </Label>
             {field.type === 'input' && (
               <Input
-                value={formData[field.key] || ''}
+                value={toTextValue(formData[field.key])}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   handleChange(field.key, e.target.value)
                 }
@@ -130,7 +139,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
             )}
             {field.type === 'textarea' && (
               <Textarea
-                value={formData[field.key] || ''}
+                value={toTextValue(formData[field.key])}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                   handleChange(field.key, e.target.value)
                 }
@@ -142,7 +151,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
             )}
             {field.type === 'select' && (
               <Select
-                value={formData[field.key] || ''}
+                value={toTextValue(formData[field.key])}
                 onValueChange={(value: string) => handleChange(field.key, value)}
                 disabled={disabled}
               >
@@ -157,6 +166,20 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {field.type === 'user' && (
+              <UserSelect
+                multiple
+                valueType="object"
+                accountType="lark"
+                value={toUserArray(formData[field.key])}
+                onChange={(value) => handleChange(field.key, Array.isArray(value) ? value : [])}
+                disabled={disabled}
+                placeholder={`搜索${field.label}`}
+                tagClosable={!disabled}
+                needFullFields
+                includeExternalContacts={false}
+              />
             )}
           </div>
         ))}
@@ -197,3 +220,73 @@ function getOptionsForField(field: StageConfig['fields'][number], detail: Tracki
 }
 
 export default StageForm;
+
+function toTextValue(value: FormValue | undefined): string {
+  if (Array.isArray(value)) return value.join('、');
+  return value || '';
+}
+
+function toStringArray(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string' || typeof item === 'number') return String(item);
+        if (item && typeof item === 'object') {
+          const objectValue = item as Record<string, unknown>;
+          const id =
+            objectValue.open_id ||
+            objectValue.openId ||
+            objectValue.larkUserId ||
+            objectValue.lark_user_id ||
+            objectValue.lark_id ||
+            objectValue.id ||
+            objectValue.user_id ||
+            objectValue.userId;
+          return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
+        }
+        return '';
+      })
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[、,，/]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function toUserArray(value: unknown): TrackingUserRef[] {
+  if (value == null) return [];
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .map<TrackingUserRef | null>((item) => {
+      if (typeof item === 'string' || typeof item === 'number') {
+        const id = String(item);
+        return { user_id: id, larkUserId: id, name: id };
+      }
+      if (item && typeof item === 'object') {
+        const objectValue = item as Record<string, unknown>;
+        const id =
+          objectValue.open_id ||
+          objectValue.openId ||
+          objectValue.larkUserId ||
+          objectValue.lark_user_id ||
+          objectValue.lark_id ||
+          objectValue.id ||
+          objectValue.user_id ||
+          objectValue.userId;
+        if (typeof id !== 'string' && typeof id !== 'number') return null;
+        const name = objectValue.name;
+        return {
+          user_id: String(id),
+          larkUserId: String(id),
+          name: typeof name === 'string' ? name : String(id),
+        };
+      }
+      return null;
+    })
+    .filter((item): item is TrackingUserRef => Boolean(item));
+}

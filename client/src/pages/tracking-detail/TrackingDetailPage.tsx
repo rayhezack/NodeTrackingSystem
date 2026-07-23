@@ -43,7 +43,8 @@ const TrackingDetailPage = () => {
 
         const matchedStage = requestedStage === 'params'
           ? { id: 'params' }
-          : SIDEBAR_STAGES.find((s) => s.baseStages.includes(res.data.stage));
+          : SIDEBAR_STAGES.find((s) => s.id === requestedStage) ||
+            SIDEBAR_STAGES.find((s) => s.baseStages.includes(res.data.stage));
         if (matchedStage?.id) {
           setActiveStage(matchedStage.id);
         }

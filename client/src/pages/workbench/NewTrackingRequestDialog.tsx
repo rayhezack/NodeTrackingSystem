@@ -20,10 +20,12 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 import { Switch } from '@client/src/components/ui/switch';
+import { UserSelect } from '@client/src/components/business-ui/user-select';
 import type {
   CreateParamRequest,
   CreateTrackingRecordRequest,
   TrackingSource,
+  TrackingUserRef,
 } from '@shared/api.interface';
 
 interface NewTrackingRequestDialogProps {
@@ -42,6 +44,14 @@ interface DraftParam {
   required: boolean;
   definition: string;
   example: string;
+}
+
+interface ParticipantForm {
+  requesterIds: TrackingUserRef[];
+  recorderIds: TrackingUserRef[];
+  dataOwnerIds: TrackingUserRef[];
+  devOwnerIds: TrackingUserRef[];
+  dsAcceptorIds: TrackingUserRef[];
 }
 
 const emptyParam = (): DraftParam => ({
@@ -77,6 +87,27 @@ const defaultForm = () => ({
   changeType: '新增',
 });
 
+const defaultParticipants = (
+  actorId?: string,
+  actorLarkId?: string,
+  actorName?: string,
+): ParticipantForm => {
+  const currentUser = actorLarkId || actorId
+    ? [{
+        user_id: actorLarkId || actorId || '',
+        larkUserId: actorLarkId || actorId || '',
+        name: actorName || '当前用户',
+      }]
+    : [];
+  return {
+    requesterIds: [],
+    recorderIds: currentUser,
+    dataOwnerIds: currentUser,
+    devOwnerIds: [],
+    dsAcceptorIds: currentUser,
+  };
+};
+
 export default function NewTrackingRequestDialog({
   open,
   actorId,
@@ -86,14 +117,18 @@ export default function NewTrackingRequestDialog({
   onSubmit,
 }: NewTrackingRequestDialogProps) {
   const [form, setForm] = useState(defaultForm);
+  const [participants, setParticipants] = useState<ParticipantForm>(() =>
+    defaultParticipants(actorId, actorLarkId, actorName),
+  );
   const [params, setParams] = useState<DraftParam[]>([emptyParam()]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setForm(defaultForm());
+    setParticipants(defaultParticipants(actorId, actorLarkId, actorName));
     setParams([emptyParam()]);
-  }, [open]);
+  }, [open, actorId, actorLarkId, actorName]);
 
   const updateField = (key: keyof ReturnType<typeof defaultForm>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -113,6 +148,10 @@ export default function NewTrackingRequestDialog({
             ? APP_COMMON_PROPS
             : prev.commonProps,
     }));
+  };
+
+  const updateParticipants = (key: keyof ParticipantForm, value: TrackingUserRef[]) => {
+    setParticipants((prev) => ({ ...prev, [key]: value }));
   };
 
   const updateParam = <K extends keyof DraftParam>(
@@ -136,6 +175,26 @@ export default function NewTrackingRequestDialog({
     }
     if (!actorId) {
       toast.error('未识别当前用户，无法创建需求');
+      return;
+    }
+    if (!participants.requesterIds.length) {
+      toast.error('请填写需求提出人');
+      return;
+    }
+    if (!participants.recorderIds.length) {
+      toast.error('请填写需求录入人');
+      return;
+    }
+    if (!participants.dataOwnerIds.length) {
+      toast.error('请填写数据负责人');
+      return;
+    }
+    if (!participants.devOwnerIds.length) {
+      toast.error('请填写研发负责人');
+      return;
+    }
+    if (!participants.dsAcceptorIds.length) {
+      toast.error('请填写 DS 验收人');
       return;
     }
 
@@ -164,9 +223,14 @@ export default function NewTrackingRequestDialog({
         actorId,
         actorLarkId,
         actorName,
+        requesterIds: toParticipantIds(participants.requesterIds),
+        recorderIds: toParticipantIds(participants.recorderIds),
+        dataOwnerIds: toParticipantIds(participants.dataOwnerIds),
+        devOwnerIds: toParticipantIds(participants.devOwnerIds),
+        dsAcceptorIds: toParticipantIds(participants.dsAcceptorIds),
         initialParams,
       });
-      toast.success('需求已创建，并已同步写入对应 Base');
+      toast.success('需求已创建，并已同步写入对应 Base；相关项目成员将获得对应节点权限');
       onClose();
     } catch (error) {
       const msg = error instanceof Error ? error.message : '新增需求失败';
@@ -187,7 +251,7 @@ export default function NewTrackingRequestDialog({
         </DialogHeader>
 
         <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
-          根据「端」自动写入对应 Base：Web 写入 Web 埋点设计工作台；iOS / Android / App 通用写入 App 埋点设计工作台。首批参数会同步写入对应参数明细表。
+          根据「端」自动写入对应 Base；项目参与人会同步写入 Base，并决定后续节点编辑权限与内部通知对象。
         </div>
 
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
@@ -234,6 +298,51 @@ export default function NewTrackingRequestDialog({
               </SelectContent>
             </Select>
           </Field>
+          <div className="md:col-span-2 rounded-sm border border-border bg-muted/20 p-3">
+            <div className="mb-3">
+              <h3 className="text-sm font-medium text-foreground">项目参与人</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                需求录入时一次性填清楚参与人：提需/录入人可维护需求信息；数据负责人和 DS 验收人可维护设计、评审、验收、上线、归档与参数；研发负责人可维护开发节点。
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
+              <Field label="需求提出人 / 提需人" required>
+                <ProjectUserSelect
+                  value={participants.requesterIds}
+                  onChange={(value) => updateParticipants('requesterIds', value)}
+                  disabled={saving}
+                />
+              </Field>
+              <Field label="需求录入人" required>
+                <ProjectUserSelect
+                  value={participants.recorderIds}
+                  onChange={(value) => updateParticipants('recorderIds', value)}
+                  disabled={saving}
+                />
+              </Field>
+              <Field label="数据负责人" required>
+                <ProjectUserSelect
+                  value={participants.dataOwnerIds}
+                  onChange={(value) => updateParticipants('dataOwnerIds', value)}
+                  disabled={saving}
+                />
+              </Field>
+              <Field label="研发负责人" required>
+                <ProjectUserSelect
+                  value={participants.devOwnerIds}
+                  onChange={(value) => updateParticipants('devOwnerIds', value)}
+                  disabled={saving}
+                />
+              </Field>
+              <Field label="DS 验收人" required className="md:col-span-2">
+                <ProjectUserSelect
+                  value={participants.dsAcceptorIds}
+                  onChange={(value) => updateParticipants('dsAcceptorIds', value)}
+                  disabled={saving}
+                />
+              </Field>
+            </div>
+          </div>
           <Field label="需求背景" className="md:col-span-2">
             <Textarea
               className={textareaCls}
@@ -414,4 +523,52 @@ function Field({
       {children}
     </label>
   );
+}
+
+function ProjectUserSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: TrackingUserRef[];
+  onChange: (value: TrackingUserRef[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <UserSelect
+      multiple
+      valueType="object"
+      accountType="lark"
+      value={value}
+      onChange={(nextValue) => onChange(Array.isArray(nextValue) ? toParticipantRefs(nextValue) : [])}
+      disabled={disabled}
+      placeholder="搜索公司内部成员"
+      tagClosable={!disabled}
+      needFullFields
+      includeExternalContacts={false}
+    />
+  );
+}
+
+function toParticipantIds(value: TrackingUserRef[]): string[] {
+  return value
+    .map((item) => item.larkUserId || item.user_id)
+    .filter(Boolean);
+}
+
+function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
+  return value
+    .map<TrackingUserRef | null>((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const user = item as Record<string, unknown>;
+      const id = user.larkUserId || user.lark_id || user.open_id || user.openId || user.user_id || user.userId;
+      if (typeof id !== 'string' && typeof id !== 'number') return null;
+      const name = user.name;
+      return {
+        user_id: String(id),
+        larkUserId: String(id),
+        name: typeof name === 'string' ? name : String(id),
+      };
+    })
+    .filter((item): item is TrackingUserRef => Boolean(item));
 }

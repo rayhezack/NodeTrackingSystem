@@ -7,6 +7,7 @@ import type { UserInput } from '@client/src/components/business-ui/types/user';
 import { UserWithAvatar } from '@client/src/components/business-ui/user-display/user-with-avatar';
 import { UserProfile } from '@client/src/components/business-ui/user-profile/user-profile';
 import { cn } from '@/lib/utils';
+import type { AccountType } from '@lark-apaas/client-toolkit/tools/services';
 import {
   Popover,
   PopoverContent,
@@ -25,6 +26,7 @@ export interface IUserDisplayProps {
   showUserProfile?: boolean;
   userId?: string;
   user_id?: string;
+  accountType?: AccountType;
 }
 
 export const UserDisplay: React.FC<IUserDisplayProps> = ({
@@ -35,6 +37,7 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
   className,
   style,
   showLabel = true,
+  accountType = 'apaas',
 }) => {
   // 统一规范化为 User[]，兼容所有格式
   const normalizedUsers = React.useMemo(() => {
@@ -81,6 +84,7 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
                 data={user}
                 size={size}
                 showLabel={showLabel}
+                accountType={accountType}
                 className="cursor-pointer hover:bg-[rgba(31_35_41_0.15)] active:bg-[rgba(31_35_41_0.2)]"
               />
             </div>
@@ -90,7 +94,7 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
             sideOffset={8}
             className="w-[320px] border-0 border-border/50 bg-card p-0 shadow-[0px_8px_24px_8px_rgba(31_35_41_0.04),0px_6px_12px_rgba(31_35_41_0.04),0px_4px_8px_-8px_rgba(31_35_41_0.06)]"
           >
-            <UserProfile value={user} />
+            <UserProfile value={user} accountType={accountType} />
           </PopoverContent>
         </Popover>
       ))}

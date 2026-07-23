@@ -25,6 +25,7 @@ import type {
   TrackingSourceFilter,
   TrackingDetail,
   TrackingRecord,
+  TrackingUserRef,
   UpdatePermissionConfigRequest,
   UpdatePermissionConfigResponse,
   UpdateParamRequest,
@@ -58,6 +59,8 @@ const WORKBENCH_FIELDS = [
   '记录类型',
   '优先级',
   '端',
+  '需求提出人',
+  '需求录入人',
   '数据负责人',
   '研发负责人',
   'DS验收人',
@@ -120,6 +123,13 @@ const TRACKING_SOURCES: TrackingSource[] = ['app', 'web'];
 type Cell = unknown;
 type ScopedRecordRef = { source: TrackingSource; rawId: string };
 
+const USER_FIELD_NAMES = new Set([
+  '需求提出人',
+  '需求录入人',
+  '数据负责人',
+  '研发负责人',
+  'DS验收人',
+]);
 
 @Injectable()
 export class TrackingService {
@@ -149,10 +159,27 @@ export class TrackingService {
     params: GetMyTodosParams = {},
   ): Promise<GetMyTodosResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
-    const todoStages = new Set(['需求录入', '埋点设计', '评审通过', '埋点开发', '数据验收']);
+    const actorCandidates = uniqueStrings([params.actorId || '', params.actorLarkId || '']);
+    if (!actorCandidates.length) {
+      return { items: [] };
+    }
+
     const items = records
-      .filter(({ record }) => todoStages.has(cellText(record.record['流程阶段'])))
-      .map(({ record, source }) => this.toTrackingRecord(record, source))
+      .map(({ record, source }) => {
+        const action = getTodoAction(record, actorCandidates);
+        if (!action) return null;
+        const trackingRecord = this.toTrackingRecord(record, source);
+        return {
+          ...trackingRecord,
+          stage: action.stage,
+          targetStage: action.targetStage,
+          todoRole: action.todoRole,
+        };
+      })
+      .filter((record): record is TrackingRecord & {
+        targetStage: string;
+        todoRole: string;
+      } => Boolean(record))
       .sort(compareTrackingRecord)
       .slice(0, limit)
       .map((record) => ({
@@ -161,6 +188,8 @@ export class TrackingService {
         evtId: record.evtId,
         eventName: record.eventName,
         stage: record.stage,
+        targetStage: record.targetStage,
+        todoRole: record.todoRole,
         priority: record.priority,
         platform: record.platform,
       }));
@@ -308,7 +337,7 @@ export class TrackingService {
       throw new BadRequestException('evt_id 和事件名不能为空');
     }
 
-    await this.assertCanCreateRecord(body.actorId);
+    await this.assertCanCreateRecord(body.actorId, body.actorLarkId);
 
     const records = await this.listWorkbenchRecords(source);
     const duplicate = records.find(
@@ -318,7 +347,21 @@ export class TrackingService {
       throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
     }
 
-    const ownerCell = createUserCell(body.actorLarkId || body.actorId, body.actorName);
+    const actorCellId = body.actorLarkId || body.actorId;
+    const requesterCells = createUserCells(body.requesterIds);
+    const recorderCells = createUserCells(
+      body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
+      body.actorName,
+    );
+    const dataOwnerCells = createUserCells(
+      body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : [],
+      body.actorName,
+    );
+    const devOwnerCells = createUserCells(body.devOwnerIds);
+    const dsAcceptorCells = createUserCells(
+      body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : [],
+      body.actorName,
+    );
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
     const [created] = await this.bitable.batchAddRecords(workbench, [
@@ -334,9 +377,11 @@ export class TrackingService {
         '记录类型': source === 'web' ? '埋点设计' : '需求',
         '优先级': body.priority || 'P2',
         '端': toPlatformCell(body.platform, source),
-        '数据负责人': ownerCell ? [ownerCell] : [],
-        '研发负责人': [],
-        'DS验收人': ownerCell ? [ownerCell] : [],
+        '需求提出人': requesterCells,
+        '需求录入人': recorderCells,
+        '数据负责人': dataOwnerCells,
+        '研发负责人': devOwnerCells,
+        'DS验收人': dsAcceptorCells,
         '评审状态': '草稿',
         '评审意见': '',
         '埋点开发状态': '未开始',
@@ -405,6 +450,11 @@ export class TrackingService {
       patch['端'] = Array.isArray(patch['端'])
         ? patch['端']
         : toPlatformCell(cellText(patch['端']), ref.source);
+    }
+    for (const fieldName of USER_FIELD_NAMES) {
+      if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
+        patch[fieldName] = createUserCells(patch[fieldName]);
+      }
     }
 
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
@@ -476,17 +526,22 @@ export class TrackingService {
     return { success: true };
   }
 
-  private async assertCanCreateRecord(actorId?: string): Promise<void> {
+  private async assertCanCreateRecord(actorId?: string, actorLarkId?: string): Promise<void> {
     const stored = await this.getPermissionRecord();
     if (!stored) return;
 
     const config = parsePermissionConfig(stored.record['需求背景']);
-    const actor = (actorId || '').trim();
-    if (!actor) {
+    const actors = uniqueStrings([actorId || '', actorLarkId || '']);
+    if (!actors.length) {
       throw new ForbiddenException('无法识别当前用户，不能新增需求');
     }
-    if (!config.admins.includes(actor) && !config.dataScientists.includes(actor)) {
-      if (isBootstrapAdmin(actor)) return;
+    const canCreate = actors.some(
+      (actor) =>
+        config.admins.includes(actor) ||
+        config.dataScientists.includes(actor) ||
+        isBootstrapAdmin(actor),
+    );
+    if (!canCreate) {
       throw new ForbiddenException('只有管理员或 DS 可以新增埋点需求');
     }
   }
@@ -571,6 +626,8 @@ export class TrackingService {
     actorLarkId?: string,
     permissionConfig?: PermissionConfig | null,
   ): TrackingDetail {
+    const requester = cellUsers(record.record['需求提出人']);
+    const recorder = cellUsers(record.record['需求录入人']);
     const dataOwner = cellUsers(record.record['数据负责人']);
     const devOwner = cellUsers(record.record['研发负责人']);
     const dsAcceptor = cellUsers(record.record['DS验收人']);
@@ -582,15 +639,27 @@ export class TrackingService {
       reviewStatus: cellText(record.record['评审状态']) || '草稿',
       devStatus: cellText(record.record['埋点开发状态']) || '未开始',
       acceptanceStatus: cellText(record.record['DS验收状态']) || '未开始',
-      dsAcceptor: dsAcceptor.ids,
+      requester: requester.items,
+      requesterIds: requester.ids,
+      recorder: recorder.items,
+      recorderIds: recorder.ids,
+      dataOwner: dataOwner.items,
+      dataOwnerIds: dataOwner.ids,
+      devOwner: devOwner.items,
+      devOwnerIds: devOwner.ids,
+      dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
       requirementFields: pickFields(record.record, [
+        '需求提出人',
+        '需求录入人',
         '需求背景',
         '需求链接',
         '指标/使用场景',
         '优先级',
         '端',
         '数据负责人',
+        '研发负责人',
+        'DS验收人',
       ]),
       designFields: pickFields(record.record, [
         '事件中文名',
@@ -612,6 +681,8 @@ export class TrackingService {
         ? calculateRecordPermissions(
             actor,
             actorCandidates,
+            requester.ids,
+            recorder.ids,
             dataOwner.ids,
             devOwner.ids,
             dsAcceptor.ids,
@@ -687,8 +758,13 @@ function compareTrackingRecord(a: TrackingRecord, b: TrackingRecord): number {
   return b.updatedAt - a.updatedAt;
 }
 
-function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, string> {
-  return Object.fromEntries(fields.map((field) => [field, cellText(record[field])]));
+function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, unknown> {
+  return Object.fromEntries(
+    fields.map((field) => [
+      field,
+      USER_FIELD_NAMES.has(field) ? cellUsers(record[field]).items : cellText(record[field]),
+    ]),
+  );
 }
 
 function cellText(value: Cell): string {
@@ -710,20 +786,34 @@ function cellText(value: Cell): string {
   return '';
 }
 
-function cellUsers(value: Cell): { ids: string[]; names: string[] } {
-  const items = Array.isArray(value) ? value : value ? [value] : [];
-  return items.reduce(
+function cellUsers(value: Cell): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values.reduce(
     (acc, item) => {
+      if (typeof item === 'string') {
+        acc.ids.push(item);
+        acc.items.push({ user_id: item, larkUserId: item, name: item });
+        return acc;
+      }
       if (item && typeof item === 'object') {
         const user = item as Record<string, unknown>;
-        const id = typeof user.id === 'string' ? user.id : '';
+        const id = [
+          user.id,
+          user.user_id,
+          user.userId,
+          user.open_id,
+          user.openId,
+          user.larkUserId,
+          user.lark_user_id,
+        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0) || '';
         const name = typeof user.name === 'string' ? user.name : id;
         if (id) acc.ids.push(id);
         if (name) acc.names.push(name);
+        if (id) acc.items.push({ user_id: id, larkUserId: id, name });
       }
       return acc;
     },
-    { ids: [] as string[], names: [] as string[] },
+    { ids: [] as string[], names: [] as string[], items: [] as TrackingUserRef[] },
   );
 }
 
@@ -762,6 +852,43 @@ function createUserCell(userId?: string, userName?: string): Record<string, stri
     id,
     name: (userName || id).trim(),
   };
+}
+
+function createUserCells(
+  value?: unknown,
+  userName?: string,
+): Array<Record<string, string>> {
+  const ids = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[、,，/]/)
+      : value
+        ? [value]
+        : [];
+
+  return uniqueStrings(
+    ids
+      .map((item) => {
+        if (typeof item === 'string' || typeof item === 'number') return String(item);
+        if (item && typeof item === 'object') {
+          const user = item as Record<string, unknown>;
+          const id =
+            user.open_id ||
+            user.openId ||
+            user.larkUserId ||
+            user.lark_user_id ||
+            user.lark_id ||
+            user.id ||
+            user.user_id ||
+            user.userId;
+          return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
+        }
+        return '';
+      })
+      .filter(Boolean),
+  )
+    .map((id) => createUserCell(id, userName))
+    .filter((cell): cell is Record<string, string> => Boolean(cell));
 }
 
 function emptyPermissionConfig(): PermissionConfig {
@@ -865,6 +992,82 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
   };
 }
 
+function getTodoAction(
+  record: BitableRecord,
+  actorCandidates: string[],
+): { stage: string; targetStage: string; todoRole: string } | null {
+  const baseStage = cellText(record.record['流程阶段']);
+  const requesters = cellUsers(record.record['需求提出人']).ids;
+  const recorders = cellUsers(record.record['需求录入人']).ids;
+  const dataOwners = cellUsers(record.record['数据负责人']).ids;
+  const devOwners = cellUsers(record.record['研发负责人']).ids;
+  const dsAcceptors = cellUsers(record.record['DS验收人']).ids;
+
+  const isRequester = intersects(actorCandidates, requesters);
+  const isRecorder = intersects(actorCandidates, recorders);
+  const isDataOwner = intersects(actorCandidates, dataOwners);
+  const isDevOwner = intersects(actorCandidates, devOwners);
+  const isAcceptor = intersects(actorCandidates, dsAcceptors);
+  const isDataParticipant = isDataOwner || isAcceptor;
+
+  switch (baseStage) {
+    case '需求录入':
+      if (isRequester || isRecorder || isDataParticipant) {
+        return { stage: '埋点提需', targetStage: 'requirement', todoRole: getFirstRole([
+          [isRequester, '提需人'],
+          [isRecorder, '录入人'],
+          [isDataOwner, '数据负责人'],
+          [isAcceptor, 'DS验收人'],
+        ]) };
+      }
+      return null;
+    case '埋点设计':
+      if (isDataParticipant) {
+        return { stage: '埋点设计', targetStage: 'design', todoRole: getFirstRole([
+          [isDataOwner, '数据负责人'],
+          [isAcceptor, 'DS验收人'],
+        ]) };
+      }
+      return null;
+    case '评审通过':
+      if (isDevOwner) {
+        return { stage: '埋点开发', targetStage: 'dev', todoRole: '研发负责人' };
+      }
+      return null;
+    case '埋点开发':
+      if (isDevOwner) {
+        return { stage: '埋点开发', targetStage: 'dev', todoRole: '研发负责人' };
+      }
+      return null;
+    case '数据验收':
+      if (isDataParticipant) {
+        return { stage: '埋点校验', targetStage: 'acceptance', todoRole: getFirstRole([
+          [isDataOwner, '数据负责人'],
+          [isAcceptor, 'DS验收人'],
+        ]) };
+      }
+      return null;
+    case '上线监控':
+      if (isDataParticipant) {
+        return { stage: '埋点上线', targetStage: 'launch', todoRole: getFirstRole([
+          [isDataOwner, '数据负责人'],
+          [isAcceptor, 'DS验收人'],
+        ]) };
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+function intersects(left: string[], right: string[]): boolean {
+  return left.some((item) => right.includes(item));
+}
+
+function getFirstRole(items: Array<[boolean, string]>): string {
+  return items.find(([matched]) => matched)?.[1] || '项目参与人';
+}
+
 function fullStagePermissions(): StagePermissions {
   return {
     canEditRequirement: true,
@@ -881,6 +1084,8 @@ function fullStagePermissions(): StagePermissions {
 function calculateRecordPermissions(
   actorId: string,
   actorCandidates: string[],
+  requesters: string[],
+  recorders: string[],
   dataOwner: string[],
   devOwner: string[],
   dsAcceptor: string[],
@@ -891,6 +1096,9 @@ function calculateRecordPermissions(
     candidates.map((candidate) =>
       calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor),
     ),
+  );
+  const canEditRequirementByRequester = candidates.some(
+    (candidate) => requesters.includes(candidate) || recorders.includes(candidate),
   );
   if (candidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return fullStagePermissions();
@@ -906,7 +1114,7 @@ function calculateRecordPermissions(
   if (isAdmin) return fullStagePermissions();
 
   return {
-    canEditRequirement: base.canEditRequirement || isDs,
+    canEditRequirement: base.canEditRequirement || isDs || canEditRequirementByRequester,
     canEditDesign: base.canEditDesign || isDs,
     canEditReview: base.canEditReview || isDs,
     canEditDev: base.canEditDev || isDeveloper,

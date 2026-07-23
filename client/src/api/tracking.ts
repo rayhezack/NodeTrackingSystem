@@ -40,10 +40,12 @@ export async function getStageStats(
 export async function getMyTodos(
   limit = 10,
   source?: TrackingSourceFilter,
+  actorId?: string,
+  actorLarkId?: string,
 ): Promise<GetMyTodosResponse> {
   try {
     const response = await axiosForBackend.get('/api/tracking/my-todos', {
-      params: { limit, source },
+      params: { limit, source, actorId, actorLarkId },
     });
     return response.data;
   } catch (error) {

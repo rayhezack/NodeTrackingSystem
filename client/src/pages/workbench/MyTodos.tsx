@@ -33,7 +33,7 @@ interface MyTodosProps {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
-  onItemClick: (recordId: string) => void;
+  onItemClick: (recordId: string, targetStage?: string) => void;
 }
 
 const MyTodos = ({
@@ -115,7 +115,7 @@ const MyTodos = ({
               <li key={item.recordId}>
                 <button
                   type="button"
-                  onClick={() => onItemClick(item.recordId)}
+                  onClick={() => onItemClick(item.recordId, item.targetStage)}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
                 >
                   <span className="w-24 shrink-0 font-mono text-xs text-primary">
@@ -127,6 +127,11 @@ const MyTodos = ({
                   <span className="flex-1 truncate text-sm text-foreground">
                     {item.eventName || '-'}
                   </span>
+                  {item.todoRole && (
+                    <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
+                      {item.todoRole}
+                    </Badge>
+                  )}
                   <Badge
                     className={`h-5 rounded-sm px-1.5 text-[10px] font-medium ${STAGE_VARIANT[item.stage] || ''}`}
                   >

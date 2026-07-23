@@ -71,7 +71,7 @@ const WorkbenchPage = () => {
     setTodosLoading(true);
     setTodosError(null);
     try {
-      const res = await trackingApi.getMyTodos(10, 'all');
+      const res = await trackingApi.getMyTodos(10, 'all', actor.id, actor.larkId);
       setTodos(res.items);
     } catch (err) {
       logger.error('加载我的待办失败', err);
@@ -79,7 +79,7 @@ const WorkbenchPage = () => {
     } finally {
       setTodosLoading(false);
     }
-  }, []);
+  }, [actor.id, actor.larkId]);
 
   // 加载需求列表
   const loadRecords = useCallback(
@@ -157,8 +157,8 @@ const WorkbenchPage = () => {
   };
 
   // 跳转详情
-  const goToDetail = (recordId: string) => {
-    navigate(`/tracking/${recordId}`);
+  const goToDetail = (recordId: string, targetStage?: string) => {
+    navigate(`/tracking/${recordId}${targetStage ? `?stage=${targetStage}` : ''}`);
   };
 
   const handleCreate = async (data: CreateTrackingRecordRequest) => {

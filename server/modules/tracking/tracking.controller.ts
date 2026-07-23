@@ -31,9 +31,16 @@ export class TrackingController {
   }
 
   @Get('my-todos')
-  getMyTodos(@Query('limit') limit?: string, @Query('source') source?: string) {
+  getMyTodos(
+    @Query('limit') limit?: string,
+    @Query('source') source?: string,
+    @Query('actorId') actorId?: string,
+    @Query('actorLarkId') actorLarkId?: string,
+  ) {
     return this.trackingService.getMyTodos(Number(limit || 10), {
       source: source as TrackingSourceFilter | undefined,
+      actorId,
+      actorLarkId,
     });
   }
 

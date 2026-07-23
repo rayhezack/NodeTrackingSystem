@@ -3,10 +3,11 @@
 export interface StageFieldConfig {
   key: string;
   label: string;
-  type: 'input' | 'textarea' | 'select' | 'date';
+  type: 'input' | 'textarea' | 'select' | 'date' | 'user';
   baseField: string;
   options?: { value: string; label: string }[];
   placeholder?: string;
+  multiple?: boolean;
 }
 
 export interface StageConfig {
@@ -81,6 +82,11 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'evtId', label: 'evt_id', type: 'input', baseField: 'evt_id' },
       { key: 'priority', label: '优先级', type: 'select', baseField: '优先级', options: PRIORITY_OPTIONS },
       { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
+      { key: 'requesterIds', label: '需求提出人 / 提需人', type: 'user', baseField: '需求提出人', multiple: true },
+      { key: 'recorderIds', label: '需求录入人', type: 'user', baseField: '需求录入人', multiple: true },
+      { key: 'dataOwnerIds', label: '数据负责人', type: 'user', baseField: '数据负责人', multiple: true },
+      { key: 'devOwnerIds', label: '研发负责人', type: 'user', baseField: '研发负责人', multiple: true },
+      { key: 'dsAcceptorIds', label: 'DS 验收人', type: 'user', baseField: 'DS验收人', multiple: true },
       { key: 'requirementBackground', label: '需求背景', type: 'textarea', baseField: '需求背景', placeholder: '说明为什么需要这个埋点...' },
       { key: 'metricScenario', label: '指标/使用场景', type: 'textarea', baseField: '指标/使用场景', placeholder: '说明要支撑的指标、看板或分析场景...' },
     ],

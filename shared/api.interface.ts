@@ -3,6 +3,12 @@
 export type TrackingSource = 'app' | 'web';
 export type TrackingSourceFilter = TrackingSource | 'all';
 
+export interface TrackingUserRef {
+  user_id: string;
+  larkUserId?: string;
+  name?: string;
+}
+
 // 阶段统计
 export interface StageStat {
   stage: string;
@@ -24,12 +30,16 @@ export interface TodoItem {
   evtId: string;
   eventName: string;
   stage: string;
+  targetStage?: string;
+  todoRole?: string;
   priority: string;
   platform: string;
 }
 
 export interface GetMyTodosParams {
   source?: TrackingSourceFilter;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
 export interface GetMyTodosResponse {
@@ -90,6 +100,11 @@ export interface CreateTrackingRecordRequest {
   actorId?: string;
   actorLarkId?: string;
   actorName?: string;
+  requesterIds?: string[];
+  recorderIds?: string[];
+  dataOwnerIds?: string[];
+  devOwnerIds?: string[];
+  dsAcceptorIds?: string[];
   initialParams?: CreateParamRequest[];
 }
 
@@ -150,11 +165,15 @@ export interface TrackingDetail {
   reviewStatus: string;
   devStatus: string;
   acceptanceStatus: string;
-  dataOwner: string[];
+  requester: TrackingUserRef[];
+  requesterIds: string[];
+  recorder: TrackingUserRef[];
+  recorderIds: string[];
+  dataOwner: TrackingUserRef[];
   dataOwnerIds: string[];
-  devOwner: string[];
+  devOwner: TrackingUserRef[];
   devOwnerIds: string[];
-  dsAcceptor: string[];
+  dsAcceptor: TrackingUserRef[];
   dsAcceptorIds: string[];
   priority: string;
   platform: string;

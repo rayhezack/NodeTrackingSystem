@@ -94,9 +94,23 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
 
           {/* 数据负责人 */}
           <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground shrink-0">提需人</span>
+            <div className="min-w-0">
+              <UserDisplay value={detail.requester} size="small" accountType="lark" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground shrink-0">录入人</span>
+            <div className="min-w-0">
+              <UserDisplay value={detail.recorder} size="small" accountType="lark" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground shrink-0">数据负责人</span>
             <div className="min-w-0">
-              <UserDisplay value={detail.dataOwner} size="small" />
+              <UserDisplay value={detail.dataOwner} size="small" accountType="lark" />
             </div>
           </div>
 
@@ -104,7 +118,7 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground shrink-0">研发负责人</span>
             <div className="min-w-0">
-              <UserDisplay value={detail.devOwner} size="small" />
+              <UserDisplay value={detail.devOwner} size="small" accountType="lark" />
             </div>
           </div>
 
@@ -112,7 +126,7 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground shrink-0">DS验收人</span>
             <div className="min-w-0">
-              <UserDisplay value={detail.dsAcceptor} size="small" />
+              <UserDisplay value={detail.dsAcceptor} size="small" accountType="lark" />
             </div>
           </div>
         </div>
