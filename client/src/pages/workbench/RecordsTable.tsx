@@ -200,6 +200,7 @@ const RecordsTable = ({
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 py-2">
                 <Skeleton className="h-3.5 w-20" />
+                <Skeleton className="h-4 w-10" />
                 <Skeleton className="h-3.5 flex-1" />
                 <Skeleton className="h-4 w-14" />
                 <Skeleton className="h-4 w-8" />
@@ -251,6 +252,9 @@ const RecordsTable = ({
                   <TableHead className="h-9 w-32 px-3 text-xs font-medium text-muted-foreground">
                     evt_id
                   </TableHead>
+                  <TableHead className="h-9 w-16 px-3 text-xs font-medium text-muted-foreground">
+                    库
+                  </TableHead>
                   <TableHead className="h-9 px-3 text-xs font-medium text-muted-foreground">
                     事件名
                   </TableHead>
@@ -285,6 +289,11 @@ const RecordsTable = ({
                     >
                       <TableCell className="px-3 py-0 font-mono text-xs text-primary">
                         {rec.evtId || '-'}
+                      </TableCell>
+                      <TableCell className="px-3 py-0">
+                        <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
+                          {rec.source === 'web' ? 'Web' : 'App'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-foreground">
                         <span className="block max-w-[320px] truncate">

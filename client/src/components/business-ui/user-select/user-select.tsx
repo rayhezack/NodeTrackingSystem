@@ -27,12 +27,23 @@ function createUsersFetcher(
     accountType?: AccountType;
     pageSize?: number;
     needFullFields?: boolean;
+    includeExternalContacts?: boolean;
   } = {},
 ) {
-  const { accountType = 'apaas', pageSize = 100, needFullFields } = options;
+  const {
+    accountType = 'apaas',
+    pageSize = 100,
+    needFullFields,
+    includeExternalContacts = false,
+  } = options;
 
   return async (search: string) => {
-    const response = await searchUsers({ query: search, pageSize, needFullFields });
+    const response = await searchUsers({
+      query: search,
+      pageSize,
+      needFullFields,
+      searchExternalContact: includeExternalContacts,
+    });
     const userList = response?.data?.userList || [];
 
     return {
@@ -128,6 +139,7 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
     slotProps,
     getOptionDisabled,
     needFullFields = false,
+    includeExternalContacts = false,
   } = props;
 
   // 使用 useUserValue 处理不同类型的 value（包括 defaultValue）
@@ -150,7 +162,10 @@ export const UserSelect: React.FC<UserSelectProps> = (props) => {
     valueType,
   );
 
-  const baseFetchFn = useMemo(() => createUsersFetcher({ accountType, needFullFields }), [accountType, needFullFields]);
+  const baseFetchFn = useMemo(
+    () => createUsersFetcher({ accountType, needFullFields, includeExternalContacts }),
+    [accountType, needFullFields, includeExternalContacts],
+  );
 
   // 正在开户中的用户 ID 集合
   const [convertingSet, setConvertingSet] = useState<Set<string>>(() => new Set());

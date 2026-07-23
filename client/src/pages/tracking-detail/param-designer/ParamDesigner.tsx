@@ -17,17 +17,18 @@ import {
   updateParam,
   deleteParam,
 } from '@client/src/api/tracking';
-import type { ParamDetail, CreateParamRequest } from '@shared/api.interface';
+import type { ParamDetail, CreateParamRequest, TrackingSource } from '@shared/api.interface';
 import ParamFormDialog from './ParamFormDialog';
 import DeleteParamDialog from './DeleteParamDialog';
 
 interface ParamDesignerProps {
   recordId: string;
+  source: TrackingSource;
   evtId: string;
   canEdit: boolean;
 }
 
-const ParamDesigner = ({ recordId, evtId, canEdit }: ParamDesignerProps) => {
+const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps) => {
   const [items, setItems] = useState<ParamDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +261,7 @@ const ParamDesigner = ({ recordId, evtId, canEdit }: ParamDesignerProps) => {
       <ParamFormDialog
         open={formOpen}
         mode={formMode}
+        source={source}
         defaultEvtId={evtId}
         initialData={editingParam}
         onClose={() => setFormOpen(false)}

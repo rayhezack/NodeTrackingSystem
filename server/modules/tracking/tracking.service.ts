@@ -10,15 +10,19 @@ import type {
   CreateTrackingRecordRequest,
   CreateTrackingRecordResponse,
   DeleteParamResponse,
+  GetMyTodosParams,
   GetMyTodosResponse,
   GetParamsResponse,
   GetPermissionConfigResponse,
+  GetStageStatsParams,
   GetStageStatsResponse,
   GetTrackingDetailResponse,
   GetTrackingRecordsParams,
   GetTrackingRecordsResponse,
   PermissionConfig,
   ParamDetail,
+  TrackingSource,
+  TrackingSourceFilter,
   TrackingDetail,
   TrackingRecord,
   UpdatePermissionConfigRequest,
@@ -28,13 +32,18 @@ import type {
   UpdateTrackingRecordRequest,
   UpdateTrackingRecordResponse,
 } from '@shared/api.interface';
-import { UI_STAGE_NODES, PRIORITY_WEIGHT } from '../bitable/bitable.constants';
+import {
+  UI_STAGE_NODES,
+  PRIORITY_WEIGHT,
+  type BitableInstanceKey,
+} from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import {
   calculatePermissions,
   getBaseStageFromUi,
   getUiStageFromBase,
   isStageTransitionValid,
+  type StagePermissions,
 } from '../bitable/bitable.utils';
 
 const WORKBENCH_FIELDS = [
@@ -86,6 +95,7 @@ const PARAM_FIELDS = [
   '参数定义',
   '默认值/示例',
   'App适用性',
+  'Web适用性',
   '参数状态',
   '版本',
   '变更类型',
@@ -96,17 +106,26 @@ const PARAM_FIELDS = [
 const PERMISSION_RECORD_TYPE = '权限配置';
 const PERMISSION_RECORD_NAME = '系统权限配置';
 const PERMISSION_RECORD_EVT_ID = '__system_permissions__';
+const APP_DESIGN_PARAM_LINK =
+  'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblesT69TDCUKzhs';
+const WEB_DESIGN_PARAM_LINK =
+  'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblMaw89yVi68YY6';
+const TRACKING_SOURCES: TrackingSource[] = ['app', 'web'];
 
 type Cell = unknown;
+type ScopedRecordRef = { source: TrackingSource; rawId: string };
+
 
 @Injectable()
 export class TrackingService {
   constructor(private readonly bitable: BitableService) {}
 
-  async getStageStats(): Promise<GetStageStatsResponse> {
-    const records = await this.listWorkbenchRecords();
+  async getStageStats(
+    params: GetStageStatsParams = {},
+  ): Promise<GetStageStatsResponse> {
+    const records = await this.listWorkbenchRecordsBySource(params.source);
     const countMap = new Map(UI_STAGE_NODES.map((stage) => [stage, 0]));
-    for (const record of records) {
+    for (const { record } of records) {
       const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']));
       if (countMap.has(uiStage)) {
         countMap.set(uiStage, (countMap.get(uiStage) || 0) + 1);
@@ -120,16 +139,20 @@ export class TrackingService {
     };
   }
 
-  async getMyTodos(limit = 10): Promise<GetMyTodosResponse> {
-    const records = await this.listWorkbenchRecords();
+  async getMyTodos(
+    limit = 10,
+    params: GetMyTodosParams = {},
+  ): Promise<GetMyTodosResponse> {
+    const records = await this.listWorkbenchRecordsBySource(params.source);
     const todoStages = new Set(['需求录入', '埋点设计', '评审通过', '埋点开发', '数据验收']);
     const items = records
-      .filter((record) => todoStages.has(cellText(record.record['流程阶段'])))
-      .map((record) => this.toTrackingRecord(record))
+      .filter(({ record }) => todoStages.has(cellText(record.record['流程阶段'])))
+      .map(({ record, source }) => this.toTrackingRecord(record, source))
       .sort(compareTrackingRecord)
       .slice(0, limit)
       .map((record) => ({
         recordId: record.recordId,
+        source: record.source,
         evtId: record.evtId,
         eventName: record.eventName,
         stage: record.stage,
@@ -142,10 +165,10 @@ export class TrackingService {
 
   async getRecords(params: GetTrackingRecordsParams): Promise<GetTrackingRecordsResponse> {
     const pageSize = Number(params.pageSize || 50);
-    const records = await this.listWorkbenchRecords();
+    const records = await this.listWorkbenchRecordsBySource(params.source);
     const keyword = (params.keyword || '').trim().toLowerCase();
     const filtered = records
-      .map((record) => this.toTrackingRecord(record))
+      .map(({ record, source }) => this.toTrackingRecord(record, source))
       .filter((record) => {
         if (keyword) {
           const haystack = `${record.evtId} ${record.eventName}`.toLowerCase();
@@ -171,13 +194,26 @@ export class TrackingService {
     };
   }
 
-  async getDetail(recordId: string, actorId?: string): Promise<GetTrackingDetailResponse> {
-    const record = await this.bitable.getRecord('workbench', recordId);
+  async getDetail(
+    recordId: string,
+    actorId?: string,
+    actorLarkId?: string,
+  ): Promise<GetTrackingDetailResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const record = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!record) {
       throw new NotFoundException('埋点需求不存在');
     }
     const permissionConfig = await this.getStoredPermissionConfig();
-    return { data: this.toTrackingDetail(record, actorId, permissionConfig) };
+    return {
+      data: this.toTrackingDetail(
+        record,
+        ref.source,
+        actorId,
+        actorLarkId,
+        permissionConfig,
+      ),
+    };
   }
 
   async getPermissionConfig(actorId?: string): Promise<GetPermissionConfigResponse> {
@@ -231,6 +267,7 @@ export class TrackingService {
       updatedAt: Date.now(),
       updatedBy: actorId,
     });
+    const actorCell = createUserCell(body.actorLarkId || actorId, body.actorName);
 
     const record = {
       evt_id: PERMISSION_RECORD_EVT_ID,
@@ -240,9 +277,9 @@ export class TrackingService {
       '记录类型': PERMISSION_RECORD_TYPE,
       '优先级': 'P3',
       '端': 'App通用',
-      '数据负责人': usersToCell(nextConfig.admins, body.actorName),
-      '研发负责人': usersToCell(nextConfig.developers),
-      'DS验收人': usersToCell(nextConfig.acceptors),
+      '数据负责人': actorCell ? [actorCell] : [],
+      '研发负责人': [],
+      'DS验收人': [],
       '评审状态': '',
       '埋点开发状态': '',
       'DS验收状态': '',
@@ -270,6 +307,7 @@ export class TrackingService {
   async createRecord(
     body: CreateTrackingRecordRequest,
   ): Promise<CreateTrackingRecordResponse> {
+    const source = normalizeSource(body.source);
     const evtId = (body.evtId || '').trim();
     const eventName = (body.eventName || '').trim();
     if (!evtId || !eventName) {
@@ -278,7 +316,7 @@ export class TrackingService {
 
     await this.assertCanCreateRecord(body.actorId);
 
-    const records = await this.listWorkbenchRecords();
+    const records = await this.listWorkbenchRecords(source);
     const duplicate = records.find(
       (record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase(),
     );
@@ -286,9 +324,11 @@ export class TrackingService {
       throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
     }
 
-    const ownerCell = createUserCell(body.actorId, body.actorName);
+    const ownerCell = createUserCell(body.actorLarkId || body.actorId, body.actorName);
+    const workbench = workbenchKey(source);
+    const paramDetail = paramDetailKey(source);
     const now = Date.now();
-    const [created] = await this.bitable.batchAddRecords('workbench', [
+    const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         evt_id: evtId,
         '事件中文名': eventName,
@@ -298,9 +338,9 @@ export class TrackingService {
         '需求链接': body.requirementLink || '',
         '指标/使用场景': body.metricScenario || '',
         '流程阶段': '需求录入',
-        '记录类型': '需求',
+        '记录类型': source === 'web' ? '埋点设计' : '需求',
         '优先级': body.priority || 'P2',
-        '端': body.platform || 'iOS、Android',
+        '端': source === 'web' ? 'Web' : body.platform || 'iOS、Android',
         '数据负责人': ownerCell ? [ownerCell] : [],
         '研发负责人': [],
         'DS验收人': ownerCell ? [ownerCell] : [],
@@ -312,16 +352,17 @@ export class TrackingService {
         'DS验收时间': '',
         '上线监控状态': '未开始',
         '上线监控结论': '',
-        '发布门禁状态': '待检查',
+        '发布门禁状态': source === 'web' ? '未检查' : '待检查',
         '发布门禁失败原因': '',
         '发布状态': '未发布',
         '发布错误': '',
-        '正式状态': '未归档',
+        '正式状态': source === 'web' ? '待开发' : '未归档',
         '版本': body.version || '1.0.0',
         '最低版本': body.minVersion || body.version || '1.0.0',
         '变更类型': body.changeType || '新增',
-        '处理方': body.handler || '客户端',
+        '处理方': body.handler || (source === 'web' ? '前端' : '客户端'),
         '公共属性要求': body.commonProps || '',
+        '参数明细入口': source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
         '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
         '稳定归档时间': '',
         '创建时间': now,
@@ -329,16 +370,18 @@ export class TrackingService {
     ]);
 
     const paramRecords = (body.initialParams || [])
-      .map((param) => this.toParamRecord(created.id, evtId, body.version || '1.0.0', param))
+      .map((param) =>
+        this.toParamRecord(source, created.id, evtId, body.version || '1.0.0', param),
+      )
       .filter((record) => cellText(record['参数名']) || cellText(record['设计参数主键']));
 
     if (paramRecords.length) {
-      await this.bitable.batchAddRecords('paramDetail', paramRecords);
+      await this.bitable.batchAddRecords(paramDetail, paramRecords);
     }
 
     return {
       success: true,
-      recordId: created.id,
+      recordId: encodeScopedRecordId(source, created.id),
       currentStage: '需求录入',
       createdParamCount: paramRecords.length,
     };
@@ -348,7 +391,9 @@ export class TrackingService {
     recordId: string,
     body: UpdateTrackingRecordRequest,
   ): Promise<UpdateTrackingRecordResponse> {
-    const current = await this.bitable.getRecord('workbench', recordId);
+    const ref = parseScopedRecordId(recordId);
+    const workbench = workbenchKey(ref.source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
     if (!current) {
       throw new NotFoundException('埋点需求不存在');
     }
@@ -365,24 +410,25 @@ export class TrackingService {
       currentStage = targetStage;
     }
 
-    await this.bitable.batchUpdateRecords('workbench', [{ id: recordId, record: patch }]);
+    await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
     return { success: true, recordId, currentStage };
   }
 
   async getParams(recordId: string): Promise<GetParamsResponse> {
-    const detail = await this.bitable.getRecord('workbench', recordId);
+    const ref = parseScopedRecordId(recordId);
+    const detail = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!detail) {
       throw new NotFoundException('埋点需求不存在');
     }
 
     const evtId = cellText(detail.record['evt_id']);
-    const result = await this.bitable.searchRecords('paramDetail', {
+    const result = await this.bitable.searchRecords(paramDetailKey(ref.source), {
       fieldNames: [...PARAM_FIELDS],
       pageSize: 200,
     });
     const items = result.records
-      .filter((record) => this.isParamForDesign(record, recordId, evtId))
-      .map((record) => this.toParamDetail(record))
+      .filter((record) => this.isParamForDesign(record, ref.rawId, evtId))
+      .map((record) => this.toParamDetail(record, ref.source))
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 
     return { items, total: items.length };
@@ -392,7 +438,8 @@ export class TrackingService {
     recordId: string,
     body: CreateParamRequest,
   ): Promise<CreateParamResponse> {
-    const detail = await this.bitable.getRecord('workbench', recordId);
+    const ref = parseScopedRecordId(recordId);
+    const detail = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!detail) {
       throw new NotFoundException('埋点需求不存在');
     }
@@ -402,30 +449,32 @@ export class TrackingService {
       throw new BadRequestException('evt_id 和参数名不能为空');
     }
 
-    const [created] = await this.bitable.batchAddRecords('paramDetail', [
-      this.toParamRecord(recordId, evtId, cellText(detail.record['版本']), body),
+    const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [
+      this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body),
     ]);
 
-    return { success: true, recordId: created.id };
+    return { success: true, recordId: encodeScopedRecordId(ref.source, created.id) };
   }
 
   async updateParam(
     paramRecordId: string,
     body: UpdateParamRequest,
   ): Promise<UpdateParamResponse> {
+    const ref = parseScopedRecordId(paramRecordId);
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields)
-      ? toParamPatch(fields as Partial<CreateParamRequest>)
+      ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source)
       : fields;
-    await this.bitable.batchUpdateRecords('paramDetail', [
-      { id: paramRecordId, record: patch },
+    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [
+      { id: ref.rawId, record: patch },
     ]);
     return { success: true, recordId: paramRecordId };
   }
 
   async deleteParam(paramRecordId: string): Promise<DeleteParamResponse> {
-    await this.bitable.batchUpdateRecords('paramDetail', [
-      { id: paramRecordId, record: { '参数状态': '废弃' } },
+    const ref = parseScopedRecordId(paramRecordId);
+    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [
+      { id: ref.rawId, record: { '参数状态': '废弃' } },
     ]);
     return { success: true };
   }
@@ -461,8 +510,22 @@ export class TrackingService {
     );
   }
 
-  private async listWorkbenchRecords(): Promise<BitableRecord[]> {
-    const result = await this.bitable.searchRecords('workbench', {
+  private async listWorkbenchRecordsBySource(
+    sourceFilter?: TrackingSourceFilter,
+  ): Promise<Array<{ source: TrackingSource; record: BitableRecord }>> {
+    const filter = normalizeSourceFilter(sourceFilter);
+    const sources = filter === 'all' ? TRACKING_SOURCES : [filter];
+    const results = await Promise.all(
+      sources.map(async (source) => {
+        const records = await this.listWorkbenchRecords(source);
+        return records.map((record) => ({ source, record }));
+      }),
+    );
+    return results.flat();
+  }
+
+  private async listWorkbenchRecords(source: TrackingSource): Promise<BitableRecord[]> {
+    const result = await this.bitable.searchRecords(workbenchKey(source), {
       fieldNames: [...WORKBENCH_FIELDS],
       pageSize: 200,
     });
@@ -473,14 +536,15 @@ export class TrackingService {
     });
   }
 
-  private toTrackingRecord(record: BitableRecord): TrackingRecord {
+  private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
     const users = {
       data: cellUsers(record.record['数据负责人']),
       dev: cellUsers(record.record['研发负责人']),
     };
     const stage = cellText(record.record['流程阶段']) || '需求录入';
     return {
-      recordId: record.id,
+      recordId: encodeScopedRecordId(source, record.id),
+      source,
       evtId: cellText(record.record['evt_id']),
       eventName: cellText(record.record['事件中文名']) || '未命名事件',
       stage,
@@ -497,16 +561,19 @@ export class TrackingService {
 
   private toTrackingDetail(
     record: BitableRecord,
+    source: TrackingSource,
     actorId?: string,
+    actorLarkId?: string,
     permissionConfig?: PermissionConfig | null,
   ): TrackingDetail {
     const dataOwner = cellUsers(record.record['数据负责人']);
     const devOwner = cellUsers(record.record['研发负责人']);
     const dsAcceptor = cellUsers(record.record['DS验收人']);
-    const actor = actorId || '';
+    const actor = actorId || actorLarkId || '';
+    const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
 
     return {
-      ...this.toTrackingRecord(record),
+      ...this.toTrackingRecord(record, source),
       reviewStatus: cellText(record.record['评审状态']) || '草稿',
       devStatus: cellText(record.record['埋点开发状态']) || '未开始',
       acceptanceStatus: cellText(record.record['DS验收状态']) || '未开始',
@@ -539,6 +606,7 @@ export class TrackingService {
       permissions: actor
         ? calculateRecordPermissions(
             actor,
+            actorCandidates,
             dataOwner.ids,
             devOwner.ids,
             dsAcceptor.ids,
@@ -556,10 +624,10 @@ export class TrackingService {
     return Boolean(evtId) && cellText(record.record['evt_id']) === evtId;
   }
 
-  private toParamDetail(record: BitableRecord): ParamDetail {
+  private toParamDetail(record: BitableRecord, source: TrackingSource): ParamDetail {
     const requiredRule = cellText(record.record['必传规则']);
     return {
-      recordId: record.id,
+      recordId: encodeScopedRecordId(source, record.id),
       paramKey: cellText(record.record['设计参数主键']),
       evtId: cellText(record.record['evt_id']),
       paramName: cellText(record.record['参数名']),
@@ -570,7 +638,7 @@ export class TrackingService {
       definition: cellText(record.record['参数定义']),
       defaultValue: cellText(record.record['默认值/示例']),
       example: cellText(record.record['默认值/示例']),
-      platform: cellText(record.record['App适用性']),
+      platform: cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
       status: cellText(record.record['参数状态']) || '草稿',
       version: cellText(record.record['版本']),
       changeType: cellText(record.record['变更类型']) || '新增',
@@ -578,6 +646,7 @@ export class TrackingService {
   }
 
   private toParamRecord(
+    source: TrackingSource,
     recordId: string,
     evtId: string,
     version: string,
@@ -585,18 +654,19 @@ export class TrackingService {
   ): Record<string, unknown> {
     const paramName = (body.paramName || '').trim();
     const paramKey = (body.paramKey || '').trim() || (paramName ? `${evtId}.${paramName}` : '');
+    const platformField = source === 'web' ? 'Web适用性' : 'App适用性';
     return {
       '设计参数主键': paramKey,
       evt_id: body.evtId || evtId,
       '参数名': paramName,
-      '数据类型': body.paramType || 'STRING',
+      '数据类型': normalizeParamType(body.paramType),
       '必传规则': body.required ? '必传' : '非必传',
       '条件说明': body.triggerCondition || '',
       '枚举/取值范围': body.enumRange || '',
       '参数定义': body.definition || '',
       '默认值/示例': body.example || body.defaultValue || '',
-      'App适用性': body.platform || 'App通用',
-      '参数状态': body.status || '草稿',
+      [platformField]: body.platform || (source === 'web' ? 'Web通用' : 'App通用'),
+      '参数状态': normalizeParamStatus(body.status),
       '版本': body.version || version || '1.0.0',
       '变更类型': body.changeType || '新增',
       '来源设计记录ID': recordId,
@@ -689,13 +759,6 @@ function createUserCell(userId?: string, userName?: string): Record<string, stri
   };
 }
 
-function usersToCell(userIds: string[] = [], actorName?: string): Record<string, string>[] {
-  return uniqueStrings(userIds).map((id) => ({
-    id,
-    name: actorName && userIds.length === 1 ? actorName : id,
-  }));
-}
-
 function emptyPermissionConfig(): PermissionConfig {
   return {
     admins: [],
@@ -735,14 +798,63 @@ function uniqueStrings(values: string[] = []): string[] {
   );
 }
 
+function normalizeSource(value?: string): TrackingSource {
+  return value === 'web' ? 'web' : 'app';
+}
+
+function normalizeSourceFilter(value?: string): TrackingSourceFilter {
+  return value === 'app' || value === 'web' ? value : 'all';
+}
+
+function workbenchKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webWorkbench' : 'workbench';
+}
+
+function paramDetailKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webParamDetail' : 'paramDetail';
+}
+
+function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
+  return `${source}:${rawId}`;
+}
+
+function parseScopedRecordId(recordId: string): ScopedRecordRef {
+  if (recordId.startsWith('web:')) {
+    return { source: 'web', rawId: recordId.slice(4) };
+  }
+  if (recordId.startsWith('app:')) {
+    return { source: 'app', rawId: recordId.slice(4) };
+  }
+  return { source: 'app', rawId: recordId };
+}
+
+function mergePermissions(items: StagePermissions[]): StagePermissions {
+  return {
+    canEditRequirement: items.some((item) => item.canEditRequirement),
+    canEditDesign: items.some((item) => item.canEditDesign),
+    canEditReview: items.some((item) => item.canEditReview),
+    canEditDev: items.some((item) => item.canEditDev),
+    canEditAcceptance: items.some((item) => item.canEditAcceptance),
+    canEditLaunch: items.some((item) => item.canEditLaunch),
+    canEditArchive: items.some((item) => item.canEditArchive),
+    canEditParams: items.some((item) => item.canEditParams),
+  };
+}
+
 function calculateRecordPermissions(
   actorId: string,
+  actorCandidates: string[],
   dataOwner: string[],
   devOwner: string[],
   dsAcceptor: string[],
   permissionConfig?: PermissionConfig | null,
 ) {
-  const base = calculatePermissions(actorId, dataOwner, devOwner, dsAcceptor);
+  const candidates = uniqueStrings([actorId, ...actorCandidates]);
+  const base = mergePermissions(
+    candidates.map((candidate) =>
+      calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor),
+    ),
+  );
   if (!permissionConfig) return base;
 
   const isAdmin = permissionConfig.admins.includes(actorId);
@@ -775,6 +887,31 @@ function calculateRecordPermissions(
   };
 }
 
+function normalizeParamType(value?: string): string {
+  const raw = String(value || 'STRING').trim().toUpperCase();
+  const typeMap: Record<string, string> = {
+    STRING: 'STRING',
+    TEXT: 'STRING',
+    NUMBER: 'NUMBER',
+    FLOAT: 'NUMBER',
+    DOUBLE: 'NUMBER',
+    INTEGER: 'INTEGER',
+    INT: 'INTEGER',
+    BOOL: 'BOOL',
+    BOOLEAN: 'BOOLEAN',
+    ARRAY: 'ARRAY',
+    OBJECT: 'OBJECT',
+    UNKNOWN: 'UNKNOWN',
+  };
+  return typeMap[raw] || 'STRING';
+}
+
+function normalizeParamStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '正常' || raw === '已评审') return '草稿';
+  return raw;
+}
+
 function hasApiParamFields(fields: Record<string, unknown>): boolean {
   return [
     'paramKey',
@@ -793,12 +930,15 @@ function hasApiParamFields(fields: Record<string, unknown>): boolean {
   ].some((key) => Object.prototype.hasOwnProperty.call(fields, key));
 }
 
-function toParamPatch(fields: Partial<CreateParamRequest>): Record<string, unknown> {
+function toParamPatch(
+  fields: Partial<CreateParamRequest>,
+  source: TrackingSource,
+): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (fields.paramKey !== undefined) patch['设计参数主键'] = fields.paramKey;
   if (fields.evtId !== undefined) patch.evt_id = fields.evtId;
   if (fields.paramName !== undefined) patch['参数名'] = fields.paramName;
-  if (fields.paramType !== undefined) patch['数据类型'] = fields.paramType;
+  if (fields.paramType !== undefined) patch['数据类型'] = normalizeParamType(fields.paramType);
   if (fields.required !== undefined) patch['必传规则'] = fields.required ? '必传' : '非必传';
   if (fields.triggerCondition !== undefined) patch['条件说明'] = fields.triggerCondition;
   if (fields.enumRange !== undefined) patch['枚举/取值范围'] = fields.enumRange;
@@ -806,8 +946,10 @@ function toParamPatch(fields: Partial<CreateParamRequest>): Record<string, unkno
   if (fields.defaultValue !== undefined || fields.example !== undefined) {
     patch['默认值/示例'] = fields.example || fields.defaultValue || '';
   }
-  if (fields.platform !== undefined) patch['App适用性'] = fields.platform;
-  if (fields.status !== undefined) patch['参数状态'] = fields.status;
+  if (fields.platform !== undefined) {
+    patch[source === 'web' ? 'Web适用性' : 'App适用性'] = fields.platform;
+  }
+  if (fields.status !== undefined) patch['参数状态'] = normalizeParamStatus(fields.status);
   if (fields.version !== undefined) patch['版本'] = fields.version;
   if (fields.changeType !== undefined) patch['变更类型'] = fields.changeType;
   return patch;

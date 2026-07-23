@@ -15,7 +15,10 @@ const userService = new UserService();
 export async function searchUsers(
   params: SearchUsersParams,
 ): Promise<SearchUsersResponse> {
-  return userService.searchUsers({ ...params, searchExternalContact: true });
+  return userService.searchUsers({
+    ...params,
+    searchExternalContact: params.searchExternalContact ?? false,
+  });
 }
 
 /**

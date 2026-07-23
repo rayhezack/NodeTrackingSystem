@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Search,
   ChevronDown,
@@ -32,7 +32,7 @@ import {
   getOfficialEvents,
   getOfficialParams,
 } from "@client/src/api/query-library";
-import type { OfficialEvent } from "@shared/api.interface";
+import type { OfficialEvent, TrackingSource } from "@shared/api.interface";
 import { ParamDetailPanel } from "./ParamDetailPanel";
 import type { ExpandedRow } from "./ParamDetailPanel";
 
@@ -63,6 +63,7 @@ function getStatusStyle(status: string): string {
 }
 
 const QueryLibraryPage = () => {
+  const [source, setSource] = useState<TrackingSource>("app");
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [events, setEvents] = useState<OfficialEvent[]>([]);
@@ -73,7 +74,6 @@ const QueryLibraryPage = () => {
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, ExpandedRow>>({});
-  const initialFetched = useRef(false);
 
   const fetchEvents = useCallback(
     async (kw: string, token?: string, append = false) => {
@@ -85,6 +85,7 @@ const QueryLibraryPage = () => {
       setError(null);
       try {
         const res = await getOfficialEvents({
+          source,
           keyword: kw || undefined,
           pageSize: 20,
           pageToken: token,
@@ -106,16 +107,15 @@ const QueryLibraryPage = () => {
         setLoadingMore(false);
       }
     },
-    [],
+    [source],
   );
 
-  // 首次加载
+  // 首次加载与 App/Web 分库切换
   useEffect(() => {
-    if (!initialFetched.current) {
-      initialFetched.current = true;
-      fetchEvents("");
-    }
-  }, [fetchEvents]);
+    setExpanded({});
+    fetchEvents(keyword);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
 
   const handleSearch = useCallback(() => {
     setKeyword(searchInput.trim());
@@ -189,6 +189,13 @@ const QueryLibraryPage = () => {
     <div className="flex flex-col gap-3">
       {/* 搜索栏 */}
       <div className="flex items-center gap-2 rounded-sm border border-border bg-card p-2">
+        <SourceSegment
+          value={source}
+          onChange={(nextSource) => {
+            setSource(nextSource);
+            setPageToken(undefined);
+          }}
+        />
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -223,10 +230,10 @@ const QueryLibraryPage = () => {
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="space-y-0.5 text-xs">
           <div className="font-medium text-foreground">
-            正式查询库是已上线埋点的只读资产目录
+            正式查询库按 App / Web 分库展示，是已上线埋点的只读资产目录
           </div>
           <div className="text-muted-foreground">
-            用于按 evt_id / 事件名查询正式口径、上线状态和参数入口；需求设计、开发、校验仍从「埋点工作台」进入。
+            当前查看 {source === "web" ? "Web 正式库" : "App 正式库"}；用于按 evt_id / 事件名查询正式口径、上线状态和参数入口，需求设计、开发、校验仍从「埋点工作台」进入。
           </div>
         </div>
       </div>
@@ -317,7 +324,7 @@ const QueryLibraryPage = () => {
                       <EmptyDescription>
                         {keyword
                           ? "未找到匹配的事件，请尝试其他关键词"
-                          : "查询库中暂无事件数据"}
+                          : `${source === "web" ? "Web" : "App"} 查询库中暂无事件数据`}
                       </EmptyDescription>
                     </EmptyContent>
                   </Empty>
@@ -378,6 +385,38 @@ interface EventRowProps {
   expanded: boolean;
   rowData?: ExpandedRow;
   onToggle: () => void;
+}
+
+function SourceSegment({
+  value,
+  onChange,
+}: {
+  value: TrackingSource;
+  onChange: (value: TrackingSource) => void;
+}) {
+  const options: Array<{ value: TrackingSource; label: string }> = [
+    { value: "app", label: "App" },
+    { value: "web", label: "Web" },
+  ];
+
+  return (
+    <div className="flex h-8 shrink-0 overflow-hidden rounded-sm border border-border bg-muted/20">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`px-3 text-xs transition-colors ${
+            value === option.value
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function EventRow({ event, expanded, rowData, onToggle }: EventRowProps) {

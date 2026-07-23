@@ -110,6 +110,7 @@ export default function PermissionsPage() {
     try {
       const res = await updatePermissionConfig({
         actorId: actor.id,
+        actorLarkId: actor.larkId,
         actorName: actor.name,
         config,
       });
@@ -135,7 +136,7 @@ export default function PermissionsPage() {
               权限配置
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              配置埋点管理平台内的业务角色；飞书 Workplace 只控制入口可见，这里控制新增和编辑权限。
+              配置埋点管理平台内的业务角色；仅搜索公司内部员工，飞书 Workplace 只控制入口可见，这里控制新增和编辑权限。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -214,13 +215,14 @@ export default function PermissionsPage() {
                   <UserSelect
                     multiple
                     valueType="string"
-                    accountType="lark"
+                    accountType="apaas"
                     value={config[role.key] || []}
                     onChange={(value) => updateRole(role.key, value)}
                     disabled={!canManage || saving}
-                    placeholder="搜索公司成员"
+                    placeholder="搜索公司内部成员"
                     tagClosable={canManage && !saving}
                     needFullFields
+                    includeExternalContacts={false}
                   />
                 </div>
               ))}

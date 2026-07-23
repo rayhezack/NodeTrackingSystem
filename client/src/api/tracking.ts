@@ -20,11 +20,16 @@ import type {
   UpdateParamRequest,
   UpdateParamResponse,
   DeleteParamResponse,
+  TrackingSourceFilter,
 } from '@shared/api.interface';
 
-export async function getStageStats(): Promise<GetStageStatsResponse> {
+export async function getStageStats(
+  source?: TrackingSourceFilter,
+): Promise<GetStageStatsResponse> {
   try {
-    const response = await axiosForBackend.get('/api/tracking/stats');
+    const response = await axiosForBackend.get('/api/tracking/stats', {
+      params: { source },
+    });
     return response.data;
   } catch (error) {
     logger.error('获取阶段统计失败', error);
@@ -32,10 +37,13 @@ export async function getStageStats(): Promise<GetStageStatsResponse> {
   }
 }
 
-export async function getMyTodos(limit = 10): Promise<GetMyTodosResponse> {
+export async function getMyTodos(
+  limit = 10,
+  source?: TrackingSourceFilter,
+): Promise<GetMyTodosResponse> {
   try {
     const response = await axiosForBackend.get('/api/tracking/my-todos', {
-      params: { limit },
+      params: { limit, source },
     });
     return response.data;
   } catch (error) {
@@ -99,11 +107,12 @@ export async function updatePermissionConfig(
 export async function getTrackingDetail(
   recordId: string,
   actorId?: string,
+  actorLarkId?: string,
 ): Promise<GetTrackingDetailResponse> {
   try {
     const response = await axiosForBackend.get(
       `/api/tracking/records/${recordId}`,
-      { params: { actorId } },
+      { params: { actorId, actorLarkId } },
     );
     return response.data;
   } catch (error) {

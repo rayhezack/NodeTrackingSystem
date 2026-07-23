@@ -87,6 +87,11 @@ type UserSelectBaseProps<
    * @default false
    */
   needFullFields?: boolean;
+  /**
+   * 是否包含外部联系人；权限配置默认只允许内部员工
+   * @default false
+   */
+  includeExternalContacts?: boolean;
 };
 
 /**

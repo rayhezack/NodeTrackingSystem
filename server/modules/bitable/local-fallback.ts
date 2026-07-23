@@ -18,6 +18,8 @@ const DEV_USER = {
 
 const OFFICIAL_PARAM_LINK =
   'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2&view=vewRdNFVsL';
+const WEB_OFFICIAL_PARAM_LINK =
+  'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 
 type Dataset = Record<BitableInstanceKey, Map<string, Record<string, unknown>>>;
 
@@ -40,6 +42,30 @@ function officialEvent(fields: {
     '状态': fields.status || '已上线',
     '生命周期状态': fields.lifecycleStatus || '稳定',
     '参数明细入口': OFFICIAL_PARAM_LINK,
+    '事件定义': fields.definition,
+    '触发时机': fields.trigger,
+    '指标/使用场景': fields.scenario,
+  };
+}
+
+function webOfficialEvent(fields: {
+  evtId: string;
+  eventName: string;
+  definition: string;
+  trigger: string;
+  scenario: string;
+  version?: string;
+  status?: string;
+  lifecycleStatus?: string;
+}): Record<string, unknown> {
+  return {
+    evt_id: fields.evtId,
+    '事件中文名': fields.eventName,
+    '端': 'Web',
+    '上线版本': fields.version || '1.0.0',
+    '状态': fields.status || '已上线',
+    '生命周期状态': fields.lifecycleStatus || '稳定',
+    '参数明细入口': WEB_OFFICIAL_PARAM_LINK,
     '事件定义': fields.definition,
     '触发时机': fields.trigger,
     '指标/使用场景': fields.scenario,
@@ -338,6 +364,122 @@ export class LocalBitableFallback {
           definition: '用户打开 App 并完成初始化时上报。',
           trigger: '冷启动或热启动完成后触发。',
           scenario: 'DAU、启动成功率、启动性能。',
+        }),
+      ],
+    ]),
+    webWorkbench: new Map([
+      [
+        'rec_web_homepage_view',
+        {
+          evt_id: 'web_homepage_view',
+          '事件中文名': 'Web 首页访问',
+          '事件定义': '用户进入 Web 首页并完成首屏渲染时上报，用于衡量站点访问规模、来源质量与首屏转化。',
+          '触发时机': 'Web 首页首屏核心内容可见后触发。',
+          '需求背景': '补齐 Web 端访问口径，支撑增长投放、落地页转化和跨端用户行为分析。',
+          '需求链接': 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf',
+          '指标/使用场景': 'Web PV、UV、来源转化、首屏点击漏斗。',
+          '流程阶段': '埋点设计',
+          '记录类型': '埋点设计',
+          '优先级': 'P1',
+          '端': 'Web',
+          '数据负责人': [SUNWEN_USER],
+          '研发负责人': [DEV_USER],
+          'DS验收人': [SUNWEN_USER],
+          '评审状态': '评审中',
+          '评审意见': 'MVP 本地预览数据：请确认 Web 页面定义、公共属性和首批参数。',
+          '埋点开发状态': '未开始',
+          'DS验收状态': '未开始',
+          'DS验收证据': '',
+          'DS验收时间': '',
+          '上线监控状态': '未开始',
+          '上线监控结论': '',
+          '发布门禁状态': '未检查',
+          '发布门禁失败原因': '',
+          '发布状态': '未发布',
+          '发布错误': '',
+          '正式状态': '待开发',
+          '版本': '1.0.0',
+          '最低版本': '1.0.0',
+          '变更类型': '新增',
+          '处理方': '前端',
+          '公共属性要求': 'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os',
+          '参数拆行状态': '已拆行',
+          '稳定归档时间': '',
+          '创建时间': Date.now() - 1800_000,
+        },
+      ],
+    ]),
+    webParamDetail: new Map([
+      [
+        'rec_web_param_page_url',
+        {
+          '设计参数主键': 'web_homepage_view.page_url',
+          evt_id: 'web_homepage_view',
+          '参数名': 'page_url',
+          '数据类型': 'STRING',
+          '必传规则': '必传',
+          '条件说明': '',
+          '枚举/取值范围': '',
+          '参数定义': '当前访问页面的完整 URL，用于页面口径和来源链路分析。',
+          '默认值/示例': 'https://pollo.ai/',
+          'Web适用性': 'Web通用',
+          '参数状态': '草稿',
+          '版本': '1.0.0',
+          '变更类型': '新增',
+          '来源设计记录ID': 'rec_web_homepage_view',
+          '关联设计': [{ id: 'rec_web_homepage_view' }],
+        },
+      ],
+      [
+        'rec_web_param_referrer',
+        {
+          '设计参数主键': 'web_homepage_view.referrer',
+          evt_id: 'web_homepage_view',
+          '参数名': 'referrer',
+          '数据类型': 'STRING',
+          '必传规则': '非必传',
+          '条件说明': '',
+          '枚举/取值范围': '',
+          '参数定义': '浏览器 referrer，用于识别上一跳来源。',
+          '默认值/示例': 'https://google.com',
+          'Web适用性': 'Web通用',
+          '参数状态': '草稿',
+          '版本': '1.0.0',
+          '变更类型': '新增',
+          '来源设计记录ID': 'rec_web_homepage_view',
+          '关联设计': [{ id: 'rec_web_homepage_view' }],
+        },
+      ],
+    ]),
+    webQueryLibrary: new Map([
+      [
+        'rec_web_official_page_view',
+        webOfficialEvent({
+          evtId: 'web_page_view',
+          eventName: 'Web 页面访问',
+          definition: '用户访问 Web 页面并完成页面初始化时上报。',
+          trigger: '页面首屏核心内容可见后触发。',
+          scenario: 'Web PV、UV、页面转化漏斗、来源分析。',
+        }),
+      ],
+      [
+        'rec_web_official_cta_click',
+        webOfficialEvent({
+          evtId: 'web_cta_click',
+          eventName: 'Web CTA 点击',
+          definition: '用户点击 Web 页面核心行动按钮时上报。',
+          trigger: '点击 CTA 并发起跳转或提交动作前触发。',
+          scenario: '落地页点击率、转化漏斗、按钮文案/位置评估。',
+        }),
+      ],
+      [
+        'rec_web_official_signup_submit',
+        webOfficialEvent({
+          evtId: 'web_signup_submit',
+          eventName: 'Web 注册提交',
+          definition: '用户在 Web 注册流程提交表单时上报。',
+          trigger: '点击提交按钮且前端基础校验通过后触发。',
+          scenario: '注册转化率、表单流失、渠道质量评估。',
         }),
       ],
     ]),

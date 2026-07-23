@@ -13,14 +13,14 @@ import StageForm from './StageForm';
 import ParamsDesignerPlaceholder from './ParamsDesignerPlaceholder';
 import ParamDesigner from './param-designer/ParamDesigner';
 import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
-import { getCurrentActorId } from '@client/src/utils/current-user';
+import { getCurrentActor } from '@client/src/utils/current-user';
 
 const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const userProfile = useCurrentUserProfile();
-  const actorId = getCurrentActorId(userProfile);
+  const actor = getCurrentActor(userProfile);
   const requestedStage = searchParams.get('stage');
 
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
@@ -37,7 +37,7 @@ const TrackingDetailPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await getTrackingDetail(recordId, actorId);
+        const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
         if (cancelled) return;
         setDetail(res.data);
 
@@ -64,7 +64,7 @@ const TrackingDetailPage = () => {
     // requestedStage 仅用于首次从「新增需求」跳转到参数设计；
     // 后续侧边栏切换不应触发详情重载并覆盖用户当前选择。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, actorId]);
+  }, [recordId, actor.id, actor.larkId]);
 
   // 流程节点点击 → 跳转到对应侧边栏阶段
   const handleNodeClick = (nodeKey: string) => {
@@ -79,7 +79,7 @@ const TrackingDetailPage = () => {
   const handleSaved = async () => {
     if (!recordId) return;
     try {
-      const res = await getTrackingDetail(recordId, actorId);
+      const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
       setDetail(res.data);
     } catch (err) {
       logger.error('刷新详情失败', err);
@@ -201,6 +201,7 @@ const TrackingDetailPage = () => {
             {activeStage === 'params' ? (
               <ParamDesigner
                 recordId={detail.recordId}
+                source={detail.source}
                 evtId={detail.evtId}
                 canEdit={detail.permissions.canEditParams}
               />

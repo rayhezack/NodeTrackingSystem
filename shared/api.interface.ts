@@ -1,9 +1,16 @@
 // 埋点工作台 API 类型定义
 
+export type TrackingSource = 'app' | 'web';
+export type TrackingSourceFilter = TrackingSource | 'all';
+
 // 阶段统计
 export interface StageStat {
   stage: string;
   count: number;
+}
+
+export interface GetStageStatsParams {
+  source?: TrackingSourceFilter;
 }
 
 export interface GetStageStatsResponse {
@@ -13,11 +20,16 @@ export interface GetStageStatsResponse {
 // 我的待办
 export interface TodoItem {
   recordId: string;
+  source: TrackingSource;
   evtId: string;
   eventName: string;
   stage: string;
   priority: string;
   platform: string;
+}
+
+export interface GetMyTodosParams {
+  source?: TrackingSourceFilter;
 }
 
 export interface GetMyTodosResponse {
@@ -27,6 +39,7 @@ export interface GetMyTodosResponse {
 // 需求列表
 export interface TrackingRecord {
   recordId: string;
+  source: TrackingSource;
   evtId: string;
   eventName: string;
   stage: string;
@@ -41,6 +54,7 @@ export interface TrackingRecord {
 }
 
 export interface GetTrackingRecordsParams {
+  source?: TrackingSourceFilter;
   keyword?: string;
   stage?: string;
   priority?: string;
@@ -58,6 +72,7 @@ export interface GetTrackingRecordsResponse {
 }
 
 export interface CreateTrackingRecordRequest {
+  source: TrackingSource;
   evtId: string;
   eventName: string;
   requirementBackground?: string;
@@ -73,6 +88,7 @@ export interface CreateTrackingRecordRequest {
   minVersion?: string;
   changeType?: string;
   actorId?: string;
+  actorLarkId?: string;
   actorName?: string;
   initialParams?: CreateParamRequest[];
 }
@@ -102,6 +118,7 @@ export interface GetPermissionConfigResponse {
 
 export interface UpdatePermissionConfigRequest {
   actorId?: string;
+  actorLarkId?: string;
   actorName?: string;
   config: PermissionConfig;
 }
@@ -125,6 +142,7 @@ export interface TrackingDetailPermissions {
 
 export interface TrackingDetail {
   recordId: string;
+  source: TrackingSource;
   evtId: string;
   eventName: string;
   stage: string;
@@ -229,6 +247,7 @@ export interface DeleteParamResponse {
 // 正式查询库
 export interface OfficialEvent {
   recordId: string;
+  source: TrackingSource;
   evtId: string;
   eventName: string;
   platform: string;
@@ -237,6 +256,7 @@ export interface OfficialEvent {
 }
 
 export interface GetOfficialEventsParams {
+  source?: TrackingSource;
   keyword?: string;
   pageSize?: number;
   pageToken?: string;

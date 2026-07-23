@@ -12,6 +12,7 @@ import {
 import type {
   CreateParamRequest,
   CreateTrackingRecordRequest,
+  TrackingSourceFilter,
   UpdatePermissionConfigRequest,
   UpdateParamRequest,
   UpdateTrackingRecordRequest,
@@ -23,13 +24,17 @@ export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}
 
   @Get('stats')
-  getStats() {
-    return this.trackingService.getStageStats();
+  getStats(@Query('source') source?: string) {
+    return this.trackingService.getStageStats({
+      source: source as TrackingSourceFilter | undefined,
+    });
   }
 
   @Get('my-todos')
-  getMyTodos(@Query('limit') limit?: string) {
-    return this.trackingService.getMyTodos(Number(limit || 10));
+  getMyTodos(@Query('limit') limit?: string, @Query('source') source?: string) {
+    return this.trackingService.getMyTodos(Number(limit || 10), {
+      source: source as TrackingSourceFilter | undefined,
+    });
   }
 
   @Get('records')
@@ -53,8 +58,12 @@ export class TrackingController {
   }
 
   @Get('records/:recordId')
-  getDetail(@Param('recordId') recordId: string, @Query('actorId') actorId?: string) {
-    return this.trackingService.getDetail(recordId, actorId);
+  getDetail(
+    @Param('recordId') recordId: string,
+    @Query('actorId') actorId?: string,
+    @Query('actorLarkId') actorLarkId?: string,
+  ) {
+    return this.trackingService.getDetail(recordId, actorId, actorLarkId);
   }
 
   @Patch('records/:recordId')

@@ -22,34 +22,36 @@ import {
 import FormField from './FormField';
 import {
   PARAM_TYPE_OPTIONS,
-  PLATFORM_OPTIONS,
+  APP_PLATFORM_OPTIONS,
+  WEB_PLATFORM_OPTIONS,
   STATUS_OPTIONS,
   CHANGE_TYPE_OPTIONS,
 } from './param-constants';
-import type { ParamDetail, CreateParamRequest } from '@shared/api.interface';
+import type { ParamDetail, CreateParamRequest, TrackingSource } from '@shared/api.interface';
 
 interface ParamFormDialogProps {
   open: boolean;
   mode: 'create' | 'edit';
+  source: TrackingSource;
   defaultEvtId?: string;
   initialData?: ParamDetail | null;
   onClose: () => void;
   onSubmit: (data: CreateParamRequest) => Promise<void>;
 }
 
-const defaultForm = (evtId: string): CreateParamRequest => ({
+const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest => ({
   paramKey: '',
   evtId,
   paramName: '',
-  paramType: 'string',
+  paramType: 'STRING',
   required: false,
   triggerCondition: '',
   enumRange: '',
   definition: '',
   defaultValue: '',
   example: '',
-  platform: '全端',
-  status: '正常',
+  platform: source === 'web' ? 'Web通用' : 'App通用',
+  status: '草稿',
   version: '',
   changeType: '新增',
 });
@@ -57,12 +59,13 @@ const defaultForm = (evtId: string): CreateParamRequest => ({
 const ParamFormDialog = ({
   open,
   mode,
+  source,
   defaultEvtId = '',
   initialData,
   onClose,
   onSubmit,
 }: ParamFormDialogProps) => {
-  const [form, setForm] = useState<CreateParamRequest>(defaultForm(defaultEvtId));
+  const [form, setForm] = useState<CreateParamRequest>(defaultForm(defaultEvtId, source));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -72,22 +75,22 @@ const ParamFormDialog = ({
         paramKey: initialData.paramKey,
         evtId: initialData.evtId,
         paramName: initialData.paramName,
-        paramType: initialData.paramType || 'string',
+        paramType: initialData.paramType || 'STRING',
         required: initialData.required,
         triggerCondition: initialData.triggerCondition,
         enumRange: initialData.enumRange,
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
         example: initialData.example,
-        platform: initialData.platform || '全端',
-        status: initialData.status || '正常',
+        platform: initialData.platform || (source === 'web' ? 'Web通用' : 'App通用'),
+        status: initialData.status || '草稿',
         version: initialData.version,
         changeType: initialData.changeType || '修改',
       });
     } else {
-      setForm(defaultForm(defaultEvtId));
+      setForm(defaultForm(defaultEvtId, source));
     }
-  }, [open, mode, initialData, defaultEvtId]);
+  }, [open, mode, initialData, defaultEvtId, source]);
 
   const handleSubmit = async () => {
     if (!form.paramKey.trim()) {
@@ -121,6 +124,7 @@ const ParamFormDialog = ({
   const selectCls = 'h-8 rounded-sm text-xs w-full';
   const inputCls = 'h-8 rounded-sm text-xs';
   const textareaCls = 'rounded-sm text-xs min-h-[60px]';
+  const platformOptions = source === 'web' ? WEB_PLATFORM_OPTIONS : APP_PLATFORM_OPTIONS;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
@@ -183,7 +187,7 @@ const ParamFormDialog = ({
             <Select value={form.platform || ''} onValueChange={(v) => updateField('platform', v)}>
               <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
               <SelectContent>
-                {PLATFORM_OPTIONS.map((opt) => (
+                {platformOptions.map((opt) => (
                   <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
                 ))}
               </SelectContent>

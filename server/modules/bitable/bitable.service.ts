@@ -8,7 +8,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { CapabilityService } from '@lark-apaas/fullstack-nestjs-core';
-import { BITABLE_APP_TOKEN, BITABLE_INSTANCES, BITABLE_FIELDS, type BitableInstanceKey } from './bitable.constants';
+import {
+  BITABLE_APP_TOKENS,
+  BITABLE_INSTANCES,
+  BITABLE_FIELDS,
+  BITABLE_TABLE_IDS,
+  type BitableInstanceKey,
+} from './bitable.constants';
 import {
   isPluginMissingError,
   LocalBitableFallback,
@@ -65,13 +71,6 @@ export class BitableService {
 
   private getInstanceConfig(instanceKey: BitableInstanceKey) {
     const instanceId = BITABLE_INSTANCES[instanceKey];
-    const tableIdMap: Record<BitableInstanceKey, string> = {
-      workbench: 'tblqHhr5aZwr4QOZ',
-      paramDetail: 'tblesT69TDCUKzhs',
-      qualityGate: 'tblUCH6PxC1sQwXx',
-      lifecycle: 'tblJ8G3X1001g9oA',
-      queryLibrary: 'tblAhScEFQYAJC2g',
-    };
     return {
       id: instanceId,
       pluginKey: '@official-plugins/feishu-bitable',
@@ -81,8 +80,8 @@ export class BitableService {
       icon: '',
       paramsSchema: {},
       formValue: {
-        appToken: BITABLE_APP_TOKEN,
-        tableID: tableIdMap[instanceKey],
+        appToken: BITABLE_APP_TOKENS[instanceKey],
+        tableID: BITABLE_TABLE_IDS[instanceKey],
         fields: BITABLE_FIELDS[instanceKey] || [],
       },
       createdAt: 0,

@@ -1,6 +1,6 @@
 // 飞书多维表格插件实例 ID 常量
-// 所有插件实例共享同一个 Base appToken
-export const BITABLE_APP_TOKEN = 'Kgy0b4bvmaJSK8sjQDscUrNJnOf';
+export const APP_BITABLE_APP_TOKEN = 'Kgy0b4bvmaJSK8sjQDscUrNJnOf';
+export const WEB_BITABLE_APP_TOKEN = 'EX4RbTvp9agYNws6PIHcKD20nqf';
 
 export const BITABLE_INSTANCES = {
   workbench: 'feishu_bitable_01_buried_point_design_workbench_1',
@@ -8,18 +8,35 @@ export const BITABLE_INSTANCES = {
   qualityGate: 'feishu_bitable_background_publish_quality_access_control_read_1',
   lifecycle: 'feishu_bitable_buried_point_lifecycle_read_1',
   queryLibrary: 'feishu_bitable_app_buried_point_readonly_1',
+  webWorkbench: 'feishu_bitable_web_tracking_design_workbench_1',
+  webParamDetail: 'feishu_bitable_web_design_parameter_detail_1',
+  webQueryLibrary: 'feishu_bitable_web_tracking_query_library_1',
 } as const;
 
 export type BitableInstanceKey = keyof typeof BITABLE_INSTANCES;
 
+export const BITABLE_APP_TOKENS: Record<BitableInstanceKey, string> = {
+  workbench: APP_BITABLE_APP_TOKEN,
+  paramDetail: APP_BITABLE_APP_TOKEN,
+  qualityGate: APP_BITABLE_APP_TOKEN,
+  lifecycle: APP_BITABLE_APP_TOKEN,
+  queryLibrary: APP_BITABLE_APP_TOKEN,
+  webWorkbench: WEB_BITABLE_APP_TOKEN,
+  webParamDetail: WEB_BITABLE_APP_TOKEN,
+  webQueryLibrary: WEB_BITABLE_APP_TOKEN,
+};
+
 // 表 ID 映射
-export const BITABLE_TABLE_IDS = {
+export const BITABLE_TABLE_IDS: Record<BitableInstanceKey, string> = {
   workbench: 'tblqHhr5aZwr4QOZ',
   paramDetail: 'tblesT69TDCUKzhs',
   qualityGate: 'tblUCH6PxC1sQwXx',
   lifecycle: 'tblJ8G3X1001g9oA',
   queryLibrary: 'tblAhScEFQYAJC2g',
-} as const;
+  webWorkbench: 'tblsFFvYkTPkabFT',
+  webParamDetail: 'tblMaw89yVi68YY6',
+  webQueryLibrary: 'tbly7VI4kwFz5qwR',
+};
 
 interface BitableFieldConfig {
   id: string;
@@ -116,6 +133,68 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     { id: 'fldformal_status', name: '正式状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
     { id: 'fldcreated_time', name: '创建时间', type: 1001, bizType: 'CreatedTime', readable: true, writeable: false },
     { id: 'fldupdated_time', name: '更新时间', type: 1002, bizType: 'ModifiedTime', readable: true, writeable: false },
+  ],
+  webWorkbench: [
+    { id: 'fldevt_id_web', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldevent_cn_name_web', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldstage_web', name: '流程阶段', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldpriority_web', name: '优先级', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldplatform_web', name: '端', type: 4, bizType: 'MultiSelect', readable: true, writeable: true },
+    { id: 'flddata_owner_web', name: '数据负责人', type: 11, bizType: 'User', readable: true, writeable: true },
+    { id: 'flddev_owner_web', name: '研发负责人', type: 11, bizType: 'User', readable: true, writeable: true },
+    { id: 'fldds_acceptor_web', name: 'DS验收人', type: 11, bizType: 'User', readable: true, writeable: true },
+    { id: 'fldcreated_time_web', name: '创建时间', type: 1001, bizType: 'CreatedTime', readable: true, writeable: false },
+    { id: 'fldreview_status_web', name: '评审状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'flddev_status_web', name: '埋点开发状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldds_accept_status_web', name: 'DS验收状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldpublish_status_web', name: '发布状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldgate_status_web', name: '发布门禁状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldversion_web', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldmin_version_web', name: '最低版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldrecord_type_web', name: '记录类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldchange_type_web', name: '变更类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldhandler_web', name: '处理方', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldreq_bg_web', name: '需求背景', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldevent_def_web', name: '事件定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldtrigger_web', name: '触发时机', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldmetrics_web', name: '指标/使用场景', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldpublic_attrs_web', name: '公共属性要求', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldreq_link_web', name: '需求链接', type: 15, bizType: 'Url', readable: true, writeable: true },
+    { id: 'fldparam_entry_web', name: '参数明细入口', type: 15, bizType: 'Url', readable: true, writeable: true },
+    { id: 'fldparam_split_status_web', name: '参数拆行状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldreview_comment_web', name: '评审意见', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldgate_fail_reason_web', name: '发布门禁失败原因', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldformal_status_web', name: '正式状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldonline_monitor_status_web', name: '上线监控状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  ],
+  webParamDetail: [
+    { id: 'fldparam_key_web', name: '设计参数主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldevt_id_param_web', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldparam_name_web', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldparam_type_web', name: '数据类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldrequired_web', name: '必传规则', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldcondition_web', name: '条件说明', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldenum_web', name: '枚举/取值范围', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldparam_def_web', name: '参数定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'flddefault_web', name: '默认值/示例', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldplatform_param_web', name: 'Web适用性', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldstatus_param_web', name: '参数状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldversion_param_web', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldchange_param_web', name: '变更类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+    { id: 'fldsource_id_param_web', name: '来源设计记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldlink_param_web', name: '关联设计', type: 18, bizType: 'DuplexLink', readable: true, writeable: true },
+  ],
+  webQueryLibrary: [
+    { id: 'fldevt_id_query_web', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: false },
+    { id: 'fldevent_name_query_web', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: false },
+    { id: 'fldplatform_query_web', name: '端', type: 4, bizType: 'MultiSelect', readable: true, writeable: false },
+    { id: 'fldversion_query_web', name: '上线版本', type: 1, bizType: 'Text', readable: true, writeable: false },
+    { id: 'fldstatus_query_web', name: '状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
+    { id: 'fldlifecycle_query_web', name: '生命周期状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
+    { id: 'fldparam_entry_query_web', name: '参数明细入口', type: 15, bizType: 'Url', readable: true, writeable: false },
+    { id: 'fldevent_def_query_web', name: '事件定义', type: 1, bizType: 'Text', readable: true, writeable: false },
+    { id: 'fldtrigger_query_web', name: '触发时机', type: 1, bizType: 'Text', readable: true, writeable: false },
+    { id: 'fldmetrics_query_web', name: '指标/使用场景', type: 1, bizType: 'Text', readable: true, writeable: false },
   ],
 };
 

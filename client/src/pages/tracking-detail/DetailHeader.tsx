@@ -53,6 +53,13 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
 
         {/* 右侧：状态 + 负责人 */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">库</span>
+            <Badge variant="outline" className="rounded-sm">
+              {detail.source === 'web' ? 'Web' : 'App'}
+            </Badge>
+          </div>
+
           {/* 阶段 */}
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">阶段</span>
