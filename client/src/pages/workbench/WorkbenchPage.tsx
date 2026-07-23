@@ -164,7 +164,7 @@ const WorkbenchPage = () => {
   const handleCreate = async (data: CreateTrackingRecordRequest) => {
     const res = await trackingApi.createTrackingRecord(data);
     await Promise.all([loadStats(), loadTodos(), loadRecords(false)]);
-    navigate(`/tracking/${res.recordId}?stage=params`);
+    navigate(`/tracking/${res.recordId}?stage=design`);
   };
 
   // 重置筛选

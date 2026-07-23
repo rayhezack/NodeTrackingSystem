@@ -493,7 +493,7 @@ export default function NewTrackingRequestDialog({
           </Button>
           <Button size="sm" className="h-8 rounded-sm" onClick={handleSubmit} disabled={saving}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            {saving ? '创建中...' : '创建并进入参数设计'}
+            {saving ? '创建中...' : '创建并进入埋点设计'}
           </Button>
         </DialogFooter>
       </DialogContent>

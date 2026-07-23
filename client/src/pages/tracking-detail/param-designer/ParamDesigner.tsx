@@ -101,9 +101,9 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-medium text-foreground">参数设计器</h2>
+            <h2 className="text-base font-medium text-foreground">参数设计</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              配置事件参数的详细定义，包括参数名、类型、枚举值、说明等
+              配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
             </p>
           </div>
           {canEdit && (
@@ -128,9 +128,9 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-base font-medium text-foreground">参数设计器</h2>
+          <h2 className="text-base font-medium text-foreground">参数设计</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            配置事件参数的详细定义，包括参数名、类型、枚举值、说明等
+            配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
           </p>
         </div>
         <div className="flex flex-col items-center justify-center rounded-sm border border-border bg-card py-16">
@@ -157,13 +157,13 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-medium text-foreground">
-            参数设计器
+            参数设计
             <span className="ml-2 text-xs font-normal text-muted-foreground">
               共 {items.length} 个参数
             </span>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            配置事件参数的详细定义，包括参数名、类型、枚举值、说明等
+            配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
           </p>
         </div>
         {canEdit && (
@@ -245,7 +245,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                           </Button>
                           <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-destructive" onClick={() => handleDelete(item)} disabled={isDeprecated}>
                             <Trash2 className="h-3.5 w-3.5" />
-                            删除
+                            废弃
                           </Button>
                         </div>
                       </TableCell>

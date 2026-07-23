@@ -46,34 +46,6 @@ const StageSidebar = ({ activeStage, permissions, onStageChange }: StageSidebarP
             </button>
           );
         })}
-
-        {/* 参数设计器入口 */}
-        <button
-          type="button"
-          onClick={() => onStageChange('params')}
-          className={`group flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors ${
-            activeStage === 'params'
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'text-foreground hover:bg-accent'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <span>参数设计</span>
-            {!permissions.canEditParams && (
-              <span
-                className="text-[10px] text-muted-foreground"
-                title="无编辑权限"
-              >
-                只读
-              </span>
-            )}
-          </span>
-          <ChevronRight
-            className={`h-4 w-4 transition-transform ${
-              activeStage === 'params' ? 'text-primary' : 'text-muted-foreground opacity-0 group-hover:opacity-100'
-            }`}
-          />
-        </button>
       </div>
     </nav>
   );

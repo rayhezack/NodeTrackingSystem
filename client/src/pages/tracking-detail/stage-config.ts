@@ -59,6 +59,21 @@ export const ACCEPTANCE_STATUS_OPTIONS = [
   { value: '不通过', label: '不通过' },
 ];
 
+export const HANDLER_OPTIONS = [
+  { value: '客户端', label: '客户端' },
+  { value: '前端', label: '前端' },
+  { value: '服务端', label: '服务端' },
+  { value: '数仓', label: '数仓' },
+  { value: '多端协同', label: '多端协同' },
+];
+
+export const CHANGE_TYPE_OPTIONS = [
+  { value: '新增', label: '新增' },
+  { value: '修改', label: '修改' },
+  { value: '删除', label: '删除' },
+  { value: '不变', label: '不变' },
+];
+
 // 6 个 UI 流程节点（用于顶部流程条）
 export const UI_STAGE_NODES = [
   { key: '埋点提需', label: '埋点提需' },
@@ -98,13 +113,17 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['埋点设计', '评审通过'],
     permissionKey: 'canEditDesign',
     fields: [
+      { key: 'evtId', label: '埋点事件ID / evt_id', type: 'input', baseField: 'evt_id', placeholder: '如：video_play_click' },
+      { key: 'eventName', label: '事件名', type: 'input', baseField: '事件中文名', placeholder: '如：视频播放按钮点击' },
+      { key: 'priority', label: '优先级', type: 'select', baseField: '优先级', options: PRIORITY_OPTIONS },
+      { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
       { key: 'eventDefinition', label: '事件定义', type: 'textarea', baseField: '事件定义', placeholder: '定义事件统计口径和边界...' },
       { key: 'triggerTiming', label: '触发时机', type: 'textarea', baseField: '触发时机', placeholder: '描述事件触发的具体时机...' },
-      { key: 'handler', label: '处理方', type: 'input', baseField: '处理方', placeholder: '客户端/服务端/数仓...' },
+      { key: 'handler', label: '处理方', type: 'select', baseField: '处理方', options: HANDLER_OPTIONS },
       { key: 'commonProps', label: '公共属性要求', type: 'textarea', baseField: '公共属性要求', placeholder: '列出必须携带的公共属性...' },
       { key: 'version', label: '版本', type: 'input', baseField: '版本', placeholder: '例如 1.0.0' },
       { key: 'minVersion', label: '最低版本', type: 'input', baseField: '最低版本', placeholder: '例如 1.0.0' },
-      { key: 'changeType', label: '变更类型', type: 'input', baseField: '变更类型', placeholder: '新增/变更/下线' },
+      { key: 'changeType', label: '变更类型', type: 'select', baseField: '变更类型', options: CHANGE_TYPE_OPTIONS },
     ],
   },
   {

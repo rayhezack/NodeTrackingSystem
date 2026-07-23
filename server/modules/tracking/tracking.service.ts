@@ -87,7 +87,7 @@ const WORKBENCH_FIELDS = [
   '创建时间',
 ] as const;
 
-const PARAM_FIELDS = [
+const PARAM_BASE_FIELDS = [
   '设计参数主键',
   'evt_id',
   '参数名',
@@ -97,13 +97,23 @@ const PARAM_FIELDS = [
   '枚举/取值范围',
   '参数定义',
   '默认值/示例',
-  'App适用性',
-  'Web适用性',
   '参数状态',
   '版本',
   '变更类型',
   '来源设计记录ID',
   '关联设计',
+] as const;
+
+const APP_PARAM_FIELDS = [
+  ...PARAM_BASE_FIELDS.slice(0, 9),
+  'App适用性',
+  ...PARAM_BASE_FIELDS.slice(9),
+] as const;
+
+const WEB_PARAM_FIELDS = [
+  ...PARAM_BASE_FIELDS.slice(0, 9),
+  'Web适用性',
+  ...PARAM_BASE_FIELDS.slice(9),
 ] as const;
 
 const PERMISSION_RECORD_TYPE = '权限配置';
@@ -469,7 +479,7 @@ export class TrackingService {
 
     const evtId = cellText(detail.record['evt_id']);
     const result = await this.bitable.searchRecords(paramDetailKey(ref.source), {
-      fieldNames: [...PARAM_FIELDS],
+      fieldNames: [...paramFields(ref.source)],
       pageSize: 200,
     });
     const items = result.records
@@ -661,7 +671,10 @@ export class TrackingService {
         'DS验收人',
       ]),
       designFields: pickFields(record.record, [
+        'evt_id',
         '事件中文名',
+        '优先级',
+        '端',
         '事件定义',
         '触发时机',
         '处理方',
@@ -995,6 +1008,10 @@ function workbenchKey(source: TrackingSource): BitableInstanceKey {
 
 function paramDetailKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webParamDetail' : 'paramDetail';
+}
+
+function paramFields(source: TrackingSource): readonly string[] {
+  return source === 'web' ? WEB_PARAM_FIELDS : APP_PARAM_FIELDS;
 }
 
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {

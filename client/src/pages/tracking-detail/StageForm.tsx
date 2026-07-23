@@ -16,6 +16,7 @@ import { UserSelect } from '@client/src/components/business-ui/user-select';
 import { SIDEBAR_STAGES, type StageConfig } from './stage-config';
 import { updateTrackingRecord } from '@client/src/api/tracking';
 import type { TrackingDetail, TrackingUserRef } from '@shared/api.interface';
+import ParamDesigner from './param-designer/ParamDesigner';
 
 interface StageFormProps {
   stageId: string;
@@ -206,6 +207,17 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
           )}
         </Button>
       </div>
+
+      {stageId === 'design' && (
+        <div className="border-t border-border pt-6">
+          <ParamDesigner
+            recordId={detail.recordId}
+            source={detail.source}
+            evtId={detail.evtId}
+            canEdit={detail.permissions.canEditParams}
+          />
+        </div>
+      )}
     </div>
   );
 };

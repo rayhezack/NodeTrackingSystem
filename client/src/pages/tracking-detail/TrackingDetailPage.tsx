@@ -10,8 +10,6 @@ import DetailHeader from './DetailHeader';
 import ProcessFlowBar from './ProcessFlowBar';
 import StageSidebar from './StageSidebar';
 import StageForm from './StageForm';
-import ParamsDesignerPlaceholder from './ParamsDesignerPlaceholder';
-import ParamDesigner from './param-designer/ParamDesigner';
 import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
 import { getCurrentActor } from '@client/src/utils/current-user';
 
@@ -41,9 +39,9 @@ const TrackingDetailPage = () => {
         if (cancelled) return;
         setDetail(res.data);
 
-        const matchedStage = requestedStage === 'params'
-          ? { id: 'params' }
-          : SIDEBAR_STAGES.find((s) => s.id === requestedStage) ||
+        const normalizedRequestedStage = requestedStage === 'params' ? 'design' : requestedStage;
+        const matchedStage =
+          SIDEBAR_STAGES.find((s) => s.id === normalizedRequestedStage) ||
             SIDEBAR_STAGES.find((s) => s.baseStages.includes(res.data.stage));
         if (matchedStage?.id) {
           setActiveStage(matchedStage.id);
@@ -193,33 +191,24 @@ const TrackingDetailPage = () => {
             permissions={detail.permissions}
             onStageChange={(stage) => {
               setActiveStage(stage);
-              setSearchParams(stage === 'params' ? { stage: 'params' } : {});
+              setSearchParams({});
             }}
           />
 
           {/* 右侧内容区 */}
           <div className="flex-1 border-t border-border md:border-t-0 md:border-l border-border p-6 min-h-[500px]">
-            {activeStage === 'params' ? (
-              <ParamDesigner
-                recordId={detail.recordId}
-                source={detail.source}
-                evtId={detail.evtId}
-                canEdit={detail.permissions.canEditParams}
-              />
-            ) : (
-              <StageForm
-                key={`${activeStage}-${detail.recordId}`}
-                stageId={activeStage}
-                detail={detail}
-                canEdit={
-                  detail.permissions[
-                    SIDEBAR_STAGES.find((s) => s.id === activeStage)
-                      ?.permissionKey || 'canEditRequirement'
-                  ]
-                }
-                onSaved={handleSaved}
-              />
-            )}
+            <StageForm
+              key={`${activeStage}-${detail.recordId}`}
+              stageId={activeStage}
+              detail={detail}
+              canEdit={
+                detail.permissions[
+                  SIDEBAR_STAGES.find((s) => s.id === activeStage)
+                    ?.permissionKey || 'canEditRequirement'
+                ]
+              }
+              onSaved={handleSaved}
+            />
           </div>
         </div>
       </div>
