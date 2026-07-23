@@ -1,0 +1,289 @@
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { Save } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@client/src/components/ui/dialog';
+import { Button } from '@client/src/components/ui/button';
+import { Input } from '@client/src/components/ui/input';
+import { Textarea } from '@client/src/components/ui/textarea';
+import { Switch } from '@client/src/components/ui/switch';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@client/src/components/ui/select';
+import FormField from './FormField';
+import {
+  PARAM_TYPE_OPTIONS,
+  PLATFORM_OPTIONS,
+  STATUS_OPTIONS,
+  CHANGE_TYPE_OPTIONS,
+} from './param-constants';
+import type { ParamDetail, CreateParamRequest } from '@shared/api.interface';
+
+interface ParamFormDialogProps {
+  open: boolean;
+  mode: 'create' | 'edit';
+  defaultEvtId?: string;
+  initialData?: ParamDetail | null;
+  onClose: () => void;
+  onSubmit: (data: CreateParamRequest) => Promise<void>;
+}
+
+const defaultForm = (evtId: string): CreateParamRequest => ({
+  paramKey: '',
+  evtId,
+  paramName: '',
+  paramType: 'string',
+  required: false,
+  triggerCondition: '',
+  enumRange: '',
+  definition: '',
+  defaultValue: '',
+  example: '',
+  platform: '全端',
+  status: '正常',
+  version: '',
+  changeType: '新增',
+});
+
+const ParamFormDialog = ({
+  open,
+  mode,
+  defaultEvtId = '',
+  initialData,
+  onClose,
+  onSubmit,
+}: ParamFormDialogProps) => {
+  const [form, setForm] = useState<CreateParamRequest>(defaultForm(defaultEvtId));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (mode === 'edit' && initialData) {
+      setForm({
+        paramKey: initialData.paramKey,
+        evtId: initialData.evtId,
+        paramName: initialData.paramName,
+        paramType: initialData.paramType || 'string',
+        required: initialData.required,
+        triggerCondition: initialData.triggerCondition,
+        enumRange: initialData.enumRange,
+        definition: initialData.definition,
+        defaultValue: initialData.defaultValue,
+        example: initialData.example,
+        platform: initialData.platform || '全端',
+        status: initialData.status || '正常',
+        version: initialData.version,
+        changeType: initialData.changeType || '修改',
+      });
+    } else {
+      setForm(defaultForm(defaultEvtId));
+    }
+  }, [open, mode, initialData, defaultEvtId]);
+
+  const handleSubmit = async () => {
+    if (!form.paramKey.trim()) {
+      toast.error('请输入参数 key');
+      return;
+    }
+    if (!form.paramName.trim()) {
+      toast.error('请输入参数名');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit(form);
+      toast.success(mode === 'create' ? '新增参数成功' : '编辑参数成功');
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '操作失败';
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateField = <K extends keyof CreateParamRequest>(
+    key: K,
+    value: CreateParamRequest[K],
+  ) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const selectCls = 'h-8 rounded-sm text-xs w-full';
+  const inputCls = 'h-8 rounded-sm text-xs';
+  const textareaCls = 'rounded-sm text-xs min-h-[60px]';
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {mode === 'create' ? '新增参数' : '编辑参数'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+          <FormField label="参数 key" required>
+            <Input
+              className={inputCls}
+              value={form.paramKey}
+              onChange={(e) => updateField('paramKey', e.target.value)}
+              placeholder="如：user_id"
+            />
+          </FormField>
+
+          <FormField label="evt_id">
+            <Input
+              className={inputCls}
+              value={form.evtId}
+              onChange={(e) => updateField('evtId', e.target.value)}
+            />
+          </FormField>
+
+          <FormField label="参数名" required>
+            <Input
+              className={inputCls}
+              value={form.paramName}
+              onChange={(e) => updateField('paramName', e.target.value)}
+              placeholder="如：用户 ID"
+            />
+          </FormField>
+
+          <FormField label="参数类型">
+            <Select value={form.paramType} onValueChange={(v) => updateField('paramType', v)}>
+              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PARAM_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField label="是否必传">
+            <div className="flex items-center gap-2 h-8">
+              <Switch
+                checked={form.required}
+                onCheckedChange={(v) => updateField('required', v)}
+              />
+              <span className="text-xs text-foreground">{form.required ? '是' : '否'}</span>
+            </div>
+          </FormField>
+
+          <FormField label="适用端">
+            <Select value={form.platform || ''} onValueChange={(v) => updateField('platform', v)}>
+              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PLATFORM_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField label="状态">
+            <Select value={form.status || ''} onValueChange={(v) => updateField('status', v)}>
+              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField label="版本">
+            <Input
+              className={inputCls}
+              value={form.version || ''}
+              onChange={(e) => updateField('version', e.target.value)}
+              placeholder="如：v1.0.0"
+            />
+          </FormField>
+
+          <FormField label="变更类型">
+            <Select value={form.changeType || ''} onValueChange={(v) => updateField('changeType', v)}>
+              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CHANGE_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField label="默认值">
+            <Input
+              className={inputCls}
+              value={form.defaultValue || ''}
+              onChange={(e) => updateField('defaultValue', e.target.value)}
+            />
+          </FormField>
+
+          <FormField label="触发条件" className="sm:col-span-2 lg:col-span-3">
+            <Textarea
+              className={textareaCls}
+              value={form.triggerCondition || ''}
+              onChange={(e) => updateField('triggerCondition', e.target.value)}
+              placeholder="描述参数触发的具体条件..."
+            />
+          </FormField>
+
+          <FormField label="枚举范围（每行一个）" className="sm:col-span-2 lg:col-span-3">
+            <Textarea
+              className={textareaCls}
+              value={form.enumRange || ''}
+              onChange={(e) => updateField('enumRange', e.target.value)}
+              placeholder="value1&#10;value2&#10;value3"
+            />
+          </FormField>
+
+          <FormField label="定义" className="sm:col-span-2 lg:col-span-3">
+            <Textarea
+              className={textareaCls}
+              value={form.definition || ''}
+              onChange={(e) => updateField('definition', e.target.value)}
+              placeholder="参数的详细定义说明..."
+            />
+          </FormField>
+
+          <FormField label="示例" className="sm:col-span-2 lg:col-span-3">
+            <Textarea
+              className={textareaCls}
+              value={form.example || ''}
+              onChange={(e) => updateField('example', e.target.value)}
+              placeholder="参数值示例..."
+            />
+          </FormField>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-sm h-8"
+            onClick={onClose}
+            disabled={saving}
+          >
+            取消
+          </Button>
+          <Button size="sm" className="rounded-sm h-8" onClick={handleSubmit} disabled={saving}>
+            <Save className="h-3.5 w-3.5" />
+            {saving ? '保存中...' : '确定'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default ParamFormDialog;

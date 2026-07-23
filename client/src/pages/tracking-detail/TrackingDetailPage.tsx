@@ -1,11 +1,220 @@
-import { PagePlaceholder } from "@lark-apaas/client-toolkit/components/PagePlaceholder";
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { logger } from '@lark-apaas/client-toolkit/logger';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { Button } from '@client/src/components/ui/button';
+import { getTrackingDetail } from '@client/src/api/tracking';
+import type { TrackingDetail } from '@shared/api.interface';
+import DetailHeader from './DetailHeader';
+import ProcessFlowBar from './ProcessFlowBar';
+import StageSidebar from './StageSidebar';
+import StageForm from './StageForm';
+import ParamsDesignerPlaceholder from './ParamsDesignerPlaceholder';
+import ParamDesigner from './param-designer/ParamDesigner';
+import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
 
 const TrackingDetailPage = () => {
+  const { recordId } = useParams<{ recordId: string }>();
+  const navigate = useNavigate();
+
+  const [detail, setDetail] = useState<TrackingDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeStage, setActiveStage] = useState<string>('requirement');
+
+  // 加载详情
+  useEffect(() => {
+    if (!recordId) return;
+
+    let cancelled = false;
+    const loadDetail = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await getTrackingDetail(recordId);
+        if (cancelled) return;
+        setDetail(res.data);
+
+        // 根据当前阶段定位到第一个匹配的侧边栏阶段
+        const matchedStage = SIDEBAR_STAGES.find((s) =>
+          s.baseStages.includes(res.data.stage),
+        );
+        if (matchedStage) {
+          setActiveStage(matchedStage.id);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : '加载失败';
+        setError(msg);
+        logger.error('加载需求详情失败', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [recordId]);
+
+  // 流程节点点击 → 跳转到对应侧边栏阶段
+  const handleNodeClick = (nodeKey: string) => {
+    const matchedStage = SIDEBAR_STAGES.find((s) => s.uiNode === nodeKey);
+    if (matchedStage) {
+      setActiveStage(matchedStage.id);
+    }
+  };
+
+  // 保存后刷新
+  const handleSaved = async () => {
+    if (!recordId) return;
+    try {
+      const res = await getTrackingDetail(recordId);
+      setDetail(res.data);
+    } catch (err) {
+      logger.error('刷新详情失败', err);
+    }
+  };
+
+  const handleBack = () => {
+    navigate('/');
+  };
+
+  // 骨架屏
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="rounded-sm h-8" disabled>
+            <ArrowLeft className="h-4 w-4" />
+            返回
+          </Button>
+        </div>
+        <div className="overflow-hidden rounded-sm border border-border bg-card">
+          <div className="h-20 animate-pulse bg-muted/30" />
+          <div className="h-16 border-t border-border animate-pulse bg-muted/20" />
+          <div className="flex min-h-[500px]">
+            <div className="w-[200px] border-r border-border animate-pulse bg-muted/10" />
+            <div className="flex-1 p-6">
+              <div className="space-y-4">
+                <div className="h-6 w-32 animate-pulse bg-muted/30 rounded-sm" />
+                <div className="grid grid-cols-2 gap-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-3 w-16 animate-pulse bg-muted/30 rounded-sm" />
+                      <div className="h-8 w-full animate-pulse bg-muted/20 rounded-sm" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (error || !detail) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-sm h-8"
+            onClick={handleBack}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center rounded-sm border border-border bg-card py-20">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <p className="text-sm font-medium text-foreground">加载失败</p>
+          <p className="mt-1 text-xs text-muted-foreground">{error || '记录不存在'}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 rounded-sm"
+            onClick={() => recordId && window.location.reload()}
+          >
+            重试
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentUiNode = getCurrentUiNode(detail.stage);
+
   return (
-    <PagePlaceholder
-      title="需求详情"
-      description="埋点需求全流程查看与编辑"
-    />
+    <div className="space-y-4">
+      {/* 返回按钮 */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="rounded-sm h-8"
+          onClick={handleBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回列表
+        </Button>
+      </div>
+
+      {/* 详情卡片 */}
+      <div className="overflow-hidden rounded-sm border border-border bg-card shadow-none">
+        {/* 顶部信息栏 */}
+        <DetailHeader detail={detail} />
+
+        {/* 流程条 */}
+        <ProcessFlowBar
+          baseStage={detail.stage}
+          onNodeClick={handleNodeClick}
+        />
+
+        {/* 左右分栏 */}
+        <div className="flex flex-col md:flex-row">
+          {/* 左侧阶段导航 */}
+          <StageSidebar
+            activeStage={activeStage}
+            permissions={detail.permissions}
+            onStageChange={setActiveStage}
+          />
+
+          {/* 右侧内容区 */}
+          <div className="flex-1 border-t border-border md:border-t-0 md:border-l border-border p-6 min-h-[500px]">
+            {activeStage === 'params' ? (
+              <ParamDesigner
+                recordId={detail.recordId}
+                evtId={detail.evtId}
+                canEdit={detail.permissions.canEditParams}
+              />
+            ) : (
+              <StageForm
+                key={`${activeStage}-${detail.recordId}`}
+                stageId={activeStage}
+                detail={detail}
+                canEdit={
+                  detail.permissions[
+                    SIDEBAR_STAGES.find((s) => s.id === activeStage)
+                      ?.permissionKey || 'canEditRequirement'
+                  ]
+                }
+                onSaved={handleSaved}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 当前阶段标识（调试用，可移除） */}
+      <div className="text-xs text-muted-foreground hidden">
+        当前 UI 节点: {currentUiNode} | Base 阶段: {detail.stage}
+      </div>
+    </div>
   );
 };
 
