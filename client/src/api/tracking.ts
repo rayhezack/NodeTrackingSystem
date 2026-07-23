@@ -6,7 +6,12 @@ import type {
   GetMyTodosResponse,
   GetTrackingRecordsParams,
   GetTrackingRecordsResponse,
+  CreateTrackingRecordRequest,
+  CreateTrackingRecordResponse,
+  GetPermissionConfigResponse,
   GetTrackingDetailResponse,
+  UpdatePermissionConfigRequest,
+  UpdatePermissionConfigResponse,
   UpdateTrackingRecordRequest,
   UpdateTrackingRecordResponse,
   GetParamsResponse,
@@ -50,6 +55,44 @@ export async function getTrackingRecords(
   } catch (error) {
     logger.error('获取需求列表失败', error);
     throw toReadableError(error, '获取需求列表失败，请检查 Base 权限');
+  }
+}
+
+export async function createTrackingRecord(
+  data: CreateTrackingRecordRequest,
+): Promise<CreateTrackingRecordResponse> {
+  try {
+    const response = await axiosForBackend.post('/api/tracking/records', data);
+    return response.data;
+  } catch (error) {
+    logger.error('新增需求失败', error);
+    throw toReadableError(error, '新增需求失败，请检查必填字段和 Base 写入权限');
+  }
+}
+
+export async function getPermissionConfig(
+  actorId?: string,
+): Promise<GetPermissionConfigResponse> {
+  try {
+    const response = await axiosForBackend.get('/api/tracking/permissions', {
+      params: { actorId },
+    });
+    return response.data;
+  } catch (error) {
+    logger.error('获取权限配置失败', error);
+    throw toReadableError(error, '获取权限配置失败，请检查 Base 权限');
+  }
+}
+
+export async function updatePermissionConfig(
+  data: UpdatePermissionConfigRequest,
+): Promise<UpdatePermissionConfigResponse> {
+  try {
+    const response = await axiosForBackend.put('/api/tracking/permissions', data);
+    return response.data;
+  } catch (error) {
+    logger.error('更新权限配置失败', error);
+    throw toReadableError(error, '更新权限配置失败，请确认你是管理员');
   }
 }
 

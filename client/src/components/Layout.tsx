@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { BarChart3, Search } from "lucide-react";
+import { BarChart3, Search, ShieldCheck } from "lucide-react";
 import { useCurrentUserProfile } from "@lark-apaas/client-toolkit/hooks/useCurrentUserProfile";
 import { useAppInfo } from "@lark-apaas/client-toolkit/hooks/useAppInfo";
 import {
@@ -17,6 +17,7 @@ import { useState } from "react";
 const navItems = [
   { path: "/", label: "埋点工作台", icon: BarChart3 },
   { path: "/query-library", label: "正式查询库", icon: Search },
+  { path: "/permissions", label: "权限配置", icon: ShieldCheck },
 ];
 
 const Layout = () => {

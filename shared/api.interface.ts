@@ -57,6 +57,60 @@ export interface GetTrackingRecordsResponse {
   total: number;
 }
 
+export interface CreateTrackingRecordRequest {
+  evtId: string;
+  eventName: string;
+  requirementBackground?: string;
+  requirementLink?: string;
+  metricScenario?: string;
+  priority?: string;
+  platform?: string;
+  eventDefinition?: string;
+  triggerTiming?: string;
+  handler?: string;
+  commonProps?: string;
+  version?: string;
+  minVersion?: string;
+  changeType?: string;
+  actorId?: string;
+  actorName?: string;
+  initialParams?: CreateParamRequest[];
+}
+
+export interface CreateTrackingRecordResponse {
+  success: boolean;
+  recordId: string;
+  currentStage: string;
+  createdParamCount: number;
+}
+
+export interface PermissionConfig {
+  admins: string[];
+  dataScientists: string[];
+  developers: string[];
+  acceptors: string[];
+  viewers: string[];
+  updatedAt?: number;
+  updatedBy?: string;
+}
+
+export interface GetPermissionConfigResponse {
+  config: PermissionConfig;
+  canManage: boolean;
+  initialized: boolean;
+}
+
+export interface UpdatePermissionConfigRequest {
+  actorId?: string;
+  actorName?: string;
+  config: PermissionConfig;
+}
+
+export interface UpdatePermissionConfigResponse {
+  success: boolean;
+  config: PermissionConfig;
+}
+
 // 需求详情
 export interface TrackingDetailPermissions {
   canEditRequirement: boolean;

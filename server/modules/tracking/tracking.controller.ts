@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import type {
   CreateParamRequest,
+  CreateTrackingRecordRequest,
+  UpdatePermissionConfigRequest,
   UpdateParamRequest,
   UpdateTrackingRecordRequest,
 } from '@shared/api.interface';
@@ -33,6 +35,21 @@ export class TrackingController {
   @Get('records')
   getRecords(@Query() query: Record<string, string>) {
     return this.trackingService.getRecords(query);
+  }
+
+  @Get('permissions')
+  getPermissions(@Query('actorId') actorId?: string) {
+    return this.trackingService.getPermissionConfig(actorId);
+  }
+
+  @Put('permissions')
+  updatePermissions(@Body() body: UpdatePermissionConfigRequest) {
+    return this.trackingService.updatePermissionConfig(body);
+  }
+
+  @Post('records')
+  createRecord(@Body() body: CreateTrackingRecordRequest) {
+    return this.trackingService.createRecord(body);
   }
 
   @Get('records/:recordId')

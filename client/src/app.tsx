@@ -6,6 +6,7 @@ import NotFound from './pages/NotFound/NotFound';
 import WorkbenchPage from './pages/workbench/WorkbenchPage';
 import TrackingDetailPage from './pages/tracking-detail/TrackingDetailPage';
 import QueryLibraryPage from './pages/query-library/QueryLibraryPage';
+import PermissionsPage from './pages/permissions/PermissionsPage';
 
 const RoutesComponent = () => {
   return (
@@ -14,6 +15,7 @@ const RoutesComponent = () => {
         <Route index element={<WorkbenchPage />} />
         <Route path="tracking/:recordId" element={<TrackingDetailPage />} />
         <Route path="query-library" element={<QueryLibraryPage />} />
+        <Route path="permissions" element={<PermissionsPage />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

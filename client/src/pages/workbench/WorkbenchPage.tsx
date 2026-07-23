@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '@lark-apaas/client-toolkit/logger';
+import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
+import { Plus } from 'lucide-react';
+import { Button } from '@client/src/components/ui/button';
 
 import StageStats from './StageStats';
 import MyTodos from './MyTodos';
 import RecordsTable from './RecordsTable';
+import NewTrackingRequestDialog from './NewTrackingRequestDialog';
 
 import * as trackingApi from '@client/src/api/tracking';
+import { getCurrentActor } from '@client/src/utils/current-user';
 import type {
+  CreateTrackingRecordRequest,
   StageStat,
   TodoItem,
   TrackingRecord,
@@ -15,6 +21,10 @@ import type {
 
 const WorkbenchPage = () => {
   const navigate = useNavigate();
+  const userProfile = useCurrentUserProfile();
+  const actor = getCurrentActor(userProfile);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [canCreate, setCanCreate] = useState(true);
 
   // 阶段统计
   const [stats, setStats] = useState<StageStat[]>([]);
@@ -115,6 +125,27 @@ const WorkbenchPage = () => {
   }, [loadStats, loadTodos]);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await trackingApi.getPermissionConfig(actor.id);
+        if (cancelled) return;
+        setCanCreate(
+          !res.initialized ||
+            res.config.admins.includes(actor.id || '') ||
+            res.config.dataScientists.includes(actor.id || ''),
+        );
+      } catch (err) {
+        logger.warn('权限配置读取失败，保留新增入口', err);
+        if (!cancelled) setCanCreate(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [actor.id]);
+
+  useEffect(() => {
     loadRecords(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword, stageFilter, priorityFilter, platformFilter]);
@@ -129,6 +160,12 @@ const WorkbenchPage = () => {
     navigate(`/tracking/${recordId}`);
   };
 
+  const handleCreate = async (data: CreateTrackingRecordRequest) => {
+    const res = await trackingApi.createTrackingRecord(data);
+    await Promise.all([loadStats(), loadTodos(), loadRecords(false)]);
+    navigate(`/tracking/${res.recordId}?stage=params`);
+  };
+
   // 重置筛选
   const handleReset = () => {
     setKeyword('');
@@ -141,11 +178,23 @@ const WorkbenchPage = () => {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-[1400px] px-6 py-6">
         {/* 页面标题 */}
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-foreground">埋点工作台</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            管理埋点需求全生命周期，快速定位待办与状态流转
-          </p>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">埋点工作台</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              管理埋点需求全生命周期，快速定位待办与状态流转
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 rounded-sm"
+            onClick={() => setCreateOpen(true)}
+            disabled={!canCreate}
+            title={canCreate ? '新增埋点需求' : '只有管理员或 DS 可以新增需求'}
+          >
+            <Plus className="h-4 w-4" />
+            新增需求
+          </Button>
         </div>
 
         {/* 阶段统计卡片 */}
@@ -187,6 +236,14 @@ const WorkbenchPage = () => {
           onRetry={() => loadRecords(false)}
           onLoadMore={() => loadRecords(true)}
           onRowClick={goToDetail}
+        />
+
+        <NewTrackingRequestDialog
+          open={createOpen}
+          actorId={actor.id}
+          actorName={actor.name}
+          onClose={() => setCreateOpen(false)}
+          onSubmit={handleCreate}
         />
       </div>
     </div>

@@ -1,17 +1,28 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   CreateParamRequest,
   CreateParamResponse,
+  CreateTrackingRecordRequest,
+  CreateTrackingRecordResponse,
   DeleteParamResponse,
   GetMyTodosResponse,
   GetParamsResponse,
+  GetPermissionConfigResponse,
   GetStageStatsResponse,
   GetTrackingDetailResponse,
   GetTrackingRecordsParams,
   GetTrackingRecordsResponse,
+  PermissionConfig,
   ParamDetail,
   TrackingDetail,
   TrackingRecord,
+  UpdatePermissionConfigRequest,
+  UpdatePermissionConfigResponse,
   UpdateParamRequest,
   UpdateParamResponse,
   UpdateTrackingRecordRequest,
@@ -81,6 +92,10 @@ const PARAM_FIELDS = [
   '来源设计记录ID',
   '关联设计',
 ] as const;
+
+const PERMISSION_RECORD_TYPE = '权限配置';
+const PERMISSION_RECORD_NAME = '系统权限配置';
+const PERMISSION_RECORD_EVT_ID = '__system_permissions__';
 
 type Cell = unknown;
 
@@ -161,7 +176,172 @@ export class TrackingService {
     if (!record) {
       throw new NotFoundException('埋点需求不存在');
     }
-    return { data: this.toTrackingDetail(record, actorId) };
+    const permissionConfig = await this.getStoredPermissionConfig();
+    return { data: this.toTrackingDetail(record, actorId, permissionConfig) };
+  }
+
+  async getPermissionConfig(actorId?: string): Promise<GetPermissionConfigResponse> {
+    const stored = await this.getPermissionRecord();
+    const config = stored ? parsePermissionConfig(stored.record['需求背景']) : emptyPermissionConfig();
+    const initialized = Boolean(stored);
+    const effectiveConfig = initialized
+      ? config
+      : {
+          ...config,
+          admins: actorId ? [actorId] : [],
+          dataScientists: actorId ? [actorId] : [],
+        };
+
+    return {
+      config: effectiveConfig,
+      initialized,
+      canManage: initialized
+        ? Boolean(
+            actorId &&
+              (effectiveConfig.admins.length === 0 ||
+                effectiveConfig.admins.includes(actorId)),
+          )
+        : Boolean(actorId),
+    };
+  }
+
+  async updatePermissionConfig(
+    body: UpdatePermissionConfigRequest,
+  ): Promise<UpdatePermissionConfigResponse> {
+    const actorId = (body.actorId || '').trim();
+    if (!actorId) {
+      throw new BadRequestException('无法识别当前用户，不能更新权限配置');
+    }
+
+    const existing = await this.getPermissionRecord();
+    const currentConfig = existing
+      ? parsePermissionConfig(existing.record['需求背景'])
+      : emptyPermissionConfig();
+    if (
+      existing &&
+      currentConfig.admins.length > 0 &&
+      !currentConfig.admins.includes(actorId)
+    ) {
+      throw new ForbiddenException('只有管理员可以更新权限配置');
+    }
+
+    const nextConfig = normalizePermissionConfig({
+      ...body.config,
+      admins: uniqueStrings([...(body.config?.admins || []), actorId]),
+      updatedAt: Date.now(),
+      updatedBy: actorId,
+    });
+
+    const record = {
+      evt_id: PERMISSION_RECORD_EVT_ID,
+      '事件中文名': PERMISSION_RECORD_NAME,
+      '需求背景': JSON.stringify(nextConfig),
+      '流程阶段': '稳定归档',
+      '记录类型': PERMISSION_RECORD_TYPE,
+      '优先级': 'P3',
+      '端': 'App通用',
+      '数据负责人': usersToCell(nextConfig.admins, body.actorName),
+      '研发负责人': usersToCell(nextConfig.developers),
+      'DS验收人': usersToCell(nextConfig.acceptors),
+      '评审状态': '',
+      '埋点开发状态': '',
+      'DS验收状态': '',
+      '发布门禁状态': '',
+      '发布状态': '',
+      '正式状态': '系统记录',
+      '版本': 'system',
+      '变更类型': '权限配置',
+      '创建时间': existing
+        ? cellTimestamp(existing.record['创建时间']) || Date.now()
+        : Date.now(),
+    };
+
+    if (existing) {
+      await this.bitable.batchUpdateRecords('workbench', [
+        { id: existing.id, record },
+      ]);
+    } else {
+      await this.bitable.batchAddRecords('workbench', [record]);
+    }
+
+    return { success: true, config: nextConfig };
+  }
+
+  async createRecord(
+    body: CreateTrackingRecordRequest,
+  ): Promise<CreateTrackingRecordResponse> {
+    const evtId = (body.evtId || '').trim();
+    const eventName = (body.eventName || '').trim();
+    if (!evtId || !eventName) {
+      throw new BadRequestException('evt_id 和事件名不能为空');
+    }
+
+    await this.assertCanCreateRecord(body.actorId);
+
+    const records = await this.listWorkbenchRecords();
+    const duplicate = records.find(
+      (record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase(),
+    );
+    if (duplicate) {
+      throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
+    }
+
+    const ownerCell = createUserCell(body.actorId, body.actorName);
+    const now = Date.now();
+    const [created] = await this.bitable.batchAddRecords('workbench', [
+      {
+        evt_id: evtId,
+        '事件中文名': eventName,
+        '事件定义': body.eventDefinition || '',
+        '触发时机': body.triggerTiming || '',
+        '需求背景': body.requirementBackground || '',
+        '需求链接': body.requirementLink || '',
+        '指标/使用场景': body.metricScenario || '',
+        '流程阶段': '需求录入',
+        '记录类型': '需求',
+        '优先级': body.priority || 'P2',
+        '端': body.platform || 'iOS、Android',
+        '数据负责人': ownerCell ? [ownerCell] : [],
+        '研发负责人': [],
+        'DS验收人': ownerCell ? [ownerCell] : [],
+        '评审状态': '草稿',
+        '评审意见': '',
+        '埋点开发状态': '未开始',
+        'DS验收状态': '未开始',
+        'DS验收证据': '',
+        'DS验收时间': '',
+        '上线监控状态': '未开始',
+        '上线监控结论': '',
+        '发布门禁状态': '待检查',
+        '发布门禁失败原因': '',
+        '发布状态': '未发布',
+        '发布错误': '',
+        '正式状态': '未归档',
+        '版本': body.version || '1.0.0',
+        '最低版本': body.minVersion || body.version || '1.0.0',
+        '变更类型': body.changeType || '新增',
+        '处理方': body.handler || '客户端',
+        '公共属性要求': body.commonProps || '',
+        '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
+        '稳定归档时间': '',
+        '创建时间': now,
+      },
+    ]);
+
+    const paramRecords = (body.initialParams || [])
+      .map((param) => this.toParamRecord(created.id, evtId, body.version || '1.0.0', param))
+      .filter((record) => cellText(record['参数名']) || cellText(record['设计参数主键']));
+
+    if (paramRecords.length) {
+      await this.bitable.batchAddRecords('paramDetail', paramRecords);
+    }
+
+    return {
+      success: true,
+      recordId: created.id,
+      currentStage: '需求录入',
+      createdParamCount: paramRecords.length,
+    };
   }
 
   async updateRecord(
@@ -223,23 +403,7 @@ export class TrackingService {
     }
 
     const [created] = await this.bitable.batchAddRecords('paramDetail', [
-      {
-        '设计参数主键': body.paramKey || `${evtId}.${paramName}`,
-        evt_id: evtId,
-        '参数名': paramName,
-        '数据类型': body.paramType || 'STRING',
-        '必传规则': body.required ? '必传' : '非必传',
-        '条件说明': body.triggerCondition || '',
-        '枚举/取值范围': body.enumRange || '',
-        '参数定义': body.definition || '',
-        '默认值/示例': body.example || body.defaultValue || '',
-        'App适用性': body.platform || 'App通用',
-        '参数状态': body.status || '草稿',
-        '版本': body.version || cellText(detail.record['版本']),
-        '变更类型': body.changeType || '新增',
-        '来源设计记录ID': recordId,
-        '关联设计': [{ id: recordId }],
-      },
+      this.toParamRecord(recordId, evtId, cellText(detail.record['版本']), body),
     ]);
 
     return { success: true, recordId: created.id };
@@ -249,8 +413,12 @@ export class TrackingService {
     paramRecordId: string,
     body: UpdateParamRequest,
   ): Promise<UpdateParamResponse> {
+    const fields = body.fields || {};
+    const patch = hasApiParamFields(fields)
+      ? toParamPatch(fields as Partial<CreateParamRequest>)
+      : fields;
     await this.bitable.batchUpdateRecords('paramDetail', [
-      { id: paramRecordId, record: body.fields || {} },
+      { id: paramRecordId, record: patch },
     ]);
     return { success: true, recordId: paramRecordId };
   }
@@ -262,6 +430,37 @@ export class TrackingService {
     return { success: true };
   }
 
+  private async assertCanCreateRecord(actorId?: string): Promise<void> {
+    const stored = await this.getPermissionRecord();
+    if (!stored) return;
+
+    const config = parsePermissionConfig(stored.record['需求背景']);
+    const actor = (actorId || '').trim();
+    if (!actor) {
+      throw new ForbiddenException('无法识别当前用户，不能新增需求');
+    }
+    if (!config.admins.includes(actor) && !config.dataScientists.includes(actor)) {
+      throw new ForbiddenException('只有管理员或 DS 可以新增埋点需求');
+    }
+  }
+
+  private async getStoredPermissionConfig(): Promise<PermissionConfig | null> {
+    const record = await this.getPermissionRecord();
+    return record ? parsePermissionConfig(record.record['需求背景']) : null;
+  }
+
+  private async getPermissionRecord(): Promise<BitableRecord | null> {
+    const result = await this.bitable.searchRecords('workbench', {
+      fieldNames: [...WORKBENCH_FIELDS],
+      pageSize: 200,
+    });
+    return (
+      result.records.find(
+        (record) => cellText(record.record['记录类型']) === PERMISSION_RECORD_TYPE,
+      ) || null
+    );
+  }
+
   private async listWorkbenchRecords(): Promise<BitableRecord[]> {
     const result = await this.bitable.searchRecords('workbench', {
       fieldNames: [...WORKBENCH_FIELDS],
@@ -270,7 +469,7 @@ export class TrackingService {
     return result.records.filter((record) => {
       const evtId = cellText(record.record['evt_id']);
       const type = cellText(record.record['记录类型']);
-      return Boolean(evtId) && type !== '模板';
+      return Boolean(evtId) && type !== '模板' && type !== PERMISSION_RECORD_TYPE;
     });
   }
 
@@ -296,7 +495,11 @@ export class TrackingService {
     };
   }
 
-  private toTrackingDetail(record: BitableRecord, actorId?: string): TrackingDetail {
+  private toTrackingDetail(
+    record: BitableRecord,
+    actorId?: string,
+    permissionConfig?: PermissionConfig | null,
+  ): TrackingDetail {
     const dataOwner = cellUsers(record.record['数据负责人']);
     const devOwner = cellUsers(record.record['研发负责人']);
     const dsAcceptor = cellUsers(record.record['DS验收人']);
@@ -334,7 +537,13 @@ export class TrackingService {
       launchFields: pickFields(record.record, ['上线监控状态', '上线监控结论', '发布状态', '发布错误', '发布时间']),
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       permissions: actor
-        ? calculatePermissions(actor, dataOwner.ids, devOwner.ids, dsAcceptor.ids)
+        ? calculateRecordPermissions(
+            actor,
+            dataOwner.ids,
+            devOwner.ids,
+            dsAcceptor.ids,
+            permissionConfig,
+          )
         : calculatePermissions('', [], [], []),
     };
   }
@@ -365,6 +574,33 @@ export class TrackingService {
       status: cellText(record.record['参数状态']) || '草稿',
       version: cellText(record.record['版本']),
       changeType: cellText(record.record['变更类型']) || '新增',
+    };
+  }
+
+  private toParamRecord(
+    recordId: string,
+    evtId: string,
+    version: string,
+    body: CreateParamRequest,
+  ): Record<string, unknown> {
+    const paramName = (body.paramName || '').trim();
+    const paramKey = (body.paramKey || '').trim() || (paramName ? `${evtId}.${paramName}` : '');
+    return {
+      '设计参数主键': paramKey,
+      evt_id: body.evtId || evtId,
+      '参数名': paramName,
+      '数据类型': body.paramType || 'STRING',
+      '必传规则': body.required ? '必传' : '非必传',
+      '条件说明': body.triggerCondition || '',
+      '枚举/取值范围': body.enumRange || '',
+      '参数定义': body.definition || '',
+      '默认值/示例': body.example || body.defaultValue || '',
+      'App适用性': body.platform || 'App通用',
+      '参数状态': body.status || '草稿',
+      '版本': body.version || version || '1.0.0',
+      '变更类型': body.changeType || '新增',
+      '来源设计记录ID': recordId,
+      '关联设计': [{ id: recordId }],
     };
   }
 }
@@ -442,4 +678,137 @@ function cellTimestamp(value: Cell): number {
   const normalized = text.replace(' ', 'T');
   const timestamp = Date.parse(normalized);
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function createUserCell(userId?: string, userName?: string): Record<string, string> | null {
+  const id = (userId || '').trim();
+  if (!id) return null;
+  return {
+    id,
+    name: (userName || id).trim(),
+  };
+}
+
+function usersToCell(userIds: string[] = [], actorName?: string): Record<string, string>[] {
+  return uniqueStrings(userIds).map((id) => ({
+    id,
+    name: actorName && userIds.length === 1 ? actorName : id,
+  }));
+}
+
+function emptyPermissionConfig(): PermissionConfig {
+  return {
+    admins: [],
+    dataScientists: [],
+    developers: [],
+    acceptors: [],
+    viewers: [],
+  };
+}
+
+function normalizePermissionConfig(config?: Partial<PermissionConfig>): PermissionConfig {
+  return {
+    admins: uniqueStrings(config?.admins || []),
+    dataScientists: uniqueStrings(config?.dataScientists || []),
+    developers: uniqueStrings(config?.developers || []),
+    acceptors: uniqueStrings(config?.acceptors || []),
+    viewers: uniqueStrings(config?.viewers || []),
+    updatedAt: config?.updatedAt,
+    updatedBy: config?.updatedBy,
+  };
+}
+
+function parsePermissionConfig(value: Cell): PermissionConfig {
+  const text = cellText(value);
+  if (!text) return emptyPermissionConfig();
+  try {
+    const parsed = JSON.parse(text) as Partial<PermissionConfig>;
+    return normalizePermissionConfig(parsed);
+  } catch {
+    return emptyPermissionConfig();
+  }
+}
+
+function uniqueStrings(values: string[] = []): string[] {
+  return Array.from(
+    new Set(values.map((value) => String(value || '').trim()).filter(Boolean)),
+  );
+}
+
+function calculateRecordPermissions(
+  actorId: string,
+  dataOwner: string[],
+  devOwner: string[],
+  dsAcceptor: string[],
+  permissionConfig?: PermissionConfig | null,
+) {
+  const base = calculatePermissions(actorId, dataOwner, devOwner, dsAcceptor);
+  if (!permissionConfig) return base;
+
+  const isAdmin = permissionConfig.admins.includes(actorId);
+  const isDs = permissionConfig.dataScientists.includes(actorId);
+  const isDeveloper = permissionConfig.developers.includes(actorId);
+  const isAcceptor = permissionConfig.acceptors.includes(actorId);
+
+  if (isAdmin) {
+    return {
+      canEditRequirement: true,
+      canEditDesign: true,
+      canEditReview: true,
+      canEditDev: true,
+      canEditAcceptance: true,
+      canEditLaunch: true,
+      canEditArchive: true,
+      canEditParams: true,
+    };
+  }
+
+  return {
+    canEditRequirement: base.canEditRequirement || isDs,
+    canEditDesign: base.canEditDesign || isDs,
+    canEditReview: base.canEditReview || isDs,
+    canEditDev: base.canEditDev || isDeveloper,
+    canEditAcceptance: base.canEditAcceptance || isDs || isAcceptor,
+    canEditLaunch: base.canEditLaunch || isDs,
+    canEditArchive: base.canEditArchive || isDs,
+    canEditParams: base.canEditParams || isDs,
+  };
+}
+
+function hasApiParamFields(fields: Record<string, unknown>): boolean {
+  return [
+    'paramKey',
+    'paramName',
+    'paramType',
+    'required',
+    'triggerCondition',
+    'enumRange',
+    'definition',
+    'defaultValue',
+    'example',
+    'platform',
+    'status',
+    'version',
+    'changeType',
+  ].some((key) => Object.prototype.hasOwnProperty.call(fields, key));
+}
+
+function toParamPatch(fields: Partial<CreateParamRequest>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (fields.paramKey !== undefined) patch['设计参数主键'] = fields.paramKey;
+  if (fields.evtId !== undefined) patch.evt_id = fields.evtId;
+  if (fields.paramName !== undefined) patch['参数名'] = fields.paramName;
+  if (fields.paramType !== undefined) patch['数据类型'] = fields.paramType;
+  if (fields.required !== undefined) patch['必传规则'] = fields.required ? '必传' : '非必传';
+  if (fields.triggerCondition !== undefined) patch['条件说明'] = fields.triggerCondition;
+  if (fields.enumRange !== undefined) patch['枚举/取值范围'] = fields.enumRange;
+  if (fields.definition !== undefined) patch['参数定义'] = fields.definition;
+  if (fields.defaultValue !== undefined || fields.example !== undefined) {
+    patch['默认值/示例'] = fields.example || fields.defaultValue || '';
+  }
+  if (fields.platform !== undefined) patch['App适用性'] = fields.platform;
+  if (fields.status !== undefined) patch['参数状态'] = fields.status;
+  if (fields.version !== undefined) patch['版本'] = fields.version;
+  if (fields.changeType !== undefined) patch['变更类型'] = fields.changeType;
+  return patch;
 }

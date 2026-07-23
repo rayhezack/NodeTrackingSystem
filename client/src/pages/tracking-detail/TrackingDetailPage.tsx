@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
@@ -13,12 +13,15 @@ import StageForm from './StageForm';
 import ParamsDesignerPlaceholder from './ParamsDesignerPlaceholder';
 import ParamDesigner from './param-designer/ParamDesigner';
 import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
+import { getCurrentActorId } from '@client/src/utils/current-user';
 
 const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const userProfile = useCurrentUserProfile();
-  const actorId = getActorId(userProfile);
+  const actorId = getCurrentActorId(userProfile);
+  const requestedStage = searchParams.get('stage');
 
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,11 +41,10 @@ const TrackingDetailPage = () => {
         if (cancelled) return;
         setDetail(res.data);
 
-        // 根据当前阶段定位到第一个匹配的侧边栏阶段
-        const matchedStage = SIDEBAR_STAGES.find((s) =>
-          s.baseStages.includes(res.data.stage),
-        );
-        if (matchedStage) {
+        const matchedStage = requestedStage === 'params'
+          ? { id: 'params' }
+          : SIDEBAR_STAGES.find((s) => s.baseStages.includes(res.data.stage));
+        if (matchedStage?.id) {
           setActiveStage(matchedStage.id);
         }
       } catch (err) {
@@ -59,6 +61,9 @@ const TrackingDetailPage = () => {
     return () => {
       cancelled = true;
     };
+    // requestedStage 仅用于首次从「新增需求」跳转到参数设计；
+    // 后续侧边栏切换不应触发详情重载并覆盖用户当前选择。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordId, actorId]);
 
   // 流程节点点击 → 跳转到对应侧边栏阶段
@@ -66,6 +71,7 @@ const TrackingDetailPage = () => {
     const matchedStage = SIDEBAR_STAGES.find((s) => s.uiNode === nodeKey);
     if (matchedStage) {
       setActiveStage(matchedStage.id);
+      setSearchParams({});
     }
   };
 
@@ -184,7 +190,10 @@ const TrackingDetailPage = () => {
           <StageSidebar
             activeStage={activeStage}
             permissions={detail.permissions}
-            onStageChange={setActiveStage}
+            onStageChange={(stage) => {
+              setActiveStage(stage);
+              setSearchParams(stage === 'params' ? { stage: 'params' } : {});
+            }}
           />
 
           {/* 右侧内容区 */}
@@ -220,22 +229,5 @@ const TrackingDetailPage = () => {
     </div>
   );
 };
-
-function getActorId(userProfile: unknown): string | undefined {
-  if (!userProfile || typeof userProfile !== 'object') return getLocalDevActorId();
-  const profile = userProfile as Record<string, unknown>;
-  const candidates = [profile.openId, profile.open_id, profile.userId, profile.id];
-  return (
-    candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ||
-    getLocalDevActorId()
-  );
-}
-
-function getLocalDevActorId(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
-  return ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    ? 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28'
-    : undefined;
-}
 
 export default TrackingDetailPage;
