@@ -704,66 +704,22 @@ export interface FeishuBitableAppBuriedPointReadonlyOneSearchrecordsOutput {
 // 由 get_plugin_ai_json 自动生成
 // ============================================================
 
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneGetrecordInput {
+export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneInput {
   /** [object Object] */
   recordID: string;
 }
 
 /**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneGetrecordOutput>('getRecord', input)
+ * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneOutput>('getRecord', input)
  * 直接返回此类型，无 .data 包装，直接解构使用：
  * const { id, record } = result;
  */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneGetrecordOutput {
+export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneOutput {
   /** [object Object] */
   id: string;
   /** [object Object] */
   record?: {
 
   };
-}
-
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsInput {
-  /** [object Object] */
-  pageToken?: string;
-  /** [object Object] */
-  pageSize?: number;
-  /** [object Object] */
-  fieldNames?: string[];
-  /** [object Object] */
-  sort?: {
-    fieldName: string;
-    desc: boolean;
-  }[];
-  /** [object Object] */
-  filter?: {
-    conjunction: string;
-    conditions: {
-      fieldName: string;
-      operator: string;
-      value: string[];
-    }[];
-  };
-}
-
-/**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsOutput>('searchRecords', input)
- * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { total, records, hasMore, ... } = result;
- */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsOutput {
-  /** [object Object] */
-  total?: number;
-  /** [object Object] */
-  records: {
-    id: string;
-    record: {
-
-    };
-  }[];
-  /** [object Object] */
-  hasMore: boolean;
-  /** [object Object] */
-  pageToken?: string;
 }
 // ---- end:feishu_bitable_01_buried_point_design_workbench_1 ----

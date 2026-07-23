@@ -1,5 +1,6 @@
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import { toReadableError } from './error';
 import type {
   GetStageStatsResponse,
   GetMyTodosResponse,
@@ -22,7 +23,7 @@ export async function getStageStats(): Promise<GetStageStatsResponse> {
     return response.data;
   } catch (error) {
     logger.error('获取阶段统计失败', error);
-    throw error;
+    throw toReadableError(error, '获取阶段统计失败，请检查 Base 权限');
   }
 }
 
@@ -34,7 +35,7 @@ export async function getMyTodos(limit = 10): Promise<GetMyTodosResponse> {
     return response.data;
   } catch (error) {
     logger.error('获取我的待办失败', error);
-    throw error;
+    throw toReadableError(error, '获取我的待办失败，请检查 Base 权限');
   }
 }
 
@@ -48,21 +49,23 @@ export async function getTrackingRecords(
     return response.data;
   } catch (error) {
     logger.error('获取需求列表失败', error);
-    throw error;
+    throw toReadableError(error, '获取需求列表失败，请检查 Base 权限');
   }
 }
 
 export async function getTrackingDetail(
   recordId: string,
+  actorId?: string,
 ): Promise<GetTrackingDetailResponse> {
   try {
     const response = await axiosForBackend.get(
       `/api/tracking/records/${recordId}`,
+      { params: { actorId } },
     );
     return response.data;
   } catch (error) {
     logger.error('获取需求详情失败', error);
-    throw error;
+    throw toReadableError(error, '获取需求详情失败，请检查 Base 权限');
   }
 }
 
@@ -78,7 +81,7 @@ export async function updateTrackingRecord(
     return response.data;
   } catch (error) {
     logger.error('更新需求失败', error);
-    throw error;
+    throw toReadableError(error, '更新需求失败，请检查 Base 权限或字段类型');
   }
 }
 
@@ -90,7 +93,7 @@ export async function getParams(recordId: string): Promise<GetParamsResponse> {
     return response.data;
   } catch (error) {
     logger.error('获取参数列表失败', error);
-    throw error;
+    throw toReadableError(error, '获取参数列表失败，请检查 Base 权限');
   }
 }
 
@@ -106,7 +109,7 @@ export async function createParam(
     return response.data;
   } catch (error) {
     logger.error('新增参数失败', error);
-    throw error;
+    throw toReadableError(error, '新增参数失败，请检查参数字段');
   }
 }
 
@@ -122,7 +125,7 @@ export async function updateParam(
     return response.data;
   } catch (error) {
     logger.error('更新参数失败', error);
-    throw error;
+    throw toReadableError(error, '更新参数失败，请检查参数字段');
   }
 }
 
@@ -136,6 +139,6 @@ export async function deleteParam(
     return response.data;
   } catch (error) {
     logger.error('删除参数失败', error);
-    throw error;
+    throw toReadableError(error, '参数废弃失败，请稍后重试');
   }
 }

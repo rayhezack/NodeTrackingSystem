@@ -30,10 +30,13 @@ export interface TrackingRecord {
   evtId: string;
   eventName: string;
   stage: string;
+  uiStage: string;
   priority: string;
   platform: string;
   dataOwner: string[];
+  dataOwnerIds: string[];
   devOwner: string[];
+  devOwnerIds: string[];
   updatedAt: number;
 }
 
@@ -71,12 +74,16 @@ export interface TrackingDetail {
   evtId: string;
   eventName: string;
   stage: string;
+  uiStage: string;
   reviewStatus: string;
   devStatus: string;
   acceptanceStatus: string;
   dataOwner: string[];
+  dataOwnerIds: string[];
   devOwner: string[];
+  devOwnerIds: string[];
   dsAcceptor: string[];
+  dsAcceptorIds: string[];
   priority: string;
   platform: string;
   requirementFields: Record<string, unknown>;

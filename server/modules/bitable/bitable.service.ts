@@ -1,6 +1,19 @@
-import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { CapabilityService } from '@lark-apaas/fullstack-nestjs-core';
 import { BITABLE_APP_TOKEN, BITABLE_INSTANCES, BITABLE_FIELDS, type BitableInstanceKey } from './bitable.constants';
+import {
+  isPluginMissingError,
+  LocalBitableFallback,
+  shouldUseLocalBitableFallback,
+} from './local-fallback';
 
 export interface BitableRecord {
   id: string;
@@ -15,7 +28,7 @@ export interface BitableSearchResult {
 }
 
 export interface BitableAggregateItem {
-  [key: string]: { value: unknown; originValue?: unknown } | undefined;
+  value: Record<string, unknown>;
 }
 
 export interface BitableAggregateResult {
@@ -43,6 +56,7 @@ export interface BitableSortItem {
 @Injectable()
 export class BitableService {
   private readonly logger = new Logger(BitableService.name);
+  private readonly localFallback = new LocalBitableFallback();
 
   constructor(
     @Inject(CapabilityService)
@@ -51,6 +65,13 @@ export class BitableService {
 
   private getInstanceConfig(instanceKey: BitableInstanceKey) {
     const instanceId = BITABLE_INSTANCES[instanceKey];
+    const tableIdMap: Record<BitableInstanceKey, string> = {
+      workbench: 'tblqHhr5aZwr4QOZ',
+      paramDetail: 'tblesT69TDCUKzhs',
+      qualityGate: 'tblUCH6PxC1sQwXx',
+      lifecycle: 'tblJ8G3X1001g9oA',
+      queryLibrary: 'tblAhScEFQYAJC2g',
+    };
     return {
       id: instanceId,
       pluginKey: '@official-plugins/feishu-bitable',
@@ -61,24 +82,13 @@ export class BitableService {
       paramsSchema: {},
       formValue: {
         appToken: BITABLE_APP_TOKEN,
-        tableID: this.getTableId(instanceKey),
+        tableID: tableIdMap[instanceKey],
         fields: BITABLE_FIELDS[instanceKey] || [],
       },
       createdAt: 0,
       updatedAt: 0,
       createdBy: 0,
     };
-  }
-
-  private getTableId(instanceKey: BitableInstanceKey): string {
-    const tableIdMap: Record<BitableInstanceKey, string> = {
-      workbench: 'tblqHhr5aZwr4QOZ',
-      paramDetail: 'tblesT69TDCUKzhs',
-      qualityGate: 'tblUCH6PxC1sQwXx',
-      lifecycle: 'tblJ8G3X1001g9oA',
-      queryLibrary: 'tblAhScEFQYAJC2g',
-    };
-    return tableIdMap[instanceKey];
   }
 
   async searchRecords(
@@ -96,22 +106,11 @@ export class BitableService {
       const result = await this.capabilityService
         .loadWithConfig(config)
         .call('searchRecords', params);
-      const raw = result as {
-        hasMore: boolean;
-        pageToken?: string;
-        total?: number;
-        records: Array<{ id: string; record?: Record<string, unknown>; fields?: Record<string, unknown> }>;
-      };
-      return {
-        hasMore: raw.hasMore,
-        pageToken: raw.pageToken,
-        total: raw.total,
-        records: (raw.records || []).map((r) => ({
-          id: r.id,
-          record: r.record || r.fields || {},
-        })),
-      };
+      return result as BitableSearchResult;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
+        return this.localFallback.searchRecords(instanceKey, params);
+      }
       this.handleError(config.id, 'searchRecords', error);
     }
   }
@@ -125,17 +124,15 @@ export class BitableService {
       const result = await this.capabilityService
         .loadWithConfig(config)
         .call('getRecord', { recordID: recordId });
-      const typed = result as {
-        id: string;
-        record?: Record<string, unknown>;
-        fields?: Record<string, unknown>;
-      };
-      const record = typed.record || typed.fields;
-      if (!record) {
+      const typed = result as { id: string; record?: Record<string, unknown> };
+      if (!typed.record) {
         return null;
       }
-      return { id: typed.id, record };
+      return { id: typed.id, record: typed.record };
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
+        return this.localFallback.getRecord(instanceKey, recordId);
+      }
       this.handleError(config.id, 'getRecord', error);
     }
   }
@@ -150,9 +147,12 @@ export class BitableService {
         .loadWithConfig(config)
         .call('batchAddRecords', {
           records: records.map((r) => ({ record: r })),
-        });
+      });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
+        return this.localFallback.batchAddRecords(instanceKey, records);
+      }
       this.handleError(config.id, 'batchAddRecords', error);
     }
   }
@@ -168,6 +168,9 @@ export class BitableService {
         .call('batchUpdateRecords', { records: updates });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
+        return this.localFallback.batchUpdateRecords(instanceKey, updates);
+      }
       this.handleError(config.id, 'batchUpdateRecords', error);
     }
   }
@@ -183,6 +186,9 @@ export class BitableService {
         .call('deleteRecords', { recordIDs: recordIds });
       return (result as { success: boolean }).success;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'deleteRecords')) {
+        return this.localFallback.deleteRecords(instanceKey, recordIds);
+      }
       this.handleError(config.id, 'deleteRecords', error);
     }
   }
@@ -206,8 +212,30 @@ export class BitableService {
         .call('aggregateQuery', params);
       return result as BitableAggregateResult;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'aggregateQuery')) {
+        return this.localFallback.aggregateQuery();
+      }
       this.handleError(config.id, 'aggregateQuery', error);
     }
+  }
+
+  private canUseLocalFallback(
+    error: unknown,
+    instanceKey: BitableInstanceKey,
+    actionKey: string,
+  ): boolean {
+    if (!isPluginMissingError(error) || !shouldUseLocalBitableFallback()) {
+      return false;
+    }
+
+    this.logger.warn(
+      JSON.stringify({
+        message: 'Using local bitable fallback because official plugin is missing in local dev',
+        instanceKey,
+        actionKey,
+      }),
+    );
+    return true;
   }
 
   private handleError(
@@ -228,6 +256,11 @@ export class BitableService {
       }),
     );
 
+    if (isPluginMissingError(error)) {
+      throw new ServiceUnavailableException(
+        '本地缺少飞书 Base 官方插件：请先完成 action-plugin init；线上妙搭发布后会由平台安装插件。',
+      );
+    }
     if (errorName === 'NotFoundException' || errorMessage.includes('not found') || errorMessage.includes('不存在')) {
       throw new NotFoundException('记录不存在或已被删除');
     }

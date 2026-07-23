@@ -17,9 +17,11 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const host = process.env.SERVER_HOST || 'localhost';
   const port = Number(process.env.SERVER_PORT || '3000');
+  const clientDistDir = join(process.cwd(), 'dist/client');
 
   // 注册视图引擎, 渲染 client 目录下的 html 文件
-  app.setBaseViewsDir(join(process.cwd(), 'dist/client'));
+  app.useStaticAssets(clientDistDir);
+  app.setBaseViewsDir(clientDistDir);
   app.setViewEngine('html');
   app.engine('html', hbsExpressEngine);
 

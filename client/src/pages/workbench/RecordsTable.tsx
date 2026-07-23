@@ -275,52 +275,55 @@ const RecordsTable = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((rec) => (
-                  <TableRow
-                    key={rec.recordId}
-                    className="h-9 cursor-pointer hover:bg-accent/50"
-                    onClick={() => onRowClick(rec.recordId)}
-                  >
-                    <TableCell className="px-3 py-0 font-mono text-xs text-primary">
-                      {rec.evtId || '-'}
-                    </TableCell>
-                    <TableCell className="px-3 py-0 text-xs text-foreground">
-                      <span className="block max-w-[320px] truncate">
-                        {rec.eventName || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-3 py-0">
-                      <Badge
-                        className={`h-5 rounded-sm px-1.5 text-[10px] font-medium ${STAGE_VARIANT[rec.stage] || ''}`}
-                      >
-                        {rec.stage}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="px-3 py-0">
-                      <Badge
-                        className={`h-5 w-8 justify-center rounded-sm px-1 text-[10px] font-medium ${PRIORITY_VARIANT[rec.priority] || PRIORITY_VARIANT.P3}`}
-                      >
-                        {rec.priority || '-'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="px-3 py-0 text-xs text-foreground">
-                      {rec.platform || '-'}
-                    </TableCell>
-                    <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                      {rec.dataOwner.length > 0
-                        ? `${rec.dataOwner.length} 人`
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                      {rec.devOwner.length > 0
-                        ? `${rec.devOwner.length} 人`
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                      {formatTime(rec.updatedAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {records.map((rec) => {
+                  const displayStage = rec.uiStage || rec.stage;
+                  return (
+                    <TableRow
+                      key={rec.recordId}
+                      className="h-9 cursor-pointer hover:bg-accent/50"
+                      onClick={() => onRowClick(rec.recordId)}
+                    >
+                      <TableCell className="px-3 py-0 font-mono text-xs text-primary">
+                        {rec.evtId || '-'}
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-foreground">
+                        <span className="block max-w-[320px] truncate">
+                          {rec.eventName || '-'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-3 py-0">
+                        <Badge
+                          className={`h-5 rounded-sm px-1.5 text-[10px] font-medium ${STAGE_VARIANT[displayStage] || ''}`}
+                        >
+                          {displayStage}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-3 py-0">
+                        <Badge
+                          className={`h-5 w-8 justify-center rounded-sm px-1 text-[10px] font-medium ${PRIORITY_VARIANT[rec.priority] || PRIORITY_VARIANT.P3}`}
+                        >
+                          {rec.priority || '-'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-foreground">
+                        {rec.platform || '-'}
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-muted-foreground">
+                        {rec.dataOwner.length > 0
+                          ? `${rec.dataOwner.length} 人`
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-muted-foreground">
+                        {rec.devOwner.length > 0
+                          ? `${rec.devOwner.length} 人`
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-muted-foreground">
+                        {formatTime(rec.updatedAt)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {hasMore && (
