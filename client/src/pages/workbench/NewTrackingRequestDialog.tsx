@@ -89,13 +89,11 @@ const defaultForm = () => ({
 
 const defaultParticipants = (
   actorId?: string,
-  actorLarkId?: string,
   actorName?: string,
 ): ParticipantForm => {
-  const currentUser = actorLarkId || actorId
+  const currentUser = actorId
     ? [{
-        user_id: actorLarkId || actorId || '',
-        larkUserId: actorLarkId || actorId || '',
+        user_id: actorId,
         name: actorName || '当前用户',
       }]
     : [];
@@ -118,7 +116,7 @@ export default function NewTrackingRequestDialog({
 }: NewTrackingRequestDialogProps) {
   const [form, setForm] = useState(defaultForm);
   const [participants, setParticipants] = useState<ParticipantForm>(() =>
-    defaultParticipants(actorId, actorLarkId, actorName),
+    defaultParticipants(actorId, actorName),
   );
   const [params, setParams] = useState<DraftParam[]>([emptyParam()]);
   const [saving, setSaving] = useState(false);
@@ -126,9 +124,9 @@ export default function NewTrackingRequestDialog({
   useEffect(() => {
     if (!open) return;
     setForm(defaultForm());
-    setParticipants(defaultParticipants(actorId, actorLarkId, actorName));
+    setParticipants(defaultParticipants(actorId, actorName));
     setParams([emptyParam()]);
-  }, [open, actorId, actorLarkId, actorName]);
+  }, [open, actorId, actorName]);
 
   const updateField = (key: keyof ReturnType<typeof defaultForm>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -538,7 +536,7 @@ function ProjectUserSelect({
     <UserSelect
       multiple
       valueType="object"
-      accountType="lark"
+      accountType="apaas"
       value={value}
       onChange={(nextValue) => onChange(Array.isArray(nextValue) ? toParticipantRefs(nextValue) : [])}
       disabled={disabled}
@@ -551,9 +549,11 @@ function ProjectUserSelect({
 }
 
 function toParticipantIds(value: TrackingUserRef[]): string[] {
-  return value
-    .map((item) => item.larkUserId || item.user_id)
-    .filter(Boolean);
+  return uniqueStrings(
+    value
+      .map((item) => extractNumericUserId(item))
+      .filter((id): id is string => Boolean(id)),
+  );
 }
 
 function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
@@ -561,14 +561,47 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
     .map<TrackingUserRef | null>((item) => {
       if (!item || typeof item !== 'object') return null;
       const user = item as Record<string, unknown>;
-      const id = user.larkUserId || user.lark_id || user.open_id || user.openId || user.user_id || user.userId;
-      if (typeof id !== 'string' && typeof id !== 'number') return null;
+      const id = extractNumericUserId(user);
+      if (!id) return null;
+      const larkUserId = [
+        user.larkUserId,
+        user.lark_user_id,
+        user.lark_id,
+        user.open_id,
+        user.openId,
+      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
       const name = user.name;
       return {
-        user_id: String(id),
-        larkUserId: String(id),
-        name: typeof name === 'string' ? name : String(id),
+        user_id: id,
+        larkUserId,
+        name: typeof name === 'string' ? name : id,
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
+}
+
+function extractNumericUserId(value: unknown): string {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? String(value) : '';
+  if (typeof value === 'string') return /^\d+$/.test(value.trim()) ? value.trim() : '';
+  if (!value || typeof value !== 'object') return '';
+
+  const user = value as Record<string, unknown>;
+  for (const key of [
+    'user_id',
+    'userId',
+    'userID',
+    'miaoda_user_id',
+    'miaodaUserID',
+    'employee_id',
+    'employeeID',
+    'id',
+  ]) {
+    const id = extractNumericUserId(user[key]);
+    if (id) return id;
+  }
+  return '';
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
 }

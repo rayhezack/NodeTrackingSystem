@@ -171,7 +171,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
               <UserSelect
                 multiple
                 valueType="object"
-                accountType="lark"
+                accountType="apaas"
                 value={toUserArray(formData[field.key])}
                 onChange={(value) => handleChange(field.key, Array.isArray(value) ? value : [])}
                 disabled={disabled}
@@ -229,31 +229,13 @@ function toTextValue(value: FormValue | undefined): string {
 function toStringArray(value: unknown): string[] {
   if (value == null) return [];
   if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === 'string' || typeof item === 'number') return String(item);
-        if (item && typeof item === 'object') {
-          const objectValue = item as Record<string, unknown>;
-          const id =
-            objectValue.open_id ||
-            objectValue.openId ||
-            objectValue.larkUserId ||
-            objectValue.lark_user_id ||
-            objectValue.lark_id ||
-            objectValue.id ||
-            objectValue.user_id ||
-            objectValue.userId;
-          return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
-        }
-        return '';
-      })
-      .filter(Boolean);
+    return uniqueStrings(value.map(extractNumericUserId).filter(Boolean));
   }
   if (typeof value === 'string') {
-    return value
+    return uniqueStrings(value
       .split(/[、,，/]/)
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter((item) => /^\d+$/.test(item)));
   }
   return [];
 }
@@ -264,29 +246,54 @@ function toUserArray(value: unknown): TrackingUserRef[] {
   return values
     .map<TrackingUserRef | null>((item) => {
       if (typeof item === 'string' || typeof item === 'number') {
-        const id = String(item);
-        return { user_id: id, larkUserId: id, name: id };
+        const id = extractNumericUserId(item);
+        return id ? { user_id: id, name: id } : null;
       }
       if (item && typeof item === 'object') {
         const objectValue = item as Record<string, unknown>;
-        const id =
-          objectValue.open_id ||
-          objectValue.openId ||
-          objectValue.larkUserId ||
-          objectValue.lark_user_id ||
-          objectValue.lark_id ||
-          objectValue.id ||
-          objectValue.user_id ||
-          objectValue.userId;
-        if (typeof id !== 'string' && typeof id !== 'number') return null;
+        const id = extractNumericUserId(objectValue);
+        if (!id) return null;
+        const larkUserId = [
+          objectValue.larkUserId,
+          objectValue.lark_user_id,
+          objectValue.lark_id,
+          objectValue.open_id,
+          objectValue.openId,
+        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
         const name = objectValue.name;
         return {
-          user_id: String(id),
-          larkUserId: String(id),
-          name: typeof name === 'string' ? name : String(id),
+          user_id: id,
+          larkUserId,
+          name: typeof name === 'string' ? name : id,
         };
       }
       return null;
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
+}
+
+function extractNumericUserId(value: unknown): string {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? String(value) : '';
+  if (typeof value === 'string') return /^\d+$/.test(value.trim()) ? value.trim() : '';
+  if (!value || typeof value !== 'object') return '';
+
+  const user = value as Record<string, unknown>;
+  for (const key of [
+    'user_id',
+    'userId',
+    'userID',
+    'miaoda_user_id',
+    'miaodaUserID',
+    'employee_id',
+    'employeeID',
+    'id',
+  ]) {
+    const id = extractNumericUserId(user[key]);
+    if (id) return id;
+  }
+  return '';
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
 }

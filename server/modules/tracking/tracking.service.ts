@@ -163,10 +163,12 @@ export class TrackingService {
     if (!actorCandidates.length) {
       return { items: [] };
     }
+    const permissionConfig = await this.getStoredPermissionConfig();
+    const isAdmin = isAdminActor(actorCandidates, permissionConfig);
 
     const items = records
       .map(({ record, source }) => {
-        const action = getTodoAction(record, actorCandidates);
+        const action = isAdmin ? getAdminTodoAction(record) : getTodoAction(record, actorCandidates);
         if (!action) return null;
         const trackingRecord = this.toTrackingRecord(record, source);
         return {
@@ -347,20 +349,17 @@ export class TrackingService {
       throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
     }
 
-    const actorCellId = body.actorLarkId || body.actorId;
+    const actorCellId = body.actorId;
     const requesterCells = createUserCells(body.requesterIds);
     const recorderCells = createUserCells(
       body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
-      body.actorName,
     );
     const dataOwnerCells = createUserCells(
       body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : [],
-      body.actorName,
     );
     const devOwnerCells = createUserCells(body.devOwnerIds);
     const dsAcceptorCells = createUserCells(
       body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : [],
-      body.actorName,
     );
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
@@ -790,26 +789,49 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
   const values = Array.isArray(value) ? value : value ? [value] : [];
   return values.reduce(
     (acc, item) => {
-      if (typeof item === 'string') {
-        acc.ids.push(item);
-        acc.items.push({ user_id: item, larkUserId: item, name: item });
+      if (typeof item === 'string' || typeof item === 'number') {
+        const id = String(item);
+        acc.ids.push(id);
+        acc.items.push({ user_id: id, name: id });
         return acc;
       }
       if (item && typeof item === 'object') {
         const user = item as Record<string, unknown>;
         const id = [
-          user.id,
           user.user_id,
           user.userId,
+          user.miaoda_user_id,
+          user.miaodaUserID,
+          user.employee_id,
+          user.employeeID,
+          user.id,
           user.open_id,
           user.openId,
           user.larkUserId,
           user.lark_user_id,
-        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0) || '';
+        ].find(
+          (candidate): candidate is string | number =>
+            (typeof candidate === 'string' && candidate.length > 0) ||
+            typeof candidate === 'number',
+        ) || '';
         const name = typeof user.name === 'string' ? user.name : id;
-        if (id) acc.ids.push(id);
+        const normalizedId = id ? String(id) : '';
+        const larkUserId = [
+          user.larkUserId,
+          user.lark_user_id,
+          user.open_id,
+          user.openId,
+          user.lark_id,
+        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
+        if (normalizedId) acc.ids.push(normalizedId);
         if (name) acc.names.push(name);
-        if (id) acc.items.push({ user_id: id, larkUserId: id, name });
+        if (normalizedId) {
+          acc.items.push({
+            user_id: normalizedId,
+            larkUserId,
+            name: String(name),
+          });
+        }
       }
       return acc;
     },
@@ -845,20 +867,8 @@ function cellTimestamp(value: Cell): number {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function createUserCell(userId?: string, userName?: string): Record<string, string> | null {
-  const id = (userId || '').trim();
-  if (!id) return null;
-  return {
-    id,
-    name: (userName || id).trim(),
-  };
-}
-
-function createUserCells(
-  value?: unknown,
-  userName?: string,
-): Array<Record<string, string>> {
-  const ids = Array.isArray(value)
+function createUserCells(value?: unknown): number[] {
+  const values = Array.isArray(value)
     ? value
     : typeof value === 'string'
       ? value.split(/[、,，/]/)
@@ -866,29 +876,40 @@ function createUserCells(
         ? [value]
         : [];
 
-  return uniqueStrings(
-    ids
-      .map((item) => {
-        if (typeof item === 'string' || typeof item === 'number') return String(item);
-        if (item && typeof item === 'object') {
-          const user = item as Record<string, unknown>;
-          const id =
-            user.open_id ||
-            user.openId ||
-            user.larkUserId ||
-            user.lark_user_id ||
-            user.lark_id ||
-            user.id ||
-            user.user_id ||
-            user.userId;
-          return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
-        }
-        return '';
-      })
-      .filter(Boolean),
-  )
-    .map((id) => createUserCell(id, userName))
-    .filter((cell): cell is Record<string, string> => Boolean(cell));
+  return uniqueNumbers(values.map(extractNumericUserId).filter((id): id is number => id !== null));
+}
+
+function extractNumericUserId(item: unknown): number | null {
+  if (typeof item === 'number') {
+    return Number.isFinite(item) && item > 0 ? item : null;
+  }
+  if (typeof item === 'string') {
+    const trimmed = item.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const id = Number(trimmed);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  if (item && typeof item === 'object') {
+    const user = item as Record<string, unknown>;
+    for (const key of [
+      'user_id',
+      'userId',
+      'userID',
+      'miaoda_user_id',
+      'miaodaUserID',
+      'employee_id',
+      'employeeID',
+      'id',
+    ]) {
+      const id = extractNumericUserId(user[key]);
+      if (id !== null) return id;
+    }
+  }
+  return null;
+}
+
+function uniqueNumbers(values: number[] = []): number[] {
+  return Array.from(new Set(values));
 }
 
 function emptyPermissionConfig(): PermissionConfig {
@@ -932,6 +953,17 @@ function uniqueStrings(values: string[] = []): string[] {
 
 function isBootstrapAdmin(actorId?: string): boolean {
   return Boolean(actorId && BOOTSTRAP_ADMIN_USER_IDS.has(actorId));
+}
+
+function isAdminActor(
+  actorCandidates: string[],
+  permissionConfig?: PermissionConfig | null,
+): boolean {
+  if (actorCandidates.some((candidate) => isBootstrapAdmin(candidate))) {
+    return true;
+  }
+  if (!permissionConfig) return false;
+  return intersects(actorCandidates, permissionConfig.admins || []);
 }
 
 function toPlatformCell(platform?: string, source?: TrackingSource): string[] {
@@ -1055,6 +1087,27 @@ function getTodoAction(
         ]) };
       }
       return null;
+    default:
+      return null;
+  }
+}
+
+function getAdminTodoAction(
+  record: BitableRecord,
+): { stage: string; targetStage: string; todoRole: string } | null {
+  const baseStage = cellText(record.record['流程阶段']);
+  switch (baseStage) {
+    case '需求录入':
+      return { stage: '埋点提需', targetStage: 'requirement', todoRole: '管理员' };
+    case '埋点设计':
+      return { stage: '埋点设计', targetStage: 'design', todoRole: '管理员' };
+    case '评审通过':
+    case '埋点开发':
+      return { stage: '埋点开发', targetStage: 'dev', todoRole: '管理员' };
+    case '数据验收':
+      return { stage: '埋点校验', targetStage: 'acceptance', todoRole: '管理员' };
+    case '上线监控':
+      return { stage: '埋点上线', targetStage: 'launch', todoRole: '管理员' };
     default:
       return null;
   }
