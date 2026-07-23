@@ -39,8 +39,11 @@ export function getCurrentActor(userProfile: unknown): CurrentActor {
   const name = [
     profile.name,
     profile.userName,
+    profile.user_name,
     profile.email,
-  ].find((value): value is string => typeof value === 'string' && value.length > 0);
+  ]
+    .map(toText)
+    .find((value) => value.length > 0);
 
   if (!id && !larkId && !name) return localActor || {};
   return {
@@ -52,6 +55,18 @@ export function getCurrentActor(userProfile: unknown): CurrentActor {
 
 export function getCurrentActorId(userProfile: unknown): string | undefined {
   return getCurrentActor(userProfile).id;
+}
+
+function toText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    for (const key of ['zh_cn', 'name', 'en_us', 'ja_jp']) {
+      const item = objectValue[key];
+      if (typeof item === 'string' && item.trim()) return item;
+    }
+  }
+  return '';
 }
 
 function getLocalDevActor(): CurrentActor | undefined {

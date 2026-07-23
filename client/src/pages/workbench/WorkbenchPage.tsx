@@ -16,7 +16,6 @@ import type {
   CreateTrackingRecordRequest,
   StageStat,
   TodoItem,
-  TrackingSourceFilter,
   TrackingRecord,
 } from '@shared/api.interface';
 
@@ -26,7 +25,6 @@ const WorkbenchPage = () => {
   const actor = getCurrentActor(userProfile);
   const [createOpen, setCreateOpen] = useState(false);
   const [canCreate, setCanCreate] = useState(true);
-  const [sourceFilter, setSourceFilter] = useState<TrackingSourceFilter>('all');
 
   // 阶段统计
   const [stats, setStats] = useState<StageStat[]>([]);
@@ -58,7 +56,7 @@ const WorkbenchPage = () => {
     setStatsLoading(true);
     setStatsError(null);
     try {
-      const res = await trackingApi.getStageStats(sourceFilter);
+      const res = await trackingApi.getStageStats('all');
       setStats(res.items);
     } catch (err) {
       logger.error('加载阶段统计失败', err);
@@ -66,14 +64,14 @@ const WorkbenchPage = () => {
     } finally {
       setStatsLoading(false);
     }
-  }, [sourceFilter]);
+  }, []);
 
   // 加载我的待办
   const loadTodos = useCallback(async () => {
     setTodosLoading(true);
     setTodosError(null);
     try {
-      const res = await trackingApi.getMyTodos(10, sourceFilter);
+      const res = await trackingApi.getMyTodos(10, 'all');
       setTodos(res.items);
     } catch (err) {
       logger.error('加载我的待办失败', err);
@@ -81,7 +79,7 @@ const WorkbenchPage = () => {
     } finally {
       setTodosLoading(false);
     }
-  }, [sourceFilter]);
+  }, []);
 
   // 加载需求列表
   const loadRecords = useCallback(
@@ -94,7 +92,7 @@ const WorkbenchPage = () => {
       setRecordsError(null);
       try {
         const res = await trackingApi.getTrackingRecords({
-          source: sourceFilter,
+          source: 'all',
           keyword: keyword || undefined,
           stage: stageFilter || undefined,
           priority: priorityFilter || undefined,
@@ -118,7 +116,7 @@ const WorkbenchPage = () => {
         setLoadingMore(false);
       }
     },
-    [sourceFilter, keyword, stageFilter, priorityFilter, platformFilter, pageToken],
+    [keyword, stageFilter, priorityFilter, platformFilter, pageToken],
   );
 
   // 初始加载
@@ -151,7 +149,7 @@ const WorkbenchPage = () => {
   useEffect(() => {
     loadRecords(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceFilter, keyword, stageFilter, priorityFilter, platformFilter]);
+  }, [keyword, stageFilter, priorityFilter, platformFilter]);
 
   // 点击阶段卡片筛选
   const handleStageClick = (stage: string) => {
@@ -185,22 +183,19 @@ const WorkbenchPage = () => {
           <div>
             <h1 className="text-lg font-semibold text-foreground">埋点工作台</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              管理 App / Web 埋点需求全生命周期，快速定位待办与状态流转
+              统一管理多端埋点需求全生命周期，快速定位待办与状态流转
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <SourceSegment value={sourceFilter} onChange={setSourceFilter} />
-            <Button
-              size="sm"
-              className="h-8 rounded-sm"
-              onClick={() => setCreateOpen(true)}
-              disabled={!canCreate}
-              title={canCreate ? '新增埋点需求' : '只有管理员或 DS 可以新增需求'}
-            >
-              <Plus className="h-4 w-4" />
-              新增需求
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            className="h-8 rounded-sm"
+            onClick={() => setCreateOpen(true)}
+            disabled={!canCreate}
+            title={canCreate ? '新增埋点需求' : '只有管理员或 DS 可以新增需求'}
+          >
+            <Plus className="h-4 w-4" />
+            新增需求
+          </Button>
         </div>
 
         {/* 阶段统计卡片 */}
@@ -246,7 +241,6 @@ const WorkbenchPage = () => {
 
         <NewTrackingRequestDialog
           open={createOpen}
-          defaultSource={sourceFilter === 'all' ? 'app' : sourceFilter}
           actorId={actor.id}
           actorLarkId={actor.larkId}
           actorName={actor.name}
@@ -257,38 +251,5 @@ const WorkbenchPage = () => {
     </div>
   );
 };
-
-function SourceSegment({
-  value,
-  onChange,
-}: {
-  value: TrackingSourceFilter;
-  onChange: (value: TrackingSourceFilter) => void;
-}) {
-  const options: Array<{ value: TrackingSourceFilter; label: string }> = [
-    { value: 'all', label: '全部' },
-    { value: 'app', label: 'App' },
-    { value: 'web', label: 'Web' },
-  ];
-
-  return (
-    <div className="flex h-8 overflow-hidden rounded-sm border border-border bg-card">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={`px-3 text-xs transition-colors ${
-            value === option.value
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export default WorkbenchPage;

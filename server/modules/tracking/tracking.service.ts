@@ -106,6 +106,11 @@ const PARAM_FIELDS = [
 const PERMISSION_RECORD_TYPE = '权限配置';
 const PERMISSION_RECORD_NAME = '系统权限配置';
 const PERMISSION_RECORD_EVT_ID = '__system_permissions__';
+const BOOTSTRAP_ADMIN_USER_IDS = new Set([
+  // 当前 App 创建/开发账号在妙搭运行时与本地开发态可能拿到不同 user_id，均作为兜底管理员。
+  '1867390536304713',
+  '7648831973842095079',
+]);
 const APP_DESIGN_PARAM_LINK =
   'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblesT69TDCUKzhs';
 const WEB_DESIGN_PARAM_LINK =
@@ -235,7 +240,8 @@ export class TrackingService {
         ? Boolean(
             actorId &&
               (effectiveConfig.admins.length === 0 ||
-                effectiveConfig.admins.includes(actorId)),
+                effectiveConfig.admins.includes(actorId) ||
+                isBootstrapAdmin(actorId)),
           )
         : Boolean(actorId),
     };
@@ -256,7 +262,8 @@ export class TrackingService {
     if (
       existing &&
       currentConfig.admins.length > 0 &&
-      !currentConfig.admins.includes(actorId)
+      !currentConfig.admins.includes(actorId) &&
+      !isBootstrapAdmin(actorId)
     ) {
       throw new ForbiddenException('只有管理员可以更新权限配置');
     }
@@ -267,30 +274,18 @@ export class TrackingService {
       updatedAt: Date.now(),
       updatedBy: actorId,
     });
-    const actorCell = createUserCell(body.actorLarkId || actorId, body.actorName);
 
+    // 权限配置是应用自身状态，不是业务埋点需求。写成 Base「模板」记录并只写稳定字段，
+    // 避免因为业务枚举、人员字段或系统只读字段导致初始化 400。
     const record = {
       evt_id: PERMISSION_RECORD_EVT_ID,
       '事件中文名': PERMISSION_RECORD_NAME,
       '需求背景': JSON.stringify(nextConfig),
       '流程阶段': '稳定归档',
-      '记录类型': PERMISSION_RECORD_TYPE,
-      '优先级': 'P3',
-      '端': 'App通用',
-      '数据负责人': actorCell ? [actorCell] : [],
-      '研发负责人': [],
-      'DS验收人': [],
-      '评审状态': '',
-      '埋点开发状态': '',
-      'DS验收状态': '',
-      '发布门禁状态': '',
-      '发布状态': '',
-      '正式状态': '系统记录',
+      '记录类型': '模板',
+      '优先级': 'P2',
+      '端': 'iOS、Android',
       '版本': 'system',
-      '变更类型': '权限配置',
-      '创建时间': existing
-        ? cellTimestamp(existing.record['创建时间']) || Date.now()
-        : Date.now(),
     };
 
     if (existing) {
@@ -327,7 +322,6 @@ export class TrackingService {
     const ownerCell = createUserCell(body.actorLarkId || body.actorId, body.actorName);
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
-    const now = Date.now();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         evt_id: evtId,
@@ -365,7 +359,6 @@ export class TrackingService {
         '参数明细入口': source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
         '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
         '稳定归档时间': '',
-        '创建时间': now,
       },
     ]);
 
@@ -505,7 +498,9 @@ export class TrackingService {
     });
     return (
       result.records.find(
-        (record) => cellText(record.record['记录类型']) === PERMISSION_RECORD_TYPE,
+        (record) =>
+          cellText(record.record['evt_id']) === PERMISSION_RECORD_EVT_ID ||
+          cellText(record.record['记录类型']) === PERMISSION_RECORD_TYPE,
       ) || null
     );
   }
@@ -532,7 +527,12 @@ export class TrackingService {
     return result.records.filter((record) => {
       const evtId = cellText(record.record['evt_id']);
       const type = cellText(record.record['记录类型']);
-      return Boolean(evtId) && type !== '模板' && type !== PERMISSION_RECORD_TYPE;
+      return (
+        Boolean(evtId) &&
+        evtId !== PERMISSION_RECORD_EVT_ID &&
+        type !== '模板' &&
+        type !== PERMISSION_RECORD_TYPE
+      );
     });
   }
 
@@ -798,6 +798,10 @@ function uniqueStrings(values: string[] = []): string[] {
   );
 }
 
+function isBootstrapAdmin(actorId?: string): boolean {
+  return Boolean(actorId && BOOTSTRAP_ADMIN_USER_IDS.has(actorId));
+}
+
 function normalizeSource(value?: string): TrackingSource {
   return value === 'web' ? 'web' : 'app';
 }
@@ -858,11 +862,12 @@ function calculateRecordPermissions(
   if (!permissionConfig) return base;
 
   const isAdmin = permissionConfig.admins.includes(actorId);
+  const isBootstrap = isBootstrapAdmin(actorId);
   const isDs = permissionConfig.dataScientists.includes(actorId);
   const isDeveloper = permissionConfig.developers.includes(actorId);
   const isAcceptor = permissionConfig.acceptors.includes(actorId);
 
-  if (isAdmin) {
+  if (isAdmin || isBootstrap) {
     return {
       canEditRequirement: true,
       canEditDesign: true,

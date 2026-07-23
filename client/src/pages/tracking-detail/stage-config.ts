@@ -32,6 +32,7 @@ export const PLATFORM_OPTIONS = [
   { value: 'Android', label: 'Android' },
   { value: 'iOS、Android', label: 'iOS、Android' },
   { value: 'App通用', label: 'App通用' },
+  { value: 'Web', label: 'Web' },
 ];
 
 // 评审状态选项

@@ -28,7 +28,6 @@ import type {
 
 interface NewTrackingRequestDialogProps {
   open: boolean;
-  defaultSource?: TrackingSource;
   actorId?: string;
   actorLarkId?: string;
   actorName?: string;
@@ -54,21 +53,25 @@ const emptyParam = (): DraftParam => ({
   example: '',
 });
 
-const defaultForm = (source: TrackingSource = 'app') => ({
-  source,
+const WEB_COMMON_PROPS =
+  'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os';
+const APP_COMMON_PROPS = 'user_id、device_id、app_version、platform';
+
+const getSourceByPlatform = (platform: string): TrackingSource =>
+  platform === 'Web' ? 'web' : 'app';
+
+const defaultForm = () => ({
+  source: 'app' as TrackingSource,
   evtId: '',
   eventName: '',
   priority: 'P2',
-  platform: source === 'web' ? 'Web' : 'iOS、Android',
+  platform: 'iOS、Android',
   requirementBackground: '',
   metricScenario: '',
   eventDefinition: '',
   triggerTiming: '',
-  handler: source === 'web' ? '前端' : '客户端',
-  commonProps:
-    source === 'web'
-      ? 'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os'
-      : 'user_id、device_id、app_version、platform',
+  handler: '客户端',
+  commonProps: APP_COMMON_PROPS,
   version: '1.0.0',
   minVersion: '1.0.0',
   changeType: '新增',
@@ -76,39 +79,38 @@ const defaultForm = (source: TrackingSource = 'app') => ({
 
 export default function NewTrackingRequestDialog({
   open,
-  defaultSource = 'app',
   actorId,
   actorLarkId,
   actorName,
   onClose,
   onSubmit,
 }: NewTrackingRequestDialogProps) {
-  const [form, setForm] = useState(() => defaultForm(defaultSource));
+  const [form, setForm] = useState(defaultForm);
   const [params, setParams] = useState<DraftParam[]>([emptyParam()]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setForm(defaultForm(defaultSource));
+    setForm(defaultForm());
     setParams([emptyParam()]);
-  }, [open, defaultSource]);
+  }, [open]);
 
   const updateField = (key: keyof ReturnType<typeof defaultForm>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSourceChange = (source: TrackingSource) => {
+  const handlePlatformChange = (platform: string) => {
+    const source = getSourceByPlatform(platform);
     setForm((prev) => ({
       ...prev,
       source,
-      platform: source === 'web' ? 'Web' : prev.platform === 'Web' ? 'iOS、Android' : prev.platform,
+      platform,
       handler: source === 'web' ? '前端' : prev.handler === '前端' ? '客户端' : prev.handler,
       commonProps:
         source === 'web'
-          ? 'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os'
-          : prev.commonProps ===
-              'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os'
-            ? 'user_id、device_id、app_version、platform'
+          ? WEB_COMMON_PROPS
+          : prev.commonProps === WEB_COMMON_PROPS
+            ? APP_COMMON_PROPS
             : prev.commonProps,
     }));
   };
@@ -164,7 +166,7 @@ export default function NewTrackingRequestDialog({
         actorName,
         initialParams,
       });
-      toast.success(`${form.source === 'web' ? 'Web' : 'App'} 需求已创建，并已同步写入对应 Base`);
+      toast.success('需求已创建，并已同步写入对应 Base');
       onClose();
     } catch (error) {
       const msg = error instanceof Error ? error.message : '新增需求失败';
@@ -185,7 +187,7 @@ export default function NewTrackingRequestDialog({
         </DialogHeader>
 
         <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
-          提交后会写入{form.source === 'web' ? '「01 Web埋点设计工作台」' : '「01 埋点设计工作台」'} Base 主表；下方首批参数会同步写入对应「后台-设计参数明细」。
+          根据「端」自动写入对应 Base：Web 写入 Web 埋点设计工作台；iOS / Android / App 通用写入 App 埋点设计工作台。首批参数会同步写入对应参数明细表。
         </div>
 
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
@@ -205,20 +207,6 @@ export default function NewTrackingRequestDialog({
               placeholder="如：视频播放按钮点击"
             />
           </Field>
-          <Field label="埋点域">
-            <Select
-              value={form.source}
-              onValueChange={(value) => handleSourceChange(value as TrackingSource)}
-            >
-              <SelectTrigger className={inputCls}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="app">App 埋点</SelectItem>
-                <SelectItem value="web">Web 埋点</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
           <Field label="优先级">
             <Select value={form.priority} onValueChange={(value) => updateField('priority', value)}>
               <SelectTrigger className={inputCls}>
@@ -234,17 +222,13 @@ export default function NewTrackingRequestDialog({
           <Field label="端">
             <Select
               value={form.platform}
-              onValueChange={(value) => updateField('platform', value)}
-              disabled={form.source === 'web'}
+              onValueChange={handlePlatformChange}
             >
               <SelectTrigger className={inputCls}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(form.source === 'web'
-                  ? ['Web']
-                  : ['iOS', 'Android', 'iOS、Android', 'App通用']
-                ).map((value) => (
+                {['iOS', 'Android', 'iOS、Android', 'App通用', 'Web'].map((value) => (
                   <SelectItem key={value} value={value}>{value}</SelectItem>
                 ))}
               </SelectContent>

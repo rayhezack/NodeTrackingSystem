@@ -150,7 +150,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
                   <SelectValue placeholder={`请选择${field.label}`} />
                 </SelectTrigger>
                 <SelectContent>
-                  {field.options?.map((opt) => (
+                  {getOptionsForField(field, detail).map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -186,5 +186,14 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
     </div>
   );
 };
+
+function getOptionsForField(field: StageConfig['fields'][number], detail: TrackingDetail) {
+  if (field.baseField === '端') {
+    return detail.source === 'web'
+      ? [{ value: 'Web', label: 'Web' }]
+      : (field.options || []).filter((option) => option.value !== 'Web');
+  }
+  return field.options || [];
+}
 
 export default StageForm;

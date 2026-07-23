@@ -12,7 +12,16 @@ export function toReadableError(error: unknown, fallbackMessage: string): Error 
 function extractMessage(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const payload = data as Record<string, unknown>;
-  const candidates = [payload.message, payload.error];
+  const nestedError =
+    payload.error && typeof payload.error === 'object'
+      ? (payload.error as Record<string, unknown>)
+      : null;
+  const candidates = [
+    payload.message,
+    nestedError?.message,
+    nestedError?.details,
+    typeof payload.error === 'string' ? payload.error : undefined,
+  ];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
       return candidate;
