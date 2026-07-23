@@ -17,7 +17,7 @@
       "id": 2,
       "name": "代码架构设计与聚合文件预填",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 coding-guide 和 plugin-guide skill",
         "创建服务端 bitable 共享层目录与模块骨架",
@@ -57,13 +57,14 @@
       ],
       "acceptance": "三个页面路由可访问、两个服务端模块已注册、shared 类型定义完整、聚合文件预填完毕且项目可编译",
       "dependencies": [],
-      "beginTime": 1784803427283
+      "beginTime": 1784803427283,
+      "endTime": 1784803594254
     },
     {
       "id": 3,
       "name": "飞书多维表格插件实例创建与 Schema 确认",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 plugin-guide skill",
         "创建 bitable-workbench 实例（01 埋点设计工作台表）",
@@ -89,7 +90,8 @@
       "acceptance": "5 个 feishu-bitable 插件实例创建完成，每个实例的 Schema 摘录卡已输出且字段映射表明确",
       "dependencies": [
         2
-      ]
+      ],
+      "beginTime": 1784803594381
     },
     {
       "id": 4,
