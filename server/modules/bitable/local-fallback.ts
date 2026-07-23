@@ -16,7 +16,35 @@ const DEV_USER = {
   name: '研发负责人',
 };
 
+const OFFICIAL_PARAM_LINK =
+  'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2&view=vewRdNFVsL';
+
 type Dataset = Record<BitableInstanceKey, Map<string, Record<string, unknown>>>;
+
+function officialEvent(fields: {
+  evtId: string;
+  eventName: string;
+  definition: string;
+  trigger: string;
+  scenario: string;
+  platform?: string;
+  version?: string;
+  status?: string;
+  lifecycleStatus?: string;
+}): Record<string, unknown> {
+  return {
+    evt_id: fields.evtId,
+    '事件中文名': fields.eventName,
+    '端': fields.platform || 'iOS、Android',
+    '上线版本': fields.version || '1.0.0',
+    '状态': fields.status || '已上线',
+    '生命周期状态': fields.lifecycleStatus || '稳定',
+    '参数明细入口': OFFICIAL_PARAM_LINK,
+    '事件定义': fields.definition,
+    '触发时机': fields.trigger,
+    '指标/使用场景': fields.scenario,
+  };
+}
 
 export function isPluginMissingError(error: unknown): boolean {
   const errorMessage = error instanceof Error ? error.message : String(error);
@@ -203,19 +231,114 @@ export class LocalBitableFallback {
     lifecycle: new Map(),
     queryLibrary: new Map([
       [
+        'rec_official_page_view',
+        officialEvent({
+          evtId: 'page_view',
+          eventName: '页面访问',
+          definition: '用户进入任一业务页面时上报，用于统一页面级访问口径。',
+          trigger: '页面完成初始化且首屏可见时触发。',
+          scenario: 'PV、UV、页面转化漏斗、页面来源分析。',
+        }),
+      ],
+      [
+        'rec_official_navigation_bar_click',
+        officialEvent({
+          evtId: 'navigation_bar_click',
+          eventName: '导航栏组件点击',
+          definition: '用户点击顶部或底部导航栏组件时上报。',
+          trigger: '点击导航栏按钮、Tab 或返回入口后触发。',
+          scenario: '导航点击率、入口效率、页面跳转路径分析。',
+        }),
+      ],
+      [
+        'rec_official_banner_expose',
+        officialEvent({
+          evtId: 'banner_expose',
+          eventName: 'banner曝光',
+          definition: 'Banner 进入用户可视区域时上报。',
+          trigger: 'Banner 曝光面积和停留时长达到口径阈值时触发。',
+          scenario: '资源位曝光、CTR 分母、活动触达效率。',
+        }),
+      ],
+      [
+        'rec_official_banner_click',
+        officialEvent({
+          evtId: 'banner_click',
+          eventName: 'banner点击',
+          definition: '用户点击 Banner 资源位时上报。',
+          trigger: '点击 Banner 并发起跳转前触发。',
+          scenario: 'Banner CTR、活动入口转化、素材效果评估。',
+        }),
+      ],
+      [
+        'rec_official_feed_view',
+        officialEvent({
+          evtId: 'feed_view',
+          eventName: '信息流访问',
+          definition: '用户进入信息流页面或列表区域时上报。',
+          trigger: '信息流页面首屏内容渲染完成后触发。',
+          scenario: 'Feed 访问规模、推荐漏斗、内容消费起点。',
+        }),
+      ],
+      [
+        'rec_official_feed_leave',
+        officialEvent({
+          evtId: 'feed_leave',
+          eventName: '信息流离开',
+          definition: '用户离开信息流页面时上报，记录停留和浏览深度。',
+          trigger: '页面退出、切后台或跳转到其他页面时触发。',
+          scenario: 'Feed 停留时长、滑动深度、内容消费质量。',
+        }),
+      ],
+      [
+        'rec_official_form_click',
+        officialEvent({
+          evtId: 'form_click',
+          eventName: '表单点击',
+          definition: '用户点击表单控件或提交入口时上报。',
+          trigger: '点击输入框、选择器、提交按钮等表单元素时触发。',
+          scenario: '表单转化漏斗、字段交互热度、提交前流失分析。',
+        }),
+      ],
+      [
+        'rec_official_form_change',
+        officialEvent({
+          evtId: 'form_change',
+          eventName: '表单信息变动事件',
+          definition: '用户修改表单字段值时上报。',
+          trigger: '字段值变更并完成失焦或确认选择后触发。',
+          scenario: '字段填写率、异常输入识别、表单体验优化。',
+        }),
+      ],
+      [
+        'rec_official_createflow_start',
+        officialEvent({
+          evtId: 'createflow_start',
+          eventName: '创作流程开始',
+          definition: '用户进入创作链路并开始创建内容时上报。',
+          trigger: '点击创作入口或进入创作页后触发。',
+          scenario: '创作漏斗起点、入口转化、用户创作意愿评估。',
+        }),
+      ],
+      [
+        'rec_official_createflow_form_submit',
+        officialEvent({
+          evtId: 'createflow_form_submit',
+          eventName: '创作流程提交',
+          definition: '用户在创作流程中提交表单或任务时上报。',
+          trigger: '点击提交按钮并通过前端基础校验后触发。',
+          scenario: '创作提交率、失败归因、生成任务转化分析。',
+        }),
+      ],
+      [
         'rec_official_app_launch',
-        {
-          evt_id: 'app_launch',
-          '事件中文名': 'App 启动',
-          '端': 'iOS、Android',
-          '上线版本': '1.0.0',
-          '状态': '已上线',
-          '生命周期状态': '稳定',
-          '参数明细入口': 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf',
-          '事件定义': '用户打开 App 并完成初始化时上报。',
-          '触发时机': '冷启动或热启动完成后触发。',
-          '指标/使用场景': 'DAU、启动成功率、启动性能。',
-        },
+        officialEvent({
+          evtId: 'app_launch',
+          eventName: 'App 启动',
+          definition: '用户打开 App 并完成初始化时上报。',
+          trigger: '冷启动或热启动完成后触发。',
+          scenario: 'DAU、启动成功率、启动性能。',
+        }),
       ],
     ]),
   };

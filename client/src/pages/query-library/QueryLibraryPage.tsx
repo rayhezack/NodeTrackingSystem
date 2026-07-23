@@ -6,6 +6,7 @@ import {
   Loader2,
   RefreshCw,
   Database,
+  Info,
 } from "lucide-react";
 import { logger } from "@lark-apaas/client-toolkit/logger";
 import { Input } from "@client/src/components/ui/input";
@@ -216,6 +217,18 @@ const QueryLibraryPage = () => {
             共 {total} 条结果
           </span>
         )}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="space-y-0.5 text-xs">
+          <div className="font-medium text-foreground">
+            正式查询库是已上线埋点的只读资产目录
+          </div>
+          <div className="text-muted-foreground">
+            用于按 evt_id / 事件名查询正式口径、上线状态和参数入口；需求设计、开发、校验仍从「埋点工作台」进入。
+          </div>
+        </div>
       </div>
 
       {/* 表格 */}

@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@client/src/components/ui/badge";
 import {
   Table,
@@ -19,6 +19,38 @@ export interface ExpandedRow {
 
 interface ParamDetailPanelProps {
   rowData?: ExpandedRow;
+}
+
+function extractHttpUrl(value?: string): string {
+  if (!value) return "";
+  return value.trim().match(/https?:\/\/\S+/i)?.[0] ?? "";
+}
+
+function SmartCellValue({
+  value,
+  linkLabel,
+}: {
+  value?: string;
+  linkLabel?: string;
+}) {
+  const rawValue = value?.trim();
+  if (!rawValue) return <span className="text-muted-foreground">-</span>;
+
+  const url = extractHttpUrl(rawValue);
+  if (!url) return <>{rawValue}</>;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+    >
+      <span>{linkLabel || rawValue}</span>
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
 }
 
 export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
@@ -101,10 +133,18 @@ export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
                   )}
                 </TableCell>
                 <TableCell className="text-xs text-foreground/80 whitespace-normal break-words max-w-md">
-                  {param.definition || "-"}
+                  <SmartCellValue
+                    value={param.definition}
+                    linkLabel={
+                      param.paramType === "LINK" ? "打开正式参数表" : undefined
+                    }
+                  />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground font-mono whitespace-normal break-words max-w-xs">
-                  {param.example || "-"}
+                  <SmartCellValue
+                    value={param.example}
+                    linkLabel={param.paramType === "LINK" ? "打开链接" : undefined}
+                  />
                 </TableCell>
               </TableRow>
             ))}
