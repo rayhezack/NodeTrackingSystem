@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  ForbiddenException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { BitableService, type BitableFilter } from '../bitable/bitable.service';
 import {
   STAGE_UI_MAP,
@@ -14,8 +8,8 @@ import {
 } from '../bitable/bitable.constants';
 import {
   getUiStageFromBase,
-  calculatePermissions,
   isStageTransitionValid,
+  calculatePermissions,
 } from '../bitable/bitable.utils';
 import type {
   StageStat,
@@ -39,6 +33,26 @@ interface BaseUserField {
   id?: string;
   user_id?: string;
   name?: string;
+}
+
+function normalizeFieldName(name: string): string {
+  return name.toLowerCase().replace(/[\s_\-]+/g, '');
+}
+
+function findFieldKey(
+  record: Record<string, unknown>,
+  candidates: string[],
+): string | undefined {
+  const keys = Object.keys(record);
+  for (const candidate of candidates) {
+    const norm = normalizeFieldName(candidate);
+    for (const key of keys) {
+      if (normalizeFieldName(key) === norm) {
+        return key;
+      }
+    }
+  }
+  return undefined;
 }
 
 @Injectable()
@@ -71,8 +85,10 @@ export class TrackingService {
   /**
    * 从记录中安全获取字段值（字符串）
    */
-  private getFieldStr(record: Record<string, unknown>, field: string): string {
-    const val = record[field];
+  private getFieldStr(record: Record<string, unknown>, ...candidates: string[]): string {
+    const key = findFieldKey(record, candidates);
+    if (!key) return '';
+    const val = record[key];
     if (val == null) return '';
     if (typeof val === 'string') return val;
     if (Array.isArray(val) && val.length > 0) {
@@ -91,7 +107,7 @@ export class TrackingService {
   async getStageStats(): Promise<{ items: StageStat[] }> {
     const result = await this.bitableService.aggregateQuery('workbench', {
       dimensions: ['流程阶段'],
-      measures: [{ fieldName: '', aggregation: 'count_all', alias: 'count_all' }],
+      measures: [{ fieldName: '流程阶段', aggregation: 'count_all', alias: 'count_all' }],
     });
 
     // 初始化 6 个 UI 节点，数量为 0
@@ -147,16 +163,6 @@ export class TrackingService {
     // 先拉取较多数据，再在内存中按负责人过滤和优先级排序
     // （Base 对 user 字段的过滤操作符有限，用内存过滤更可靠）
     const result = await this.bitableService.searchRecords('workbench', {
-      fieldNames: [
-        'evt_id',
-        '事件名',
-        '流程阶段',
-        '优先级',
-        '平台',
-        '数据负责人',
-        '研发负责人',
-        'DS验收人',
-      ],
       filter,
       pageSize: Math.max(limit * 5, 50),
     });
@@ -185,11 +191,11 @@ export class TrackingService {
 
       todos.push({
         recordId: rec.id,
-        evtId: this.getFieldStr(record, 'evt_id'),
-        eventName: this.getFieldStr(record, '事件名'),
-        stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段')),
-        priority,
-        platform: this.getFieldStr(record, '平台'),
+        evtId: this.getFieldStr(record, 'evt_id', 'evt id', '事件ID'),
+        eventName: this.getFieldStr(record, '事件名', '事件名称'),
+        stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段', '阶段')),
+        priority: this.getFieldStr(record, '优先级'),
+        platform: this.getFieldStr(record, '平台', '端', '适用端'),
         priorityWeight,
       });
     }
@@ -262,18 +268,8 @@ export class TrackingService {
       conditions.length > 0 ? { conjunction: 'and', conditions } : undefined;
 
     const result = await this.bitableService.searchRecords('workbench', {
-      fieldNames: [
-        'evt_id',
-        '事件名',
-        '流程阶段',
-        '优先级',
-        '平台',
-        '数据负责人',
-        '研发负责人',
-        '更新时间',
-      ],
+      fieldNames: ['evt_id', '事件中文名', '流程阶段', '优先级', '端', '数据负责人', 'DS验收人', '创建时间'],
       filter,
-      sort: [{ fieldName: '更新时间', desc: true }],
       pageSize: keyword || owner ? Math.max(pageSize * 3, 100) : pageSize,
       pageToken,
     });
@@ -284,8 +280,8 @@ export class TrackingService {
     if (keyword) {
       const kw = keyword.toLowerCase();
       records = records.filter((rec) => {
-        const evtId = this.getFieldStr(rec.record, 'evt_id').toLowerCase();
-        const eventName = this.getFieldStr(rec.record, '事件名').toLowerCase();
+        const evtId = this.getFieldStr(rec.record, 'evt_id', 'evt id', '事件ID').toLowerCase();
+        const eventName = this.getFieldStr(rec.record, '事件名', '事件名称').toLowerCase();
         return evtId.includes(kw) || eventName.includes(kw);
       });
     }
@@ -311,11 +307,11 @@ export class TrackingService {
 
       return {
         recordId: rec.id,
-        evtId: this.getFieldStr(record, 'evt_id'),
-        eventName: this.getFieldStr(record, '事件名'),
-        stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段')),
+        evtId: this.getFieldStr(record, 'evt_id', 'evt id', '事件ID'),
+        eventName: this.getFieldStr(record, '事件名', '事件名称'),
+        stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段', '阶段')),
         priority: this.getFieldStr(record, '优先级'),
-        platform: this.getFieldStr(record, '平台'),
+        platform: this.getFieldStr(record, '平台', '端', '适用端'),
         dataOwner: this.extractUserIds(record['数据负责人']),
         devOwner: this.extractUserIds(record['研发负责人']),
         updatedAt,

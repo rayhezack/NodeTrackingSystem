@@ -704,111 +704,6 @@ export interface FeishuBitableAppBuriedPointReadonlyOneSearchrecordsOutput {
 // 由 get_plugin_ai_json 自动生成
 // ============================================================
 
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneAggregatequeryInput {
-  /** [object Object] */
-  filter?: {
-    conjunction: string;
-    conditions: {
-      fieldName: string;
-      operator: string;
-      value: string[];
-    }[];
-  };
-  /** [object Object] */
-  expandArrayDimension?: boolean;
-  /** [object Object] */
-  dimensions?: string[];
-  /** [object Object] */
-  measures?: {
-    fieldName: string;
-    aggregation: string;
-    alias: string;
-  }[];
-  /** [object Object] */
-  pageToken?: string;
-  /** [object Object] */
-  pageSize?: number;
-  /** [object Object] */
-  sort?: {
-    fieldName: string;
-    desc: boolean;
-  }[];
-}
-
-/**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneAggregatequeryOutput>('aggregateQuery', input)
- * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { result, hasMore, pageToken } = result;
- */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneAggregatequeryOutput {
-  /** [object Object] */
-  result: {
-
-  }[];
-  /** [object Object] */
-  hasMore: boolean;
-  /** [object Object] */
-  pageToken?: string;
-}
-
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchaddrecordsInput {
-  /** [object Object] */
-  records: {
-    record: {
-
-    };
-  }[];
-}
-
-/**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchaddrecordsOutput>('batchAddRecords', input)
- * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { records } = result;
- */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchaddrecordsOutput {
-  /** [object Object] */
-  records: {
-    id: string;
-  }[];
-}
-
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchupdaterecordsInput {
-  /** [object Object] */
-  records: {
-    id: string;
-    record: {
-
-    };
-  }[];
-}
-
-/**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchupdaterecordsOutput>('batchUpdateRecords', input)
- * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { records } = result;
- */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneBatchupdaterecordsOutput {
-  /** [object Object] */
-  records: {
-    id: string;
-  }[];
-}
-
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneDeleterecordsInput {
-  /** [object Object] */
-  recordIDs: string[];
-}
-
-/**
- * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneDeleterecordsOutput>('deleteRecords', input)
- * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { success } = result;
- */
-export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneDeleterecordsOutput {
-  /** [object Object] */
-  success: boolean;
-}
-
 export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneGetrecordInput {
   /** [object Object] */
   recordID: string;
@@ -830,6 +725,10 @@ export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneGetrecordOutpu
 
 export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsInput {
   /** [object Object] */
+  pageToken?: string;
+  /** [object Object] */
+  pageSize?: number;
+  /** [object Object] */
   fieldNames?: string[];
   /** [object Object] */
   sort?: {
@@ -845,20 +744,14 @@ export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsI
       value: string[];
     }[];
   };
-  /** [object Object] */
-  pageToken?: string;
-  /** [object Object] */
-  pageSize?: number;
 }
 
 /**
  * capabilityClient.load('feishu_bitable_01_buried_point_design_workbench_1').call<FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsOutput>('searchRecords', input)
  * 直接返回此类型，无 .data 包装，直接解构使用：
- * const { pageToken, total, records, ... } = result;
+ * const { total, records, hasMore, ... } = result;
  */
 export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsOutput {
-  /** [object Object] */
-  pageToken?: string;
   /** [object Object] */
   total?: number;
   /** [object Object] */
@@ -870,5 +763,7 @@ export interface FeishuBitableZeroOneBuriedPointDesignWorkbenchOneSearchrecordsO
   }[];
   /** [object Object] */
   hasMore: boolean;
+  /** [object Object] */
+  pageToken?: string;
 }
 // ---- end:feishu_bitable_01_buried_point_design_workbench_1 ----

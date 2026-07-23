@@ -28,6 +28,23 @@ const PARAM_FIELDS = {
   evtId: 'evt_id',
 } as const;
 
+function normalizeFieldName(name: string): string {
+  return name.toLowerCase().replace(/[\s_\-]+/g, '');
+}
+
+function findFieldKey(record: Record<string, unknown>, candidates: string[]): string | undefined {
+  const keys = Object.keys(record);
+  for (const candidate of candidates) {
+    const norm = normalizeFieldName(candidate);
+    for (const key of keys) {
+      if (normalizeFieldName(key) === norm) {
+        return key;
+      }
+    }
+  }
+  return undefined;
+}
+
 function getFieldText(value: unknown): string {
   if (value == null) return '';
   if (typeof value === 'string') return value;
@@ -84,18 +101,22 @@ export class QueryLibraryService {
       filter,
       pageSize,
       pageToken,
-      sort: [{ fieldName: EVENT_FIELDS.evtId, desc: false }],
     });
 
     const items: OfficialEvent[] = result.records.map((rec) => {
       const r = rec.record;
+      const evtIdKey = findFieldKey(r, [EVENT_FIELDS.evtId, 'evt id', '事件ID', '事件id']);
+      const eventNameKey = findFieldKey(r, [EVENT_FIELDS.eventName, '事件名称']);
+      const platformKey = findFieldKey(r, [EVENT_FIELDS.platform, '端', '适用端']);
+      const versionKey = findFieldKey(r, [EVENT_FIELDS.version, '版本号']);
+      const statusKey = findFieldKey(r, [EVENT_FIELDS.status, '事件状态']);
       return {
         recordId: rec.id,
-        evtId: getFieldText(r[EVENT_FIELDS.evtId]),
-        eventName: getFieldText(r[EVENT_FIELDS.eventName]),
-        platform: getFieldText(r[EVENT_FIELDS.platform]),
-        version: getFieldText(r[EVENT_FIELDS.version]),
-        status: getFieldText(r[EVENT_FIELDS.status]),
+        evtId: evtIdKey ? getFieldText(r[evtIdKey]) : '',
+        eventName: eventNameKey ? getFieldText(r[eventNameKey]) : '',
+        platform: platformKey ? getFieldText(r[platformKey]) : '',
+        version: versionKey ? getFieldText(r[versionKey]) : '',
+        status: statusKey ? getFieldText(r[statusKey]) : '',
       };
     });
 
@@ -118,7 +139,8 @@ export class QueryLibraryService {
       return { items: [], total: 0 };
     }
 
-    const evtId = getFieldText(record.record[EVENT_FIELDS.evtId]);
+    const evtIdKey = findFieldKey(record.record, [EVENT_FIELDS.evtId, 'evt id', '事件ID', '事件id']);
+    const evtId = evtIdKey ? getFieldText(record.record[evtIdKey]) : '';
 
     // 尝试从同一张查询库表中读取参数字段（可能是子表/关联记录）
     // 若该表没有独立的参数字段，返回空数组

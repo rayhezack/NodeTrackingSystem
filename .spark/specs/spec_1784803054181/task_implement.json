@@ -316,7 +316,7 @@
       "id": 9,
       "name": "验收测试",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 testing-guide skill",
         "架构与入口检查：检查三页面路由可达、两模块注册正确、聚合文件结构符合规范",
@@ -343,7 +343,8 @@
         7,
         8
       ],
-      "beginTime": 1784805254665
+      "beginTime": 1784805254665,
+      "endTime": 1784805736114
     }
   ]
 }
