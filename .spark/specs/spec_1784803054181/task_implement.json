@@ -178,7 +178,7 @@
       "id": 6,
       "name": "需求详情页模块开发（前后端）",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 TrackingService 详情查询（getRecord + 权限计算）",
@@ -229,13 +229,14 @@
       "dependencies": [
         5
       ],
-      "beginTime": 1784804348122
+      "beginTime": 1784804348122,
+      "endTime": 1784804374472
     },
     {
       "id": 7,
       "name": "参数设计器模块开发（前后端）",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 TrackingService 参数列表查询（按 evt_id 搜索参数明细表）",
@@ -271,13 +272,14 @@
       "acceptance": "参数设计器支持新增/编辑/软删除操作，操作后列表实时刷新，软删除不删除 Base 记录仅改状态",
       "dependencies": [
         6
-      ]
+      ],
+      "beginTime": 1784804374609
     },
     {
       "id": 8,
       "name": "正式查询库模块开发（前后端）",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 QueryLibraryService：事件搜索（searchRecords）、参数明细查询（searchRecords）",
@@ -306,7 +308,8 @@
       "dependencies": [
         4
       ],
-      "beginTime": 1784803909932
+      "beginTime": 1784803909932,
+      "endTime": 1784804374472
     },
     {
       "id": 9,
