@@ -1,0 +1,17 @@
+{
+  "id": "feishu_bitable_app_buried_point_readonly_1",
+  "pluginKey": "@official-plugins/feishu-bitable",
+  "pluginVersion": "1.0.22",
+  "name": "飞书多维表格App埋点查询库只读实例",
+  "description": "用于只读访问「02 App埋点查询库（正式）」多维表格，支持searchRecords、getRecord、aggregateQuery操作",
+  "icon": "",
+  "paramsSchema": {},
+  "formValue": {
+    "appToken": "Kgy0b4bvmaJSK8sjQDscUrNJnOf",
+    "tableID": "tblAhScEFQYAJC2g",
+    "fields": []
+  },
+  "createdAt": 1784803656505,
+  "updatedAt": 1784803656505,
+  "createdBy": 7648831973842095079
+}

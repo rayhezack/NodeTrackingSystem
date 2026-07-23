@@ -1,0 +1,17 @@
+{
+  "id": "feishu_bitable_buried_point_lifecycle_read_1",
+  "pluginKey": "@official-plugins/feishu-bitable",
+  "pluginVersion": "1.0.22",
+  "name": "后台-埋点生命周期表只读实例",
+  "description": "用于读取后台-埋点生命周期多维表格数据，支持搜索、单条查询、聚合查询等只读操作",
+  "icon": "",
+  "paramsSchema": {},
+  "formValue": {
+    "appToken": "Kgy0b4bvmaJSK8sjQDscUrNJnOf",
+    "tableID": "tblJ8G3X1001g9oA",
+    "fields": []
+  },
+  "createdAt": 1784803654519,
+  "updatedAt": 1784803654519,
+  "createdBy": 7648831973842095079
+}

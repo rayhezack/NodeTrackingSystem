@@ -1,0 +1,19 @@
+{
+  "id": "feishu_bitable_design_parameter_detail_1",
+  "pluginKey": "@official-plugins/feishu-bitable",
+  "pluginVersion": "1.0.22",
+  "name": "飞书多维表格「后台-设计参数明细」操作",
+  "description": "用于对飞书多维表格「后台-设计参数明细」表进行数据的查询、新增、更新、删除、聚合分析等操作，支持全部6个Action。",
+  "icon": "",
+  "paramsSchema": {},
+  "formValue": {
+    "tableID": "tblesT69TDCUKzhs",
+    "fields": [],
+    "owner": "",
+    "tips": "",
+    "appToken": "Kgy0b4bvmaJSK8sjQDscUrNJnOf"
+  },
+  "createdAt": 1784803655964,
+  "updatedAt": 1784803655964,
+  "createdBy": 7648831973842095079
+}

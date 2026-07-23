@@ -64,7 +64,7 @@
       "id": 3,
       "name": "飞书多维表格插件实例创建与 Schema 确认",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 plugin-guide skill",
         "创建 bitable-workbench 实例（01 埋点设计工作台表）",
@@ -91,13 +91,14 @@
       "dependencies": [
         2
       ],
-      "beginTime": 1784803594381
+      "beginTime": 1784803594381,
+      "endTime": 1784803723326
     },
     {
       "id": 4,
       "name": "服务端 Bitable 共享层开发",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 plugin-guide 的 plugin-coding-guide 参考文档",
         "实现 BitableService 封装 CapabilityService 调用",
@@ -125,7 +126,8 @@
       "acceptance": "BitableService 可正常调用 Base、阶段校验与权限判断函数通过单测、错误处理覆盖主要场景",
       "dependencies": [
         3
-      ]
+      ],
+      "beginTime": 1784803723472
     },
     {
       "id": 5,

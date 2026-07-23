@@ -200,5 +200,8 @@
   "engines": {
     "node": ">=22.0.0",
     "npm": ">=10.0.0"
+  },
+  "actionPlugins": {
+    "@official-plugins/feishu-bitable": "1.0.22"
   }
 }

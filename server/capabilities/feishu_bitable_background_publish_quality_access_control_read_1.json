@@ -1,0 +1,19 @@
+{
+  "id": "feishu_bitable_background_publish_quality_access_control_read_1",
+  "pluginKey": "@official-plugins/feishu-bitable",
+  "pluginVersion": "1.0.22",
+  "name": "读取后台-发布质量门禁表",
+  "description": "飞书多维表格实例，用于读取「后台-发布质量门禁」表，支持searchRecords、getRecord、aggregateQuery只读操作",
+  "icon": "",
+  "paramsSchema": {},
+  "formValue": {
+    "appToken": "Kgy0b4bvmaJSK8sjQDscUrNJnOf",
+    "tableID": "tblUCH6PxC1sQwXx",
+    "fields": [],
+    "owner": "",
+    "tips": ""
+  },
+  "createdAt": 1784803655562,
+  "updatedAt": 1784803655562,
+  "createdBy": 7648831973842095079
+}

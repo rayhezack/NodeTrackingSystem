@@ -1,0 +1,17 @@
+{
+  "id": "feishu_bitable_01_buried_point_design_workbench_1",
+  "pluginKey": "@official-plugins/feishu-bitable",
+  "pluginVersion": "1.0.22",
+  "name": "飞书多维表格「01 埋点设计工作台」主表操作",
+  "description": "用于对飞书多维表格「01 埋点设计工作台」主表进行增删改查、搜索、聚合统计等操作，支持全部6个Action：searchRecords、getRecord、batchAddRecords、batchUpdateRecords、deleteRecords、aggregateQuery。",
+  "icon": "",
+  "paramsSchema": {},
+  "formValue": {
+    "appToken": "Kgy0b4bvmaJSK8sjQDscUrNJnOf",
+    "tableID": "tblqHhr5aZwr4QOZ",
+    "fields": []
+  },
+  "createdAt": 1784803659038,
+  "updatedAt": 1784803659038,
+  "createdBy": 7648831973842095079
+}
