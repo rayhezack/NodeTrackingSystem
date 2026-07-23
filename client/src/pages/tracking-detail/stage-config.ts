@@ -30,33 +30,31 @@ export const PRIORITY_OPTIONS = [
 export const PLATFORM_OPTIONS = [
   { value: 'iOS', label: 'iOS' },
   { value: 'Android', label: 'Android' },
-  { value: 'Web', label: 'Web' },
-  { value: '小程序', label: '小程序' },
-  { value: '全端', label: '全端' },
+  { value: 'iOS、Android', label: 'iOS、Android' },
+  { value: 'App通用', label: 'App通用' },
 ];
 
 // 评审状态选项
 export const REVIEW_STATUS_OPTIONS = [
-  { value: '待评审', label: '待评审' },
+  { value: '草稿', label: '草稿' },
   { value: '评审中', label: '评审中' },
-  { value: '评审通过', label: '评审通过' },
-  { value: '评审驳回', label: '评审驳回' },
+  { value: '已通过', label: '已通过' },
+  { value: '需修改', label: '需修改' },
 ];
 
 // 开发状态选项
 export const DEV_STATUS_OPTIONS = [
-  { value: '待开发', label: '待开发' },
+  { value: '未开始', label: '未开始' },
   { value: '开发中', label: '开发中' },
-  { value: '开发完成', label: '开发完成' },
-  { value: '已提测', label: '已提测' },
+  { value: '已完成', label: '已完成' },
 ];
 
 // 验收状态选项
 export const ACCEPTANCE_STATUS_OPTIONS = [
-  { value: '待验收', label: '待验收' },
+  { value: '未开始', label: '未开始' },
   { value: '验收中', label: '验收中' },
-  { value: '验收通过', label: '验收通过' },
-  { value: '验收驳回', label: '验收驳回' },
+  { value: '通过', label: '通过' },
+  { value: '不通过', label: '不通过' },
 ];
 
 // 6 个 UI 流程节点（用于顶部流程条）
@@ -78,10 +76,12 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['需求录入'],
     permissionKey: 'canEditRequirement',
     fields: [
-      { key: 'eventName', label: '事件名', type: 'input', baseField: '事件名' },
+      { key: 'eventName', label: '事件名', type: 'input', baseField: '事件中文名' },
       { key: 'evtId', label: 'evt_id', type: 'input', baseField: 'evt_id' },
       { key: 'priority', label: '优先级', type: 'select', baseField: '优先级', options: PRIORITY_OPTIONS },
-      { key: 'platform', label: '平台', type: 'select', baseField: '平台', options: PLATFORM_OPTIONS },
+      { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
+      { key: 'requirementBackground', label: '需求背景', type: 'textarea', baseField: '需求背景', placeholder: '说明为什么需要这个埋点...' },
+      { key: 'metricScenario', label: '指标/使用场景', type: 'textarea', baseField: '指标/使用场景', placeholder: '说明要支撑的指标、看板或分析场景...' },
     ],
   },
   {
@@ -91,9 +91,13 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['埋点设计', '评审通过'],
     permissionKey: 'canEditDesign',
     fields: [
+      { key: 'eventDefinition', label: '事件定义', type: 'textarea', baseField: '事件定义', placeholder: '定义事件统计口径和边界...' },
       { key: 'triggerTiming', label: '触发时机', type: 'textarea', baseField: '触发时机', placeholder: '描述事件触发的具体时机...' },
-      { key: 'trackingDesc', label: '埋点说明', type: 'textarea', baseField: '埋点说明', placeholder: '详细说明埋点用途与统计口径...' },
-      { key: 'designRemark', label: '设计备注', type: 'textarea', baseField: '设计备注', placeholder: '设计阶段补充说明...' },
+      { key: 'handler', label: '处理方', type: 'input', baseField: '处理方', placeholder: '客户端/服务端/数仓...' },
+      { key: 'commonProps', label: '公共属性要求', type: 'textarea', baseField: '公共属性要求', placeholder: '列出必须携带的公共属性...' },
+      { key: 'version', label: '版本', type: 'input', baseField: '版本', placeholder: '例如 1.0.0' },
+      { key: 'minVersion', label: '最低版本', type: 'input', baseField: '最低版本', placeholder: '例如 1.0.0' },
+      { key: 'changeType', label: '变更类型', type: 'input', baseField: '变更类型', placeholder: '新增/变更/下线' },
     ],
   },
   {
@@ -105,7 +109,8 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     fields: [
       { key: 'reviewStatus', label: '评审状态', type: 'select', baseField: '评审状态', options: REVIEW_STATUS_OPTIONS },
       { key: 'reviewComment', label: '评审意见', type: 'textarea', baseField: '评审意见', placeholder: '评审意见与建议...' },
-      { key: 'reviewTime', label: '评审时间', type: 'input', baseField: '评审时间', placeholder: 'YYYY-MM-DD' },
+      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'input', baseField: '发布门禁状态', placeholder: '待检查/通过/失败' },
+      { key: 'qualityGateReason', label: '门禁失败原因', type: 'textarea', baseField: '发布门禁失败原因', placeholder: '如未通过，请填写失败原因...' },
     ],
   },
   {
@@ -115,9 +120,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['埋点开发'],
     permissionKey: 'canEditDev',
     fields: [
-      { key: 'devStatus', label: '开发状态', type: 'select', baseField: '开发状态', options: DEV_STATUS_OPTIONS },
-      { key: 'devRemark', label: '开发备注', type: 'textarea', baseField: '开发备注', placeholder: '开发过程中的备注信息...' },
-      { key: 'expectedFinishTime', label: '预计完成时间', type: 'input', baseField: '预计完成时间', placeholder: 'YYYY-MM-DD' },
+      { key: 'devStatus', label: '开发状态', type: 'select', baseField: '埋点开发状态', options: DEV_STATUS_OPTIONS },
     ],
   },
   {
@@ -127,9 +130,9 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['数据验收'],
     permissionKey: 'canEditAcceptance',
     fields: [
-      { key: 'acceptanceStatus', label: '验收状态', type: 'select', baseField: '验收状态', options: ACCEPTANCE_STATUS_OPTIONS },
-      { key: 'acceptanceComment', label: '验收意见', type: 'textarea', baseField: '验收意见', placeholder: '验收结论与问题反馈...' },
-      { key: 'acceptanceTime', label: '验收时间', type: 'input', baseField: '验收时间', placeholder: 'YYYY-MM-DD' },
+      { key: 'acceptanceStatus', label: '验收状态', type: 'select', baseField: 'DS验收状态', options: ACCEPTANCE_STATUS_OPTIONS },
+      { key: 'acceptanceEvidence', label: '验收证据', type: 'textarea', baseField: 'DS验收证据', placeholder: '粘贴验收查询、截图或日志证据...' },
+      { key: 'acceptanceTime', label: '验收时间', type: 'input', baseField: 'DS验收时间', placeholder: 'YYYY-MM-DD' },
     ],
   },
   {
@@ -139,9 +142,10 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['上线监控'],
     permissionKey: 'canEditLaunch',
     fields: [
-      { key: 'launchVersion', label: '上线版本', type: 'input', baseField: '上线版本', placeholder: 'v1.0.0' },
-      { key: 'launchTime', label: '上线时间', type: 'input', baseField: '上线时间', placeholder: 'YYYY-MM-DD' },
-      { key: 'monitorStatus', label: '监控状态', type: 'input', baseField: '监控状态', placeholder: '正常/异常/观察中' },
+      { key: 'monitorStatus', label: '上线监控状态', type: 'input', baseField: '上线监控状态', placeholder: '未开始/观察中/正常/异常' },
+      { key: 'monitorConclusion', label: '上线监控结论', type: 'textarea', baseField: '上线监控结论', placeholder: '填写上线后的数据监控结论...' },
+      { key: 'publishStatus', label: '发布状态', type: 'input', baseField: '发布状态', placeholder: '未发布/已发布/发布失败' },
+      { key: 'publishError', label: '发布错误', type: 'textarea', baseField: '发布错误', placeholder: '如发布失败，请填写错误原因...' },
     ],
   },
   {
@@ -151,9 +155,8 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['稳定归档', '已废弃'],
     permissionKey: 'canEditArchive',
     fields: [
-      { key: 'archiveStatus', label: '归档状态', type: 'input', baseField: '归档状态', placeholder: '稳定归档/已废弃' },
-      { key: 'archiveTime', label: '归档时间', type: 'input', baseField: '归档时间', placeholder: 'YYYY-MM-DD' },
-      { key: 'archiveRemark', label: '归档备注', type: 'textarea', baseField: '归档备注', placeholder: '归档说明...' },
+      { key: 'officialStatus', label: '正式状态', type: 'input', baseField: '正式状态', placeholder: '未归档/已归档/已废弃' },
+      { key: 'archiveTime', label: '稳定归档时间', type: 'input', baseField: '稳定归档时间', placeholder: 'YYYY-MM-DD' },
     ],
   },
 ];

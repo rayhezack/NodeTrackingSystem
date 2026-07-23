@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { logger } from '@lark-apaas/client-toolkit/logger';
+import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { getTrackingDetail } from '@client/src/api/tracking';
@@ -16,6 +17,8 @@ import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
 const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
+  const userProfile = useCurrentUserProfile();
+  const actorId = getActorId(userProfile);
 
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +34,7 @@ const TrackingDetailPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await getTrackingDetail(recordId);
+        const res = await getTrackingDetail(recordId, actorId);
         if (cancelled) return;
         setDetail(res.data);
 
@@ -56,7 +59,7 @@ const TrackingDetailPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [recordId]);
+  }, [recordId, actorId]);
 
   // 流程节点点击 → 跳转到对应侧边栏阶段
   const handleNodeClick = (nodeKey: string) => {
@@ -70,7 +73,7 @@ const TrackingDetailPage = () => {
   const handleSaved = async () => {
     if (!recordId) return;
     try {
-      const res = await getTrackingDetail(recordId);
+      const res = await getTrackingDetail(recordId, actorId);
       setDetail(res.data);
     } catch (err) {
       logger.error('刷新详情失败', err);
@@ -217,5 +220,22 @@ const TrackingDetailPage = () => {
     </div>
   );
 };
+
+function getActorId(userProfile: unknown): string | undefined {
+  if (!userProfile || typeof userProfile !== 'object') return getLocalDevActorId();
+  const profile = userProfile as Record<string, unknown>;
+  const candidates = [profile.openId, profile.open_id, profile.userId, profile.id];
+  return (
+    candidates.find((value): value is string => typeof value === 'string' && value.length > 0) ||
+    getLocalDevActorId()
+  );
+}
+
+function getLocalDevActorId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28'
+    : undefined;
+}
 
 export default TrackingDetailPage;

@@ -1,5 +1,6 @@
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import { toReadableError } from './error';
 import type {
   GetOfficialEventsParams,
   GetOfficialEventsResponse,
@@ -16,7 +17,7 @@ export async function getOfficialEvents(
     return response.data;
   } catch (error) {
     logger.error('获取正式事件列表失败', error);
-    throw error;
+    throw toReadableError(error, '正式查询库读取失败，请检查 Base 权限');
   }
 }
 
@@ -30,6 +31,6 @@ export async function getOfficialParams(
     return response.data;
   } catch (error) {
     logger.error('获取正式参数明细失败', error);
-    throw error;
+    throw toReadableError(error, '正式参数明细读取失败，请检查 Base 权限');
   }
 }

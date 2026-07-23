@@ -23,9 +23,26 @@ interface StageFormProps {
   onSaved?: () => void;
 }
 
-// 从 detail 中获取字段值（优先从 requirementFields 取，因为所有字段都存在那里）
+const DETAIL_FIELD_GROUPS = [
+  'requirementFields',
+  'designFields',
+  'reviewFields',
+  'devFields',
+  'acceptanceFields',
+  'launchFields',
+  'archiveFields',
+] as const;
+
+// 从 detail 的所有阶段字段分组中获取字段值
 function getFieldValue(detail: TrackingDetail, baseField: string): string {
-  const val = detail.requirementFields?.[baseField];
+  let val: unknown;
+  for (const groupName of DETAIL_FIELD_GROUPS) {
+    const group = detail[groupName] || {};
+    if (Object.prototype.hasOwnProperty.call(group, baseField)) {
+      val = group[baseField];
+      break;
+    }
+  }
   if (val == null) return '';
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {

@@ -1,162 +1,73 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
-  Query,
-  Req,
-  Logger,
   Param,
   Patch,
   Post,
   Put,
-  Delete,
-  Body,
+  Query,
 } from '@nestjs/common';
-import { NeedLogin } from '@lark-apaas/fullstack-nestjs-core';
-import type { Request } from 'express';
-import { TrackingService } from './tracking.service';
 import type {
-  GetStageStatsResponse,
-  GetMyTodosResponse,
-  GetTrackingRecordsParams,
-  GetTrackingRecordsResponse,
-  GetTrackingDetailResponse,
-  UpdateTrackingRecordRequest,
-  UpdateTrackingRecordResponse,
-  GetParamsResponse,
   CreateParamRequest,
-  CreateParamResponse,
   UpdateParamRequest,
-  UpdateParamResponse,
-  DeleteParamResponse,
+  UpdateTrackingRecordRequest,
 } from '@shared/api.interface';
+import { TrackingService } from './tracking.service';
 
 @Controller('api/tracking')
 export class TrackingController {
-  private readonly logger = new Logger(TrackingController.name);
+  constructor(private readonly trackingService: TrackingService) {}
 
-  constructor(private readonly trackingService: TrackingService) {
-    this.logger.log('TrackingController initialized');
-  }
-
-  /**
-   * 阶段统计
-   */
-  @NeedLogin()
   @Get('stats')
-  async getStageStats(): Promise<GetStageStatsResponse> {
+  getStats() {
     return this.trackingService.getStageStats();
   }
 
-  /**
-   * 我的待办
-   */
-  @NeedLogin()
   @Get('my-todos')
-  async getMyTodos(
-    @Req() req: Request,
-    @Query('limit') limit?: string,
-  ): Promise<GetMyTodosResponse> {
-    const { userId } = req.userContext;
-    const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.trackingService.getMyTodos(userId, limitNum);
+  getMyTodos(@Query('limit') limit?: string) {
+    return this.trackingService.getMyTodos(Number(limit || 10));
   }
 
-  /**
-   * 需求列表
-   */
-  @NeedLogin()
   @Get('records')
-  async getRecords(
-    @Query() query: GetTrackingRecordsParams & { pageSize?: string },
-  ): Promise<GetTrackingRecordsResponse> {
-    const params: GetTrackingRecordsParams = {
-      keyword: query.keyword,
-      stage: query.stage,
-      priority: query.priority,
-      platform: query.platform,
-      owner: query.owner,
-      pageSize: query.pageSize ? parseInt(String(query.pageSize), 10) : 20,
-      pageToken: query.pageToken,
-    };
-    return this.trackingService.getRecords(params);
+  getRecords(@Query() query: Record<string, string>) {
+    return this.trackingService.getRecords(query);
   }
 
-  /**
-   * 需求详情
-   */
-  @NeedLogin()
   @Get('records/:recordId')
-  async getDetail(
-    @Req() req: Request,
-    @Param('recordId') recordId: string,
-  ): Promise<GetTrackingDetailResponse> {
-    const { userId } = req.userContext;
-    return this.trackingService.getDetail(recordId, userId);
+  getDetail(@Param('recordId') recordId: string, @Query('actorId') actorId?: string) {
+    return this.trackingService.getDetail(recordId, actorId);
   }
 
-  /**
-   * 更新主表字段
-   */
-  @NeedLogin()
   @Patch('records/:recordId')
-  async updateRecord(
-    @Req() req: Request,
+  updateRecord(
     @Param('recordId') recordId: string,
     @Body() body: UpdateTrackingRecordRequest,
-  ): Promise<UpdateTrackingRecordResponse> {
-    const { userId } = req.userContext;
-    return this.trackingService.updateRecord(recordId, userId, body);
+  ) {
+    return this.trackingService.updateRecord(recordId, body);
   }
 
-  /**
-   * 参数列表
-   */
-  @NeedLogin()
   @Get('records/:recordId/params')
-  async getParams(
-    @Param('recordId') recordId: string,
-  ): Promise<GetParamsResponse> {
+  getParams(@Param('recordId') recordId: string) {
     return this.trackingService.getParams(recordId);
   }
 
-  /**
-   * 新增参数
-   */
-  @NeedLogin()
   @Post('records/:recordId/params')
-  async createParam(
-    @Req() req: Request,
-    @Param('recordId') recordId: string,
-    @Body() body: CreateParamRequest,
-  ): Promise<CreateParamResponse> {
-    const { userId } = req.userContext;
-    return this.trackingService.createParam(recordId, userId, body);
+  createParam(@Param('recordId') recordId: string, @Body() body: CreateParamRequest) {
+    return this.trackingService.createParam(recordId, body);
   }
 
-  /**
-   * 编辑参数
-   */
-  @NeedLogin()
   @Put('params/:paramRecordId')
-  async updateParam(
-    @Req() req: Request,
+  updateParam(
     @Param('paramRecordId') paramRecordId: string,
     @Body() body: UpdateParamRequest,
-  ): Promise<UpdateParamResponse> {
-    const { userId } = req.userContext;
-    return this.trackingService.updateParam(paramRecordId, userId, body);
+  ) {
+    return this.trackingService.updateParam(paramRecordId, body);
   }
 
-  /**
-   * 软删除参数（更新状态为废弃）
-   */
-  @NeedLogin()
   @Delete('params/:paramRecordId')
-  async deleteParam(
-    @Req() req: Request,
-    @Param('paramRecordId') paramRecordId: string,
-  ): Promise<DeleteParamResponse> {
-    const { userId } = req.userContext;
-    return this.trackingService.deleteParam(paramRecordId, userId);
+  deleteParam(@Param('paramRecordId') paramRecordId: string) {
+    return this.trackingService.deleteParam(paramRecordId);
   }
 }

@@ -5,6 +5,17 @@ set -euo pipefail
 ROOT_DIR="$(pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 
+if [ -f "$ROOT_DIR/.env.local" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ -z "$line" || "$line" == \#* || "$line" != *=* ]]; then
+      continue
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    export "$key=$value"
+  done < "$ROOT_DIR/.env.local"
+fi
+
 # 记录总开始时间
 TOTAL_START=$(node -e "console.log(Date.now())")
 
@@ -21,7 +32,7 @@ print_time() {
 # ==================== 步骤 0 ====================
 echo "🗑️  [0/6] 安装插件"
 STEP_START=$(node -e "console.log(Date.now())")
-npx fullstack-cli action-plugin init
+npx -y @lark-apaas/fullstack-cli action-plugin init
 print_time $STEP_START
 echo ""
 

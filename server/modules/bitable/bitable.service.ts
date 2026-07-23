@@ -1,6 +1,19 @@
-import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { CapabilityService } from '@lark-apaas/fullstack-nestjs-core';
 import { BITABLE_INSTANCES, type BitableInstanceKey } from './bitable.constants';
+import {
+  isPluginMissingError,
+  LocalBitableFallback,
+  shouldUseLocalBitableFallback,
+} from './local-fallback';
 
 export interface BitableRecord {
   id: string;
@@ -43,6 +56,7 @@ export interface BitableSortItem {
 @Injectable()
 export class BitableService {
   private readonly logger = new Logger(BitableService.name);
+  private readonly localFallback = new LocalBitableFallback();
 
   constructor(
     @Inject(CapabilityService)
@@ -66,6 +80,9 @@ export class BitableService {
         .call('searchRecords', params);
       return result as BitableSearchResult;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
+        return this.localFallback.searchRecords(instanceKey, params);
+      }
       this.handleError(instanceId, 'searchRecords', error);
     }
   }
@@ -85,6 +102,9 @@ export class BitableService {
       }
       return { id: typed.id, record: typed.record };
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
+        return this.localFallback.getRecord(instanceKey, recordId);
+      }
       this.handleError(instanceId, 'getRecord', error);
     }
   }
@@ -99,9 +119,12 @@ export class BitableService {
         .load(instanceId)
         .call('batchAddRecords', {
           records: records.map((r) => ({ record: r })),
-        });
+      });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
+        return this.localFallback.batchAddRecords(instanceKey, records);
+      }
       this.handleError(instanceId, 'batchAddRecords', error);
     }
   }
@@ -117,6 +140,9 @@ export class BitableService {
         .call('batchUpdateRecords', { records: updates });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
+        return this.localFallback.batchUpdateRecords(instanceKey, updates);
+      }
       this.handleError(instanceId, 'batchUpdateRecords', error);
     }
   }
@@ -132,6 +158,9 @@ export class BitableService {
         .call('deleteRecords', { recordIDs: recordIds });
       return (result as { success: boolean }).success;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'deleteRecords')) {
+        return this.localFallback.deleteRecords(instanceKey, recordIds);
+      }
       this.handleError(instanceId, 'deleteRecords', error);
     }
   }
@@ -155,8 +184,30 @@ export class BitableService {
         .call('aggregateQuery', params);
       return result as BitableAggregateResult;
     } catch (error) {
+      if (this.canUseLocalFallback(error, instanceKey, 'aggregateQuery')) {
+        return this.localFallback.aggregateQuery();
+      }
       this.handleError(instanceId, 'aggregateQuery', error);
     }
+  }
+
+  private canUseLocalFallback(
+    error: unknown,
+    instanceKey: BitableInstanceKey,
+    actionKey: string,
+  ): boolean {
+    if (!isPluginMissingError(error) || !shouldUseLocalBitableFallback()) {
+      return false;
+    }
+
+    this.logger.warn(
+      JSON.stringify({
+        message: 'Using local bitable fallback because official plugin is missing in local dev',
+        instanceKey,
+        actionKey,
+      }),
+    );
+    return true;
   }
 
   private handleError(
@@ -177,6 +228,11 @@ export class BitableService {
       }),
     );
 
+    if (isPluginMissingError(error)) {
+      throw new ServiceUnavailableException(
+        '本地缺少飞书 Base 官方插件：请先完成 action-plugin init；线上妙搭发布后会由平台安装插件。',
+      );
+    }
     if (errorName === 'NotFoundException' || errorMessage.includes('not found') || errorMessage.includes('不存在')) {
       throw new NotFoundException('记录不存在或已被删除');
     }
