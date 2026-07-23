@@ -98,7 +98,7 @@
       "id": 4,
       "name": "服务端 Bitable 共享层开发",
       "type": "normal",
-      "status": "in_progress",
+      "status": "completed",
       "subtasks": [
         "读取 plugin-guide 的 plugin-coding-guide 参考文档",
         "实现 BitableService 封装 CapabilityService 调用",
@@ -127,13 +127,14 @@
       "dependencies": [
         3
       ],
-      "beginTime": 1784803723472
+      "beginTime": 1784803723472,
+      "endTime": 1784803909782
     },
     {
       "id": 5,
       "name": "埋点工作台模块开发（前后端）",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 TrackingService：阶段统计（aggregateQuery）、我的待办（searchRecords）、需求列表（searchRecords+筛选）",
@@ -169,7 +170,8 @@
       "acceptance": "工作台页面展示阶段统计、我的待办、需求列表三大区域，搜索筛选功能可用，点击行可跳转详情页",
       "dependencies": [
         4
-      ]
+      ],
+      "beginTime": 1784803909932
     },
     {
       "id": 6,
@@ -273,7 +275,7 @@
       "id": 8,
       "name": "正式查询库模块开发（前后端）",
       "type": "normal",
-      "status": "pending",
+      "status": "in_progress",
       "subtasks": [
         "读取 coding-guide skill 后端与前端规范",
         "实现 QueryLibraryService：事件搜索（searchRecords）、参数明细查询（searchRecords）",
@@ -301,7 +303,8 @@
       "acceptance": "正式查询库页面可搜索事件、查看参数明细，所有数据只读不可编辑",
       "dependencies": [
         4
-      ]
+      ],
+      "beginTime": 1784803909932
     },
     {
       "id": 9,
