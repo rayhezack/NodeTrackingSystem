@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { CapabilityService } from '@lark-apaas/fullstack-nestjs-core';
-import { BITABLE_INSTANCES, type BitableInstanceKey } from './bitable.constants';
+import { BITABLE_APP_TOKEN, BITABLE_INSTANCES, BITABLE_FIELDS, type BitableInstanceKey } from './bitable.constants';
 
 export interface BitableRecord {
   id: string;
@@ -15,7 +15,7 @@ export interface BitableSearchResult {
 }
 
 export interface BitableAggregateItem {
-  value: Record<string, unknown>;
+  [key: string]: { value: unknown; originValue?: unknown } | undefined;
 }
 
 export interface BitableAggregateResult {
@@ -49,6 +49,38 @@ export class BitableService {
     private readonly capabilityService: CapabilityService,
   ) {}
 
+  private getInstanceConfig(instanceKey: BitableInstanceKey) {
+    const instanceId = BITABLE_INSTANCES[instanceKey];
+    return {
+      id: instanceId,
+      pluginKey: '@official-plugins/feishu-bitable',
+      pluginVersion: '1.0.22',
+      name: instanceId,
+      description: instanceId,
+      icon: '',
+      paramsSchema: {},
+      formValue: {
+        appToken: BITABLE_APP_TOKEN,
+        tableID: this.getTableId(instanceKey),
+        fields: BITABLE_FIELDS[instanceKey] || [],
+      },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 0,
+    };
+  }
+
+  private getTableId(instanceKey: BitableInstanceKey): string {
+    const tableIdMap: Record<BitableInstanceKey, string> = {
+      workbench: 'tblqHhr5aZwr4QOZ',
+      paramDetail: 'tblesT69TDCUKzhs',
+      qualityGate: 'tblUCH6PxC1sQwXx',
+      lifecycle: 'tblJ8G3X1001g9oA',
+      queryLibrary: 'tblAhScEFQYAJC2g',
+    };
+    return tableIdMap[instanceKey];
+  }
+
   async searchRecords(
     instanceKey: BitableInstanceKey,
     params: {
@@ -59,14 +91,28 @@ export class BitableService {
       pageSize?: number;
     },
   ): Promise<BitableSearchResult> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('searchRecords', params);
-      return result as BitableSearchResult;
+      const raw = result as {
+        hasMore: boolean;
+        pageToken?: string;
+        total?: number;
+        records: Array<{ id: string; record?: Record<string, unknown>; fields?: Record<string, unknown> }>;
+      };
+      return {
+        hasMore: raw.hasMore,
+        pageToken: raw.pageToken,
+        total: raw.total,
+        records: (raw.records || []).map((r) => ({
+          id: r.id,
+          record: r.record || r.fields || {},
+        })),
+      };
     } catch (error) {
-      this.handleError(instanceId, 'searchRecords', error);
+      this.handleError(config.id, 'searchRecords', error);
     }
   }
 
@@ -74,18 +120,23 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     recordId: string,
   ): Promise<BitableRecord | null> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('getRecord', { recordID: recordId });
-      const typed = result as { id: string; record?: Record<string, unknown> };
-      if (!typed.record) {
+      const typed = result as {
+        id: string;
+        record?: Record<string, unknown>;
+        fields?: Record<string, unknown>;
+      };
+      const record = typed.record || typed.fields;
+      if (!record) {
         return null;
       }
-      return { id: typed.id, record: typed.record };
+      return { id: typed.id, record };
     } catch (error) {
-      this.handleError(instanceId, 'getRecord', error);
+      this.handleError(config.id, 'getRecord', error);
     }
   }
 
@@ -93,16 +144,16 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     records: Record<string, unknown>[],
   ): Promise<{ id: string }[]> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('batchAddRecords', {
           records: records.map((r) => ({ record: r })),
         });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
-      this.handleError(instanceId, 'batchAddRecords', error);
+      this.handleError(config.id, 'batchAddRecords', error);
     }
   }
 
@@ -110,14 +161,14 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     updates: { id: string; record: Record<string, unknown> }[],
   ): Promise<{ id: string }[]> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('batchUpdateRecords', { records: updates });
       return (result as { records: { id: string }[] }).records;
     } catch (error) {
-      this.handleError(instanceId, 'batchUpdateRecords', error);
+      this.handleError(config.id, 'batchUpdateRecords', error);
     }
   }
 
@@ -125,14 +176,14 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     recordIds: string[],
   ): Promise<boolean> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('deleteRecords', { recordIDs: recordIds });
       return (result as { success: boolean }).success;
     } catch (error) {
-      this.handleError(instanceId, 'deleteRecords', error);
+      this.handleError(config.id, 'deleteRecords', error);
     }
   }
 
@@ -148,14 +199,14 @@ export class BitableService {
       expandArrayDimension?: boolean;
     },
   ): Promise<BitableAggregateResult> {
-    const instanceId = BITABLE_INSTANCES[instanceKey];
+    const config = this.getInstanceConfig(instanceKey);
     try {
       const result = await this.capabilityService
-        .load(instanceId)
+        .loadWithConfig(config)
         .call('aggregateQuery', params);
       return result as BitableAggregateResult;
     } catch (error) {
-      this.handleError(instanceId, 'aggregateQuery', error);
+      this.handleError(config.id, 'aggregateQuery', error);
     }
   }
 

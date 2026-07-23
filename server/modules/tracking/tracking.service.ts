@@ -59,7 +59,9 @@ function findFieldKey(
 export class TrackingService {
   private readonly logger = new Logger(TrackingService.name);
 
-  constructor(private readonly bitableService: BitableService) {}
+  constructor(
+    private readonly bitableService: BitableService,
+  ) {}
 
   /**
    * 从 Base user 类型字段中提取 user_id 数组
@@ -70,15 +72,17 @@ export class TrackingService {
       return value
         .map((item: unknown) => {
           if (typeof item === 'string') return item;
+          if (typeof item === 'number') return String(item);
           if (item && typeof item === 'object') {
             const obj = item as BaseUserField;
-            return obj.user_id || obj.id || '';
+            return obj.id || obj.user_id || '';
           }
           return '';
         })
         .filter(Boolean);
     }
     if (typeof value === 'string') return [value];
+    if (typeof value === 'number') return [String(value)];
     return [];
   }
 
@@ -91,6 +95,9 @@ export class TrackingService {
     const val = record[key];
     if (val == null) return '';
     if (typeof val === 'string') return val;
+    if (val && typeof val === 'object' && 'text' in val) {
+      return String((val as { text: string }).text);
+    }
     if (Array.isArray(val) && val.length > 0) {
       const first = val[0];
       if (typeof first === 'string') return first;
@@ -119,13 +126,10 @@ export class TrackingService {
     // 解析聚合结果并映射到 UI 节点
     if (result.result && result.result.length > 0) {
       for (const item of result.result) {
-        const val = item.value;
-        if (!val) continue;
-        const baseStageVal = val['流程阶段'];
-        const baseStage = Array.isArray(baseStageVal)
-          ? String(baseStageVal[0] || '')
-          : String(baseStageVal || '');
-        const count = Number(val.count_all) || 0;
+        const stageField = item['流程阶段'] as { value?: string } | undefined;
+        const baseStage = stageField?.value || '';
+        const countField = item.count_all as { value?: number | string } | undefined;
+        const count = Number(countField?.value ?? 0) || 0;
         if (!baseStage) continue;
         const uiStage = getUiStageFromBase(baseStage);
         if (stageCount[uiStage] !== undefined) {
@@ -149,22 +153,8 @@ export class TrackingService {
     userId: string,
     limit = 10,
   ): Promise<{ items: TodoItem[] }> {
-    const filter: BitableFilter = {
-      conjunction: 'and',
-      conditions: [
-        {
-          fieldName: '流程阶段',
-          operator: 'isNot',
-          value: ['稳定归档', '已废弃'],
-        },
-      ],
-    };
-
-    // 先拉取较多数据，再在内存中按负责人过滤和优先级排序
-    // （Base 对 user 字段的过滤操作符有限，用内存过滤更可靠）
     const result = await this.bitableService.searchRecords('workbench', {
-      filter,
-      pageSize: Math.max(limit * 5, 50),
+      pageSize: Math.max(limit * 10, 100),
     });
 
     const records = result.records || [];
@@ -183,6 +173,9 @@ export class TrackingService {
 
       if (!isInvolved) continue;
 
+      const stage = this.getFieldStr(record, '流程阶段');
+      if (stage === '稳定归档' || stage === '已废弃') continue;
+
       const priority = this.getFieldStr(record, '优先级');
       const priorityWeight =
         PRIORITY_WEIGHT[priority] !== undefined
@@ -192,7 +185,7 @@ export class TrackingService {
       todos.push({
         recordId: rec.id,
         evtId: this.getFieldStr(record, 'evt_id', 'evt id', '事件ID'),
-        eventName: this.getFieldStr(record, '事件名', '事件名称'),
+        eventName: this.getFieldStr(record, '事件中文名', '事件名', '事件名称'),
         stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段', '阶段')),
         priority: this.getFieldStr(record, '优先级'),
         platform: this.getFieldStr(record, '平台', '端', '适用端'),
@@ -268,7 +261,6 @@ export class TrackingService {
       conditions.length > 0 ? { conjunction: 'and', conditions } : undefined;
 
     const result = await this.bitableService.searchRecords('workbench', {
-      fieldNames: ['evt_id', '事件中文名', '流程阶段', '优先级', '端', '数据负责人', 'DS验收人', '创建时间'],
       filter,
       pageSize: keyword || owner ? Math.max(pageSize * 3, 100) : pageSize,
       pageToken,
@@ -281,7 +273,7 @@ export class TrackingService {
       const kw = keyword.toLowerCase();
       records = records.filter((rec) => {
         const evtId = this.getFieldStr(rec.record, 'evt_id', 'evt id', '事件ID').toLowerCase();
-        const eventName = this.getFieldStr(rec.record, '事件名', '事件名称').toLowerCase();
+        const eventName = this.getFieldStr(rec.record, '事件中文名', '事件名', '事件名称').toLowerCase();
         return evtId.includes(kw) || eventName.includes(kw);
       });
     }
@@ -308,7 +300,7 @@ export class TrackingService {
       return {
         recordId: rec.id,
         evtId: this.getFieldStr(record, 'evt_id', 'evt id', '事件ID'),
-        eventName: this.getFieldStr(record, '事件名', '事件名称'),
+        eventName: this.getFieldStr(record, '事件中文名', '事件名', '事件名称'),
         stage: getUiStageFromBase(this.getFieldStr(record, '流程阶段', '阶段')),
         priority: this.getFieldStr(record, '优先级'),
         platform: this.getFieldStr(record, '平台', '端', '适用端'),
@@ -361,7 +353,7 @@ export class TrackingService {
     const detail: TrackingDetail = {
       recordId: rec.id,
       evtId: this.getFieldStr(record, 'evt_id'),
-      eventName: this.getFieldStr(record, '事件名'),
+      eventName: this.getFieldStr(record, '事件中文名', '事件名'),
       stage,
       reviewStatus: this.getFieldStr(record, '评审状态'),
       devStatus: this.getFieldStr(record, '开发状态'),
@@ -521,28 +513,28 @@ export class TrackingService {
    */
   private mapParamRecord(rec: { id: string; record: Record<string, unknown> }): ParamDetail {
     const r = rec.record;
-    const requiredRaw = r['是否必传'];
+    const requiredRaw = r['必传规则'];
     let required = false;
     if (typeof requiredRaw === 'boolean') {
       required = requiredRaw;
     } else if (typeof requiredRaw === 'string') {
-      required = requiredRaw === '是' || requiredRaw === 'true' || requiredRaw === 'True';
+      required = requiredRaw === '必传' || requiredRaw === '是' || requiredRaw === 'true';
     }
 
     return {
       recordId: rec.id,
-      paramKey: this.getFieldStr(r, '参数 key'),
+      paramKey: this.getFieldStr(r, '参数名'),
       evtId: this.getFieldStr(r, 'evt_id'),
       paramName: this.getFieldStr(r, '参数名'),
-      paramType: this.getFieldStr(r, '参数类型'),
+      paramType: this.getFieldStr(r, '数据类型'),
       required,
-      triggerCondition: this.getFieldStr(r, '触发条件'),
-      enumRange: this.getFieldStr(r, '枚举范围'),
-      definition: this.getFieldStr(r, '定义'),
-      defaultValue: this.getFieldStr(r, '默认值'),
-      example: this.getFieldStr(r, '示例'),
-      platform: this.getFieldStr(r, '适用端'),
-      status: this.getFieldStr(r, '状态'),
+      triggerCondition: this.getFieldStr(r, '条件说明'),
+      enumRange: this.getFieldStr(r, '枚举/取值范围'),
+      definition: this.getFieldStr(r, '参数定义'),
+      defaultValue: this.getFieldStr(r, '默认值/示例'),
+      example: this.getFieldStr(r, '默认值/示例'),
+      platform: this.getFieldStr(r, 'App适用性'),
+      status: this.getFieldStr(r, '参数状态'),
       version: this.getFieldStr(r, '版本'),
       changeType: this.getFieldStr(r, '变更类型'),
     };

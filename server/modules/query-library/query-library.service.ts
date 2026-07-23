@@ -11,20 +11,20 @@ import type {
 // 「02 App埋点查询库（正式）」表字段名（中文）
 const EVENT_FIELDS = {
   evtId: 'evt_id',
-  eventName: '事件名',
-  platform: '平台',
+  eventName: '事件中文名',
+  platform: '端',
   version: '版本',
-  status: '状态',
+  status: '正式状态',
 } as const;
 
 // 参数表字段名（中文）— 若查询库表内含子表/关联表，按实际字段读取
 const PARAM_FIELDS = {
-  paramKey: '参数key',
+  paramKey: '参数名',
   paramName: '参数名',
-  paramType: '参数类型',
-  required: '是否必传',
-  definition: '定义',
-  example: '示例',
+  paramType: '数据类型',
+  required: '必传规则',
+  definition: '参数定义',
+  example: '默认值/示例',
   evtId: 'evt_id',
 } as const;
 
