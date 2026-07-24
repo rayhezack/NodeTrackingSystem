@@ -272,6 +272,7 @@ export interface OfficialEvent {
   platform: string;
   version: string;
   status: string;
+  paramLink: string;
 }
 
 export interface GetOfficialEventsParams {

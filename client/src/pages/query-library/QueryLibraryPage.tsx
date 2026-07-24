@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import {
   Search,
-  ChevronDown,
-  ChevronRight,
+  ExternalLink,
   Loader2,
   RefreshCw,
   Database,
@@ -28,13 +27,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@client/src/components/ui/empty";
-import {
-  getOfficialEvents,
-  getOfficialParams,
-} from "@client/src/api/query-library";
+import { getOfficialEvents } from "@client/src/api/query-library";
 import type { OfficialEvent, TrackingSource } from "@shared/api.interface";
-import { ParamDetailPanel } from "./ParamDetailPanel";
-import type { ExpandedRow } from "./ParamDetailPanel";
 
 // 状态 → 语义色映射
 function getStatusVariant(status: string): "default" | "secondary" | "outline" {
@@ -73,7 +67,6 @@ const QueryLibraryPage = () => {
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [expanded, setExpanded] = useState<Record<string, ExpandedRow>>({});
 
   const fetchEvents = useCallback(
     async (kw: string, token?: string, append = false) => {
@@ -112,7 +105,6 @@ const QueryLibraryPage = () => {
 
   // 首次加载与 App/Web 分库切换
   useEffect(() => {
-    setExpanded({});
     fetchEvents(keyword);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
@@ -135,52 +127,6 @@ const QueryLibraryPage = () => {
     if (!hasMore || loadingMore) return;
     fetchEvents(keyword, pageToken, true);
   }, [hasMore, loadingMore, keyword, pageToken, fetchEvents]);
-
-  const toggleExpand = useCallback(
-    async (record: OfficialEvent) => {
-      const recordId = record.recordId;
-      if (expanded[recordId]) {
-        setExpanded((prev) => {
-          const next = { ...prev };
-          delete next[recordId];
-          return next;
-        });
-        return;
-      }
-
-      setExpanded((prev) => ({
-        ...prev,
-        [recordId]: { loading: true, error: null, items: [], total: 0 },
-      }));
-
-      try {
-        const res = await getOfficialParams(recordId);
-        setExpanded((prev) => ({
-          ...prev,
-          [recordId]: {
-            loading: false,
-            error: null,
-            items: res.items,
-            total: res.total,
-            baseLink: res.baseLink,
-          },
-        }));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "加载参数失败";
-        setExpanded((prev) => ({
-          ...prev,
-          [recordId]: {
-            loading: false,
-            error: msg,
-            items: [],
-            total: 0,
-          },
-        }));
-        logger.error("获取参数明细失败", err);
-      }
-    },
-    [expanded],
-  );
 
   const handleRetry = useCallback(() => {
     fetchEvents(keyword);
@@ -244,7 +190,6 @@ const QueryLibraryPage = () => {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
-              <TableHead className="w-8 pl-3"></TableHead>
               <TableHead className="w-48 text-xs font-medium text-muted-foreground">
                 evt_id
               </TableHead>
@@ -260,6 +205,9 @@ const QueryLibraryPage = () => {
               <TableHead className="w-24 text-xs font-medium text-muted-foreground">
                 状态
               </TableHead>
+              <TableHead className="w-28 text-xs font-medium text-muted-foreground">
+                参数 Base
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -267,9 +215,6 @@ const QueryLibraryPage = () => {
               <>
                 {Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell className="pl-3">
-                      <Skeleton className="h-4 w-4 rounded-sm" />
-                    </TableCell>
                     <TableCell>
                       <Skeleton className="h-4 w-32 rounded-sm" />
                     </TableCell>
@@ -284,6 +229,9 @@ const QueryLibraryPage = () => {
                     </TableCell>
                     <TableCell>
                       <Skeleton className="h-5 w-14 rounded-sm" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-7 w-20 rounded-sm" />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -333,19 +281,9 @@ const QueryLibraryPage = () => {
               </TableRow>
             )}
 
-            {events.map((event) => {
-              const isExpanded = !!expanded[event.recordId];
-              const rowData = expanded[event.recordId];
-              return (
-                <EventRow
-                  key={event.recordId}
-                  event={event}
-                  expanded={isExpanded}
-                  rowData={rowData}
-                  onToggle={() => toggleExpand(event)}
-                />
-              );
-            })}
+            {events.map((event) => (
+              <EventRow key={event.recordId} event={event} />
+            ))}
           </TableBody>
         </Table>
 
@@ -383,9 +321,6 @@ const QueryLibraryPage = () => {
 
 interface EventRowProps {
   event: OfficialEvent;
-  expanded: boolean;
-  rowData?: ExpandedRow;
-  onToggle: () => void;
 }
 
 function SourceSegment({
@@ -420,50 +355,45 @@ function SourceSegment({
   );
 }
 
-function EventRow({ event, expanded, rowData, onToggle }: EventRowProps) {
+function EventRow({ event }: EventRowProps) {
   return (
-    <>
-      <TableRow
-        className="cursor-pointer hover:bg-accent/50"
-        onClick={onToggle}
-      >
-        <TableCell className="pl-3">
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
-        </TableCell>
-        <TableCell className="font-mono text-xs text-foreground">
-          {event.evtId || "-"}
-        </TableCell>
-        <TableCell className="text-sm text-foreground">
-          {event.eventName || "-"}
-        </TableCell>
-        <TableCell className="text-xs text-muted-foreground">
-          {event.platform || "-"}
-        </TableCell>
-        <TableCell className="text-xs text-muted-foreground">
-          {event.version || "-"}
-        </TableCell>
-        <TableCell>
-          <Badge
-            variant={getStatusVariant(event.status)}
-            className={`rounded-sm ${getStatusStyle(event.status)}`}
+    <TableRow className="hover:bg-accent/50">
+      <TableCell className="font-mono text-xs text-foreground">
+        {event.evtId || "-"}
+      </TableCell>
+      <TableCell className="text-sm text-foreground">
+        {event.eventName || "-"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {event.platform || "-"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {event.version || "-"}
+      </TableCell>
+      <TableCell>
+        <Badge
+          variant={getStatusVariant(event.status)}
+          className={`rounded-sm ${getStatusStyle(event.status)}`}
+        >
+          {event.status || "-"}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        {event.paramLink ? (
+          <a
+            href={event.paramLink}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-7 items-center gap-1 rounded-sm border border-border px-2 text-xs text-primary underline-offset-2 hover:bg-accent hover:underline"
           >
-            {event.status || "-"}
-          </Badge>
-        </TableCell>
-      </TableRow>
-
-      {expanded && (
-        <TableRow className="bg-muted/20">
-          <TableCell colSpan={6} className="p-0">
-            <ParamDetailPanel rowData={rowData} />
-          </TableCell>
-        </TableRow>
-      )}
-    </>
+            打开参数
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <span className="text-xs text-muted-foreground">-</span>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
 

@@ -130,6 +130,7 @@ export class QueryLibraryService {
       eventName: cellText(record.record['事件中文名']) || '未命名事件',
       platform: cellText(record.record['端']) || '-',
       version: firstText(record.record['上线版本'], record.record['版本']) || '-',
+      paramLink: cellText(record.record['参数明细入口']) || paramBaseLink(source),
       status:
         firstText(
           record.record['状态'],
@@ -195,6 +196,7 @@ function dedupeOfficialEvents(items: OfficialEvent[]): OfficialEvent[] {
       platform: mergeTextList(existing.platform, item.platform),
       version: firstDisplayText(existing.version, item.version),
       status: firstDisplayText(existing.status, item.status),
+      paramLink: firstDisplayText(existing.paramLink, item.paramLink),
     });
   }
   return Array.from(map.values());
@@ -241,6 +243,7 @@ function cellText(value: unknown): string {
     const objectValue = value as Record<string, unknown>;
     if (typeof objectValue.name === 'string') return objectValue.name;
     if (typeof objectValue.text === 'string') return objectValue.text;
+    if (typeof objectValue.link === 'string') return objectValue.link;
     if (typeof objectValue.id === 'string') return objectValue.id;
   }
   return '';
