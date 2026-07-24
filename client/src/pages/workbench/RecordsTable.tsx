@@ -132,7 +132,7 @@ const RecordsTable = ({
         <div className="relative flex-1 min-w-[200px] max-w-[320px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索 evt_id / 事件名"
+            placeholder="搜索需求名 / evt_id / 事件名"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -256,7 +256,7 @@ const RecordsTable = ({
                     库
                   </TableHead>
                   <TableHead className="h-9 px-3 text-xs font-medium text-muted-foreground">
-                    事件名
+                    需求/事件名
                   </TableHead>
                   <TableHead className="h-9 w-24 px-3 text-xs font-medium text-muted-foreground">
                     阶段
@@ -288,7 +288,7 @@ const RecordsTable = ({
                       onClick={() => onRowClick(rec.recordId)}
                     >
                       <TableCell className="px-3 py-0 font-mono text-xs text-primary">
-                        {rec.evtId || '-'}
+                        {rec.evtId || '待填写'}
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
@@ -297,7 +297,7 @@ const RecordsTable = ({
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-foreground">
                         <span className="block max-w-[320px] truncate">
-                          {rec.eventName || '-'}
+                          {rec.eventName || '未命名需求'}
                         </span>
                       </TableCell>
                       <TableCell className="px-3 py-0">

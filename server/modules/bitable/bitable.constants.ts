@@ -91,6 +91,7 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     { id: 'fldonline_monitor_status', name: '上线监控状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
   ],
   paramDetail: [
+    { id: 'fldZ5kcKld', name: '设计参数主键', type: 20, bizType: 'Formula', readable: true, writeable: false },
     { id: 'fldevt_id', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
     { id: 'fldparam_name', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
     { id: 'fldparam_type', name: '数据类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
@@ -171,7 +172,7 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     { id: 'fldonline_monitor_status_web', name: '上线监控状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
   ],
   webParamDetail: [
-    { id: 'fldparam_key_web', name: '设计参数主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+    { id: 'fldZ5kcKld', name: '设计参数主键', type: 20, bizType: 'Formula', readable: true, writeable: false },
     { id: 'fldevt_id_param_web', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
     { id: 'fldparam_name_web', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
     { id: 'fldparam_type_web', name: '数据类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },

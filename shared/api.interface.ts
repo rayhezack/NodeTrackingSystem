@@ -83,7 +83,7 @@ export interface GetTrackingRecordsResponse {
 
 export interface CreateTrackingRecordRequest {
   source: TrackingSource;
-  evtId: string;
+  evtId?: string;
   eventName: string;
   requirementBackground?: string;
   requirementLink?: string;
@@ -229,7 +229,7 @@ export interface GetParamsResponse {
 }
 
 export interface CreateParamRequest {
-  paramKey: string;
+  paramKey?: string;
   evtId: string;
   paramName: string;
   paramType: string;

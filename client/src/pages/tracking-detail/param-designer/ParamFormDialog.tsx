@@ -40,7 +40,6 @@ interface ParamFormDialogProps {
 }
 
 const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest => ({
-  paramKey: '',
   evtId,
   paramName: '',
   paramType: 'STRING',
@@ -49,7 +48,7 @@ const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest 
   definition: '',
   defaultValue: '',
   example: '',
-  platform: source === 'web' ? 'Web通用' : 'App通用',
+  platform: source === 'web' ? 'Web通用' : 'iOS、Android',
   status: '草稿',
   version: '',
   changeType: '新增',
@@ -71,7 +70,6 @@ const ParamFormDialog = ({
     if (!open) return;
     if (mode === 'edit' && initialData) {
       setForm({
-        paramKey: initialData.paramKey,
         evtId: initialData.evtId,
         paramName: initialData.paramName,
         paramType: initialData.paramType || 'STRING',
@@ -80,7 +78,7 @@ const ParamFormDialog = ({
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
         example: initialData.example,
-        platform: initialData.platform || (source === 'web' ? 'Web通用' : 'App通用'),
+        platform: initialData.platform || (source === 'web' ? 'Web通用' : 'iOS、Android'),
         status: initialData.status || '草稿',
         version: initialData.version,
         changeType: initialData.changeType || '修改',
@@ -91,8 +89,8 @@ const ParamFormDialog = ({
   }, [open, mode, initialData, defaultEvtId, source]);
 
   const handleSubmit = async () => {
-    if (!form.paramKey.trim()) {
-      toast.error('请输入参数 key');
+    if (!form.evtId.trim()) {
+      toast.error('请先填写 evt_id');
       return;
     }
     if (!form.paramName.trim()) {
@@ -101,7 +99,10 @@ const ParamFormDialog = ({
     }
     setSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit({
+        ...form,
+        paramKey: buildParamKey(form.evtId, form.paramName),
+      });
       toast.success(mode === 'create' ? '新增参数成功' : '编辑参数成功');
       onClose();
     } catch (err) {
@@ -123,6 +124,7 @@ const ParamFormDialog = ({
   const inputCls = 'h-8 rounded-sm text-xs';
   const textareaCls = 'rounded-sm text-xs min-h-[60px]';
   const platformOptions = source === 'web' ? WEB_PLATFORM_OPTIONS : APP_PLATFORM_OPTIONS;
+  const autoParamKey = buildParamKey(form.evtId, form.paramName);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
@@ -134,16 +136,13 @@ const ParamFormDialog = ({
         </DialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-          <FormField label="参数 key" required>
-            <Input
-              className={inputCls}
-              value={form.paramKey}
-              onChange={(e) => updateField('paramKey', e.target.value)}
-              placeholder="如：user_id"
-            />
+          <FormField label="参数 key（自动生成）">
+            <div className="flex h-8 items-center rounded-sm border border-input bg-muted/30 px-3 font-mono text-xs text-muted-foreground">
+              {autoParamKey || '填写 evt_id 和参数名后自动生成'}
+            </div>
           </FormField>
 
-          <FormField label="evt_id">
+          <FormField label="evt_id" required>
             <Input
               className={inputCls}
               value={form.evtId}
@@ -280,3 +279,9 @@ const ParamFormDialog = ({
 };
 
 export default ParamFormDialog;
+
+function buildParamKey(evtId?: string, paramName?: string): string {
+  const eventId = String(evtId || '').trim();
+  const name = String(paramName || '').trim();
+  return eventId && name ? `${eventId}.${name}` : '';
+}

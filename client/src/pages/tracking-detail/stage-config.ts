@@ -31,7 +31,6 @@ export const PLATFORM_OPTIONS = [
   { value: 'iOS', label: 'iOS' },
   { value: 'Android', label: 'Android' },
   { value: 'iOS、Android', label: 'iOS、Android' },
-  { value: 'App通用', label: 'App通用' },
   { value: 'Web', label: 'Web' },
 ];
 
@@ -124,8 +123,6 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['需求录入'],
     permissionKey: 'canEditRequirement',
     fields: [
-      { key: 'eventName', label: '事件名', type: 'input', baseField: '事件中文名' },
-      { key: 'evtId', label: 'evt_id', type: 'input', baseField: 'evt_id' },
       { key: 'priority', label: '优先级', type: 'select', baseField: '优先级', options: PRIORITY_OPTIONS },
       { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
       { key: 'requesterIds', label: '需求提出人 / 提需人', type: 'user', baseField: '需求提出人', multiple: true },

@@ -345,18 +345,20 @@ export class TrackingService {
     const source = normalizeSource(body.source);
     const evtId = (body.evtId || '').trim();
     const eventName = (body.eventName || '').trim();
-    if (!evtId || !eventName) {
-      throw new BadRequestException('evt_id 和事件名不能为空');
+    if (!eventName) {
+      throw new BadRequestException('需求名称不能为空');
     }
 
     await this.assertCanCreateRecord(body.actorId, body.actorLarkId);
 
     const records = await this.listWorkbenchRecords(source);
-    const duplicate = records.find(
-      (record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase(),
-    );
-    if (duplicate) {
-      throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
+    if (evtId) {
+      const duplicate = records.find(
+        (record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase(),
+      );
+      if (duplicate) {
+        throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
+      }
     }
 
     const actorCellId = body.actorId;
@@ -419,7 +421,7 @@ export class TrackingService {
       .map((param) =>
         this.toParamRecord(source, created.id, evtId, body.version || '1.0.0', param),
       )
-      .filter((record) => cellText(record['参数名']) || cellText(record['设计参数主键']));
+      .filter((record) => cellText(record.evt_id) && cellText(record['参数名']));
 
     if (paramRecords.length) {
       await this.bitable.batchAddRecords(paramDetail, paramRecords);
@@ -467,7 +469,14 @@ export class TrackingService {
     }
     normalizeWorkbenchPatch(patch, ref.source);
 
+    const currentEvtId = cellText(current.record['evt_id']);
+    const hasEvtIdPatch = Object.prototype.hasOwnProperty.call(patch, 'evt_id');
+    const nextEvtId = hasEvtIdPatch ? cellText(patch.evt_id) : currentEvtId;
+
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
+    if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
+      await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
+    }
     return { success: true, recordId, currentStage };
   }
 
@@ -526,6 +535,29 @@ export class TrackingService {
       { id: ref.rawId, record: patch },
     ]);
     return { success: true, recordId: paramRecordId };
+  }
+
+  private async syncParamEvtId(
+    source: TrackingSource,
+    designRecordId: string,
+    previousEvtId: string,
+    nextEvtId: string,
+  ): Promise<void> {
+    const result = await this.bitable.searchRecords(paramDetailKey(source), {
+      fieldNames: [...paramFields(source)],
+      pageSize: 200,
+    });
+    const updates = result.records
+      .filter((record) => this.isParamForDesign(record, designRecordId, previousEvtId))
+      .map((record) => ({
+        id: record.id,
+        record: { evt_id: nextEvtId },
+      }));
+    if (!updates.length) return;
+
+    for (let index = 0; index < updates.length; index += 200) {
+      await this.bitable.batchUpdateRecords(paramDetailKey(source), updates.slice(index, index + 200));
+    }
   }
 
   async deleteParam(paramRecordId: string): Promise<DeleteParamResponse> {
@@ -598,10 +630,10 @@ export class TrackingService {
       const evtId = cellText(record.record['evt_id']);
       const type = cellText(record.record['记录类型']);
       return (
-        Boolean(evtId) &&
         evtId !== PERMISSION_RECORD_EVT_ID &&
         type !== '模板' &&
-        type !== PERMISSION_RECORD_TYPE
+        type !== PERMISSION_RECORD_TYPE &&
+        (type === '埋点设计' || Boolean(evtId) || Boolean(cellText(record.record['事件中文名'])))
       );
     });
   }
@@ -616,7 +648,7 @@ export class TrackingService {
       recordId: encodeScopedRecordId(source, record.id),
       source,
       evtId: cellText(record.record['evt_id']),
-      eventName: cellText(record.record['事件中文名']) || '未命名事件',
+      eventName: cellText(record.record['事件中文名']) || '未命名需求',
       stage,
       uiStage: getUiStageFromBase(stage),
       priority: cellText(record.record['优先级']) || 'P2',
@@ -715,11 +747,13 @@ export class TrackingService {
 
   private toParamDetail(record: BitableRecord, source: TrackingSource): ParamDetail {
     const requiredRule = cellText(record.record['必传规则']);
+    const evtId = cellText(record.record['evt_id']);
+    const paramName = cellText(record.record['参数名']);
     return {
       recordId: encodeScopedRecordId(source, record.id),
-      paramKey: cellText(record.record['设计参数主键']),
-      evtId: cellText(record.record['evt_id']),
-      paramName: cellText(record.record['参数名']),
+      paramKey: buildParamKey(evtId, paramName) || cellText(record.record['设计参数主键']),
+      evtId,
+      paramName,
       paramType: cellText(record.record['数据类型']) || 'STRING',
       required: requiredRule === '必传' || requiredRule === '条件必传',
       triggerCondition: cellText(record.record['条件说明']),
@@ -742,11 +776,10 @@ export class TrackingService {
     body: CreateParamRequest,
   ): Record<string, unknown> {
     const paramName = (body.paramName || '').trim();
-    const paramKey = (body.paramKey || '').trim() || (paramName ? `${evtId}.${paramName}` : '');
+    const eventId = (body.evtId || evtId).trim();
     const platformField = source === 'web' ? 'Web适用性' : 'App适用性';
     return {
-      '设计参数主键': paramKey,
-      evt_id: body.evtId || evtId,
+      evt_id: eventId,
       '参数名': paramName,
       '数据类型': normalizeParamType(body.paramType),
       '必传规则': body.required ? '必传' : '非必传',
@@ -754,7 +787,7 @@ export class TrackingService {
       '枚举/取值范围': body.enumRange || '',
       '参数定义': body.definition || '',
       '默认值/示例': body.example || body.defaultValue || '',
-      [platformField]: body.platform || (source === 'web' ? 'Web通用' : 'App通用'),
+      [platformField]: body.platform || (source === 'web' ? 'Web通用' : 'iOS、Android'),
       '参数状态': normalizeParamStatus(body.status),
       '版本': body.version || version || '1.0.0',
       '变更类型': body.changeType || '新增',
@@ -1221,6 +1254,12 @@ function normalizeParamStatus(value?: string): string {
   return raw;
 }
 
+function buildParamKey(evtId?: string, paramName?: string): string {
+  const eventId = String(evtId || '').trim();
+  const name = String(paramName || '').trim();
+  return eventId && name ? `${eventId}.${name}` : '';
+}
+
 function normalizeWorkbenchPatch(
   patch: Record<string, unknown>,
   source: TrackingSource,
@@ -1294,7 +1333,6 @@ function normalizeOfficialStatus(value?: string): string {
 
 function hasApiParamFields(fields: Record<string, unknown>): boolean {
   return [
-    'paramKey',
     'paramName',
     'paramType',
     'required',
@@ -1315,7 +1353,6 @@ function toParamPatch(
   source: TrackingSource,
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
-  if (fields.paramKey !== undefined) patch['设计参数主键'] = fields.paramKey;
   if (fields.evtId !== undefined) patch.evt_id = fields.evtId;
   if (fields.paramName !== undefined) patch['参数名'] = fields.paramName;
   if (fields.paramType !== undefined) patch['数据类型'] = normalizeParamType(fields.paramType);

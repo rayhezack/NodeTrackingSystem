@@ -390,10 +390,12 @@ export class BitableService {
       (BITABLE_FIELDS[instanceKey] || []).map((field) => [field.name, field]),
     );
     return Object.fromEntries(
-      Object.entries(record).map(([fieldName, value]) => [
-        fieldName,
-        normalizeCellValue(fieldMap.get(fieldName), value),
-      ]),
+      Object.entries(record)
+        .filter(([fieldName]) => fieldMap.get(fieldName)?.writeable !== false)
+        .map(([fieldName, value]) => [
+          fieldName,
+          normalizeCellValue(fieldMap.get(fieldName), value),
+        ]),
     );
   }
 

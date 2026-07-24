@@ -103,7 +103,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
           <div>
             <h2 className="text-base font-medium text-foreground">参数设计</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
+              配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
             </p>
           </div>
           {canEdit && (
@@ -130,7 +130,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
         <div>
           <h2 className="text-base font-medium text-foreground">参数设计</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
+            配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
           </p>
         </div>
         <div className="flex flex-col items-center justify-center rounded-sm border border-border bg-card py-16">
@@ -163,7 +163,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
             </span>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            配置该事件的参数明细，包括参数 key、参数名、类型、必传规则、枚举范围和定义说明
+            配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
           </p>
         </div>
         {canEdit && (

@@ -202,7 +202,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
           <ParamDesigner
             recordId={detail.recordId}
             source={detail.source}
-            evtId={detail.evtId}
+            evtId={toTextValue(formData.evtId) || detail.evtId}
             canEdit={detail.permissions.canEditParams}
           />
         </div>

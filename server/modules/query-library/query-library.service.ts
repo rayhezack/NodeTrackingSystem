@@ -143,9 +143,11 @@ export class QueryLibraryService {
 
   private toOfficialParam(record: BitableRecord, source: TrackingSource): OfficialParam {
     const requiredRule = cellText(record.record['必传规则']);
+    const evtId = cellText(record.record['evt_id']);
+    const paramName = cellText(record.record['参数名']);
     return {
-      paramKey: cellText(record.record['设计参数主键']),
-      paramName: cellText(record.record['参数名']),
+      paramKey: buildParamKey(evtId, paramName) || cellText(record.record['设计参数主键']),
+      paramName,
       paramType: cellText(record.record['数据类型']) || '-',
       required: requiredRule === '必传' || requiredRule === '条件必传',
       enumRange: cellText(record.record['枚举/取值范围']),
@@ -211,6 +213,12 @@ function mergeTextList(left: string, right: string): string {
 
 function firstDisplayText(...values: string[]): string {
   return values.find((value) => value && value !== '-') || '-';
+}
+
+function buildParamKey(evtId?: string, paramName?: string): string {
+  const eventId = String(evtId || '').trim();
+  const name = String(paramName || '').trim();
+  return eventId && name ? `${eventId}.${name}` : '';
 }
 
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {

@@ -44,10 +44,10 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
         {/* 左侧：evt_id + 事件名 */}
         <div className="flex flex-col gap-1">
           <div className="font-mono text-lg font-semibold text-foreground tracking-tight">
-            {detail.evtId || '-'}
+            {detail.evtId || '待填写 evt_id'}
           </div>
           <div className="text-sm text-muted-foreground">
-            {detail.eventName || '未命名事件'}
+            {detail.eventName || '未命名需求'}
           </div>
         </div>
 

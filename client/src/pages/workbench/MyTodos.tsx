@@ -119,13 +119,13 @@ const MyTodos = ({
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
                 >
                   <span className="w-24 shrink-0 font-mono text-xs text-primary">
-                    {item.evtId || '-'}
+                    {item.evtId || '待填写'}
                   </span>
                   <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
                     {item.source === 'web' ? 'Web' : 'App'}
                   </Badge>
                   <span className="flex-1 truncate text-sm text-foreground">
-                    {item.eventName || '-'}
+                    {item.eventName || '未命名需求'}
                   </span>
                   {item.todoRole && (
                     <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
