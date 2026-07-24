@@ -491,6 +491,10 @@ function normalizeCellValue(
       return toStringArray(value);
     case 11:
       return toNumberArray(value);
+    case 15:
+      return toUrlCell(value);
+    case 17:
+      return toFileAttachmentArray(value);
     case 18:
       return toLinkArray(value);
     default:
@@ -526,6 +530,42 @@ function toNumberArray(value: unknown): number[] {
         .filter((id): id is number => id !== null),
     ),
   );
+}
+
+function toUrlCell(value: unknown): { text: string; link: string } | null {
+  if (value == null) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const objectValue = value as Record<string, unknown>;
+    const link = cellText(objectValue.link || objectValue.url || objectValue.href).trim();
+    const text = cellText(objectValue.text || objectValue.name || link).trim();
+    if (!link) return null;
+    return { text: text || link, link };
+  }
+
+  const link = cellText(value).trim();
+  if (!link) return null;
+  return { text: link, link };
+}
+
+function toFileAttachmentArray(value: unknown): unknown[] {
+  const values = Array.isArray(value)
+    ? value
+    : value
+      ? [value]
+      : [];
+
+  return values
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const file = item as Record<string, unknown>;
+      const bucketId = cellText(file.bucket_id || file.bucketId).trim();
+      const filePath = cellText(file.file_path || file.filePath).trim();
+      if (bucketId && filePath) {
+        return { bucket_id: bucketId, file_path: filePath };
+      }
+      return file;
+    })
+    .filter(Boolean);
 }
 
 function toLinkArray(value: unknown): unknown {
@@ -619,6 +659,8 @@ function cellText(value: unknown): string {
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;
     if (typeof objectValue.name === 'string') return objectValue.name;
+    if (typeof objectValue.link === 'string') return objectValue.link;
+    if (typeof objectValue.url === 'string') return objectValue.url;
     if (typeof objectValue.text === 'string') return objectValue.text;
     if (typeof objectValue.id === 'string' || typeof objectValue.id === 'number') {
       return String(objectValue.id);

@@ -224,7 +224,9 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                     <TableCell className="h-9 py-0 text-xs max-w-[160px] truncate">
                       {item.enumRange || '-'}
                     </TableCell>
-                    <TableCell className="h-9 py-0 text-xs">{item.platform || '-'}</TableCell>
+                    <TableCell className="h-9 py-0 text-xs">
+                      {normalizePlatformDisplay(item.platform, source)}
+                    </TableCell>
                     <TableCell className="h-9 py-0 text-xs">
                       {isDeprecated ? (
                         <Badge variant="destructive" className="h-5 rounded-sm text-[10px] px-1.5 font-normal">废弃</Badge>
@@ -275,3 +277,20 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
 };
 
 export default ParamDesigner;
+
+function normalizePlatformDisplay(value: string | undefined, source: TrackingSource): string {
+  const raw = (value || '').trim();
+  if (source === 'web') {
+    if (raw === 'Web') return '仅Web';
+    return raw || '-';
+  }
+  const alias: Record<string, string> = {
+    iOS: '仅iOS',
+    Android: '仅Android',
+    'iOS,Android': 'iOS、Android',
+    'iOS, Android': 'iOS、Android',
+    App通用: 'iOS、Android',
+    仅App: 'iOS、Android',
+  };
+  return alias[raw] || raw || '-';
+}

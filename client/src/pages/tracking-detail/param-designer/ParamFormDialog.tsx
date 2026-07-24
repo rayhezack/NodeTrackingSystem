@@ -78,7 +78,7 @@ const ParamFormDialog = ({
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
         example: initialData.example,
-        platform: initialData.platform || (source === 'web' ? 'Web通用' : 'iOS、Android'),
+        platform: normalizePlatformValue(initialData.platform, source),
         status: initialData.status || '草稿',
         version: initialData.version,
         changeType: initialData.changeType || '修改',
@@ -284,4 +284,21 @@ function buildParamKey(evtId?: string, paramName?: string): string {
   const eventId = String(evtId || '').trim();
   const name = String(paramName || '').trim();
   return eventId && name ? `${eventId}.${name}` : '';
+}
+
+function normalizePlatformValue(value: string | undefined, source: TrackingSource): string {
+  const raw = (value || '').trim();
+  if (source === 'web') {
+    if (raw === 'Web') return '仅Web';
+    return raw || 'Web通用';
+  }
+  const alias: Record<string, string> = {
+    iOS: '仅iOS',
+    Android: '仅Android',
+    'iOS,Android': 'iOS、Android',
+    'iOS, Android': 'iOS、Android',
+    App通用: 'iOS、Android',
+    仅App: 'iOS、Android',
+  };
+  return alias[raw] || raw || 'iOS、Android';
 }

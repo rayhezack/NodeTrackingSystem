@@ -3,7 +3,7 @@
 export interface StageFieldConfig {
   key: string;
   label: string;
-  type: 'input' | 'textarea' | 'select' | 'date' | 'user';
+  type: 'input' | 'textarea' | 'select' | 'date' | 'user' | 'attachment';
   baseField: string;
   options?: { value: string; label: string }[];
   placeholder?: string;
@@ -130,6 +130,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'dataOwnerIds', label: '数据负责人', type: 'user', baseField: '数据负责人', multiple: true },
       { key: 'devOwnerIds', label: '研发负责人', type: 'user', baseField: '研发负责人', multiple: true },
       { key: 'dsAcceptorIds', label: 'DS 验收人', type: 'user', baseField: 'DS验收人', multiple: true },
+      { key: 'requirementLink', label: '需求链接', type: 'input', baseField: '需求链接', placeholder: '可粘贴 PRD、需求文档或飞书链接' },
       { key: 'requirementBackground', label: '需求背景', type: 'textarea', baseField: '需求背景', placeholder: '说明为什么需要这个埋点...' },
       { key: 'metricScenario', label: '指标/使用场景', type: 'textarea', baseField: '指标/使用场景', placeholder: '说明要支撑的指标、看板或分析场景...' },
     ],
@@ -147,6 +148,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
       { key: 'eventDefinition', label: '事件定义', type: 'textarea', baseField: '事件定义', placeholder: '定义事件统计口径和边界...' },
       { key: 'triggerTiming', label: '触发时机', type: 'textarea', baseField: '触发时机', placeholder: '描述事件触发的具体时机...' },
+      { key: 'uiImages', label: 'UI图', type: 'attachment', baseField: 'UI图', placeholder: '上传该埋点事件对应的 UI 截图、原型图或交互位置图' },
       { key: 'handler', label: '处理方', type: 'select', baseField: '处理方', options: HANDLER_OPTIONS },
       { key: 'commonProps', label: '公共属性要求', type: 'textarea', baseField: '公共属性要求', placeholder: '列出必须携带的公共属性...' },
       { key: 'version', label: '版本', type: 'input', baseField: '版本', placeholder: '例如 1.0.0' },
@@ -163,8 +165,6 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     fields: [
       { key: 'reviewStatus', label: '评审状态', type: 'select', baseField: '评审状态', options: REVIEW_STATUS_OPTIONS },
       { key: 'reviewComment', label: '评审意见', type: 'textarea', baseField: '评审意见', placeholder: '评审意见与建议...' },
-      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'select', baseField: '发布门禁状态', options: QUALITY_GATE_OPTIONS },
-      { key: 'qualityGateReason', label: '门禁失败原因', type: 'textarea', baseField: '发布门禁失败原因', placeholder: '如未通过，请填写失败原因...' },
     ],
   },
   {
@@ -196,10 +196,12 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['上线监控'],
     permissionKey: 'canEditLaunch',
     fields: [
-      { key: 'monitorStatus', label: '上线监控状态', type: 'select', baseField: '上线监控状态', options: MONITOR_STATUS_OPTIONS },
-      { key: 'monitorConclusion', label: '上线监控结论', type: 'textarea', baseField: '上线监控结论', placeholder: '填写上线后的数据监控结论...' },
+      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'select', baseField: '发布门禁状态', options: QUALITY_GATE_OPTIONS },
+      { key: 'qualityGateReason', label: '门禁失败原因', type: 'textarea', baseField: '发布门禁失败原因', placeholder: '如未通过，请填写失败原因...' },
       { key: 'publishStatus', label: '发布状态', type: 'select', baseField: '发布状态', options: PUBLISH_STATUS_OPTIONS },
       { key: 'publishError', label: '发布错误', type: 'textarea', baseField: '发布错误', placeholder: '如发布失败，请填写错误原因...' },
+      { key: 'monitorStatus', label: '上线监控状态', type: 'select', baseField: '上线监控状态', options: MONITOR_STATUS_OPTIONS },
+      { key: 'monitorConclusion', label: '上线监控结论', type: 'textarea', baseField: '上线监控结论', placeholder: '填写上线后的数据监控结论...' },
     ],
   },
   {

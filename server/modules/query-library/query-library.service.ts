@@ -153,7 +153,10 @@ export class QueryLibraryService {
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
       example: cellText(record.record['默认值/示例']),
-      platform: cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
+      platform: normalizeParamApplicability(
+        cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
+        source,
+      ),
       status: cellText(record.record['参数状态']),
     };
   }
@@ -221,6 +224,23 @@ function buildParamKey(evtId?: string, paramName?: string): string {
   return eventId && name ? `${eventId}.${name}` : '';
 }
 
+function normalizeParamApplicability(value: string, source: TrackingSource): string {
+  const raw = String(value || '').trim();
+  if (source === 'web') {
+    const alias: Record<string, string> = { Web: '仅Web' };
+    return alias[raw] || raw || '-';
+  }
+  const alias: Record<string, string> = {
+    iOS: '仅iOS',
+    Android: '仅Android',
+    'iOS,Android': 'iOS、Android',
+    'iOS, Android': 'iOS、Android',
+    App通用: 'iOS、Android',
+    仅App: 'iOS、Android',
+  };
+  return alias[raw] || raw || '-';
+}
+
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
   return `${source}:${rawId}`;
 }
@@ -250,8 +270,9 @@ function cellText(value: unknown): string {
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;
     if (typeof objectValue.name === 'string') return objectValue.name;
-    if (typeof objectValue.text === 'string') return objectValue.text;
     if (typeof objectValue.link === 'string') return objectValue.link;
+    if (typeof objectValue.url === 'string') return objectValue.url;
+    if (typeof objectValue.text === 'string') return objectValue.text;
     if (typeof objectValue.id === 'string') return objectValue.id;
   }
   return '';

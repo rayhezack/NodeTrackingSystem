@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, Upload, X, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
@@ -13,9 +13,14 @@ import {
 } from '@client/src/components/ui/select';
 import { Label } from '@client/src/components/ui/label';
 import { UserSelect } from '@client/src/components/business-ui/user-select';
+import { uploadFile } from '@client/src/components/business-ui/api/files/service';
 import { SIDEBAR_STAGES, type StageConfig } from './stage-config';
 import { updateTrackingRecord } from '@client/src/api/tracking';
-import type { TrackingDetail, TrackingUserRef } from '@shared/api.interface';
+import type {
+  TrackingAttachment,
+  TrackingDetail,
+  TrackingUserRef,
+} from '@shared/api.interface';
 import ParamDesigner from './param-designer/ParamDesigner';
 
 interface StageFormProps {
@@ -62,7 +67,9 @@ function getFieldValue(
     }
   }
   if (field.type === 'user') return toUserArray(val);
+  if (field.type === 'attachment') return toAttachmentArray(val);
   if (val == null) return '';
+  if (field.baseField === '端') return toPlatformText(val);
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {
     const first = val[0];
@@ -105,9 +112,13 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
       for (const field of stageConfig.fields) {
         const value = formData[field.key];
         // 只有值变化了才提交（简化处理：全部提交）
-        fields[field.baseField] = field.type === 'user'
-          ? toStringArray(value)
-          : toTextValue(value);
+        if (field.type === 'user') {
+          fields[field.baseField] = toStringArray(value);
+        } else if (field.type === 'attachment') {
+          fields[field.baseField] = toAttachmentArray(value);
+        } else {
+          fields[field.baseField] = toTextValue(value);
+        }
       }
 
       await updateTrackingRecord(detail.recordId, { fields });
@@ -134,7 +145,10 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
 
       <div className="grid gap-5 md:grid-cols-2">
         {stageConfig.fields.map((field) => (
-          <div key={field.key} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+          <div
+            key={field.key}
+            className={field.type === 'textarea' || field.type === 'attachment' ? 'md:col-span-2' : ''}
+          >
             <Label className="mb-1.5 block text-xs text-muted-foreground">
               {field.label}
             </Label>
@@ -191,6 +205,14 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
                 tagClosable={!disabled}
                 needFullFields
                 includeExternalContacts={false}
+              />
+            )}
+            {field.type === 'attachment' && (
+              <AttachmentUploadField
+                value={toAttachmentArray(formData[field.key])}
+                onChange={(value) => handleChange(field.key, value)}
+                disabled={disabled}
+                placeholder={field.placeholder}
               />
             )}
           </div>
@@ -252,6 +274,19 @@ function toTextValue(value: FormValue | undefined): string {
   return value || '';
 }
 
+function toPlatformText(value: unknown): string {
+  const items = Array.isArray(value)
+    ? value.map(textValue).filter(Boolean)
+    : textValue(value)
+      ? [textValue(value)]
+      : [];
+  if (items.includes('Web')) return 'Web';
+  const hasIos = items.some((item) => item === 'iOS');
+  const hasAndroid = items.some((item) => item === 'Android');
+  if (hasIos && hasAndroid) return 'iOS、Android';
+  return items.join('、');
+}
+
 function toStringArray(value: unknown): string[] {
   if (value == null) return [];
   if (Array.isArray(value)) {
@@ -296,6 +331,165 @@ function toUserArray(value: unknown): TrackingUserRef[] {
       return null;
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
+}
+
+function toAttachmentArray(value: unknown): TrackingAttachment[] {
+  if (value == null) return [];
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .map<TrackingAttachment | null>((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const file = item as TrackingAttachment;
+      return {
+        ...file,
+        bucket_id: textValue(file.bucket_id || file.bucketId),
+        file_path: textValue(file.file_path || file.filePath),
+        url: textValue(file.url || file.download_url),
+        name: textValue(file.name || file.fileName),
+      };
+    })
+    .filter((item): item is TrackingAttachment => Boolean(item));
+}
+
+function AttachmentUploadField({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  value: TrackingAttachment[];
+  onChange: (value: TrackingAttachment[]) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!selectedFiles.length) return;
+    const invalidFile = selectedFiles.find((file) => !file.type.startsWith('image/'));
+    if (invalidFile) {
+      toast.error('UI图仅支持图片文件');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(
+        selectedFiles.map(async (file) => {
+          const result = await uploadFile(file);
+          return {
+            bucket_id: result.bucketId,
+            file_path: result.filePath,
+            url: result.url,
+            name: file.name,
+          } satisfies TrackingAttachment;
+        }),
+      );
+      onChange([...value, ...uploaded]);
+      toast.success(`已上传 ${uploaded.length} 张 UI 图`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传失败';
+      toast.error(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAt = (index: number) => {
+    onChange(value.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  return (
+    <div className="rounded-sm border border-input bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={disabled || uploading}
+          onChange={handleFileChange}
+          className="h-8 max-w-xs rounded-sm text-xs"
+        />
+        <span className="text-xs text-muted-foreground">
+          {uploading ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              上传中...
+            </span>
+          ) : (
+            placeholder || '上传埋点事件对应的 UI 图'
+          )}
+        </span>
+      </div>
+
+      {value.length > 0 ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {value.map((file, index) => {
+            const fileName = attachmentName(file, index);
+            const url = attachmentUrl(file);
+            return (
+              <div
+                key={`${file.file_path || file.url || fileName}-${index}`}
+                className="flex items-center gap-2 rounded-sm border border-border bg-muted/30 px-2 py-1.5"
+              >
+                <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                {url ? (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate text-xs text-primary hover:underline"
+                  >
+                    {fileName}
+                  </a>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                    {fileName}
+                  </span>
+                )}
+                {!disabled && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 rounded-sm p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeAt(index)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Upload className="h-3.5 w-3.5" />
+          暂无 UI 图
+        </div>
+      )}
+    </div>
+  );
+}
+
+function attachmentName(file: TrackingAttachment, index: number): string {
+  return (
+    textValue(file.name || file.fileName) ||
+    textValue(file.file_path || file.filePath).split('/').pop() ||
+    `UI图 ${index + 1}`
+  );
+}
+
+function attachmentUrl(file: TrackingAttachment): string {
+  return textValue(file.url || file.download_url);
+}
+
+function textValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
 }
 
 function extractNumericUserId(value: unknown): string {

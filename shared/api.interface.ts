@@ -9,6 +9,18 @@ export interface TrackingUserRef {
   name?: string;
 }
 
+export interface TrackingAttachment {
+  bucket_id?: string;
+  bucketId?: string;
+  file_path?: string;
+  filePath?: string;
+  url?: string;
+  download_url?: string;
+  name?: string;
+  fileName?: string;
+  [key: string]: unknown;
+}
+
 // 阶段统计
 export interface StageStat {
   stage: string;

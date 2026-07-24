@@ -52,6 +52,7 @@ const WORKBENCH_FIELDS = [
   '事件中文名',
   '事件定义',
   '触发时机',
+  'UI图',
   '需求背景',
   '需求链接',
   '指标/使用场景',
@@ -140,6 +141,7 @@ const USER_FIELD_NAMES = new Set([
   '研发负责人',
   'DS验收人',
 ]);
+const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 
 @Injectable()
 export class TrackingService {
@@ -710,6 +712,7 @@ export class TrackingService {
         '端',
         '事件定义',
         '触发时机',
+        'UI图',
         '处理方',
         '公共属性要求',
         '版本',
@@ -717,10 +720,18 @@ export class TrackingService {
         '变更类型',
         '参数拆行状态',
       ]),
-      reviewFields: pickFields(record.record, ['评审状态', '评审意见', '发布门禁状态', '发布门禁失败原因']),
+      reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
       devFields: pickFields(record.record, ['研发负责人', '埋点开发状态']),
       acceptanceFields: pickFields(record.record, ['DS验收人', 'DS验收状态', 'DS验收证据', 'DS验收时间']),
-      launchFields: pickFields(record.record, ['上线监控状态', '上线监控结论', '发布状态', '发布错误', '发布时间']),
+      launchFields: pickFields(record.record, [
+        '发布门禁状态',
+        '发布门禁失败原因',
+        '发布状态',
+        '发布错误',
+        '上线监控状态',
+        '上线监控结论',
+        '发布时间',
+      ]),
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       permissions: actor
         ? calculateRecordPermissions(
@@ -761,7 +772,10 @@ export class TrackingService {
       definition: cellText(record.record['参数定义']),
       defaultValue: cellText(record.record['默认值/示例']),
       example: cellText(record.record['默认值/示例']),
-      platform: cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
+      platform: normalizeParamApplicability(
+        cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
+        source,
+      ),
       status: cellText(record.record['参数状态']) || '草稿',
       version: cellText(record.record['版本']),
       changeType: cellText(record.record['变更类型']) || '新增',
@@ -787,10 +801,10 @@ export class TrackingService {
       '枚举/取值范围': body.enumRange || '',
       '参数定义': body.definition || '',
       '默认值/示例': body.example || body.defaultValue || '',
-      [platformField]: body.platform || (source === 'web' ? 'Web通用' : 'iOS、Android'),
+      [platformField]: normalizeParamApplicability(body.platform, source),
       '参数状态': normalizeParamStatus(body.status),
       '版本': body.version || version || '1.0.0',
-      '变更类型': body.changeType || '新增',
+      '变更类型': normalizeChangeType(body.changeType),
       '来源设计记录ID': recordId,
       '关联设计': [{ id: recordId }],
     };
@@ -808,9 +822,18 @@ function pickFields(record: Record<string, Cell>, fields: string[]): Record<stri
   return Object.fromEntries(
     fields.map((field) => [
       field,
-      USER_FIELD_NAMES.has(field) ? cellUsers(record[field]).items : cellText(record[field]),
+      USER_FIELD_NAMES.has(field)
+        ? cellUsers(record[field]).items
+        : ATTACHMENT_FIELD_NAMES.has(field)
+          ? cellFiles(record[field])
+          : cellText(record[field]),
     ]),
   );
+}
+
+function cellFiles(value: Cell): unknown[] {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
 }
 
 function cellText(value: Cell): string {
@@ -824,6 +847,8 @@ function cellText(value: Cell): string {
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;
     if (typeof objectValue.name === 'string') return objectValue.name;
+    if (typeof objectValue.link === 'string') return objectValue.link;
+    if (typeof objectValue.url === 'string') return objectValue.url;
     if (typeof objectValue.text === 'string') return objectValue.text;
     if (typeof objectValue.id === 'string') return objectValue.id;
     if (typeof objectValue.link === 'string') return objectValue.link;
@@ -1364,10 +1389,53 @@ function toParamPatch(
     patch['默认值/示例'] = fields.example || fields.defaultValue || '';
   }
   if (fields.platform !== undefined) {
-    patch[source === 'web' ? 'Web适用性' : 'App适用性'] = fields.platform;
+    patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeParamApplicability(
+      fields.platform,
+      source,
+    );
   }
   if (fields.status !== undefined) patch['参数状态'] = normalizeParamStatus(fields.status);
   if (fields.version !== undefined) patch['版本'] = fields.version;
-  if (fields.changeType !== undefined) patch['变更类型'] = fields.changeType;
+  if (fields.changeType !== undefined) patch['变更类型'] = normalizeChangeType(fields.changeType);
   return patch;
+}
+
+function normalizeParamApplicability(
+  value: unknown,
+  source: TrackingSource,
+): string {
+  const raw = String(value || '').trim();
+  if (source === 'web') {
+    const alias: Record<string, string> = {
+      Web: '仅Web',
+    };
+    const normalized = alias[raw] || raw || 'Web通用';
+    return [
+      'Web通用',
+      '仅Web',
+      'Web&App历史兼容',
+      'Web/App差异待拆',
+      '待确认',
+      '无特殊参数',
+    ].includes(normalized) ? normalized : 'Web通用';
+  }
+
+  const alias: Record<string, string> = {
+    iOS: '仅iOS',
+    Android: '仅Android',
+    'iOS,Android': 'iOS、Android',
+    'iOS, Android': 'iOS、Android',
+    App通用: 'iOS、Android',
+    仅App: 'iOS、Android',
+  };
+  const normalized = alias[raw] || raw || 'iOS、Android';
+  return [
+    'iOS、Android',
+    '仅iOS',
+    '仅Android',
+    'Web&App历史兼容',
+    'App/Web差异待拆',
+    '待确认',
+    '无特殊参数',
+  ].includes(normalized) ? normalized : 'iOS、Android';
 }
