@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@client/src/components/ui/table';
 import { Skeleton } from '@client/src/components/ui/skeleton';
+import { UserDisplay } from '@client/src/components/business-ui/user-display';
 import {
   Empty,
   EmptyHeader,
@@ -318,10 +319,16 @@ const RecordsTable = ({
                         {rec.platform || '-'}
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                        {ownerNames(rec.dataOwner, rec.dataOwnerIds)}
+                        <OwnerDisplay
+                          names={rec.dataOwner}
+                          ids={rec.dataOwnerIds}
+                        />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                        {ownerNames(rec.devOwner, rec.devOwnerIds)}
+                        <OwnerDisplay
+                          names={rec.devOwner}
+                          ids={rec.devOwnerIds}
+                        />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         {formatTime(rec.updatedAt)}
@@ -360,10 +367,24 @@ const RecordsTable = ({
 
 export default RecordsTable;
 
-function ownerNames(names: string[], ids: string[]): string {
+function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
   const readableNames = names
     .map((name) => name.trim())
     .filter((name) => name && !/^\d+$/.test(name) && !name.startsWith('ou_'));
-  if (readableNames.length) return readableNames.join('、');
-  return ids.length ? `${ids.length} 人` : '-';
+
+  if (ids.length) {
+    return (
+      <UserDisplay
+        value={ids.map((id, index) => ({
+          user_id: id,
+          ...(readableNames[index] ? { name: readableNames[index] } : {}),
+        }))}
+        size="small"
+        accountType="apaas"
+        showUserProfile={false}
+      />
+    );
+  }
+
+  return readableNames.length ? readableNames.join('、') : '-';
 }

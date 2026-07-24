@@ -37,6 +37,7 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
   className,
   style,
   showLabel = true,
+  showUserProfile = true,
   accountType = 'apaas',
 }) => {
   // 统一规范化为 User[]，兼容所有格式
@@ -76,28 +77,39 @@ export const UserDisplay: React.FC<IUserDisplayProps> = ({
 
   return (
     <div className={cn('flex flex-wrap gap-1', className)} style={style}>
-      {normalizedUsers.map((user) => (
-        <Popover key={user.user_id}>
-          <PopoverTrigger asChild>
-            <div>
-              <UserWithAvatar
-                data={user}
-                size={size}
-                showLabel={showLabel}
-                accountType={accountType}
-                className="cursor-pointer hover:bg-[rgba(31_35_41_0.15)] active:bg-[rgba(31_35_41_0.2)]"
-              />
-            </div>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            sideOffset={8}
-            className="w-[320px] border-0 border-border/50 bg-card p-0 shadow-[0px_8px_24px_8px_rgba(31_35_41_0.04),0px_6px_12px_rgba(31_35_41_0.04),0px_4px_8px_-8px_rgba(31_35_41_0.06)]"
-          >
-            <UserProfile value={user} accountType={accountType} />
-          </PopoverContent>
-        </Popover>
-      ))}
+      {normalizedUsers.map((user) => {
+        const userView = (
+          <UserWithAvatar
+            data={user}
+            size={size}
+            showLabel={showLabel}
+            accountType={accountType}
+            className={cn(
+              showUserProfile &&
+                'cursor-pointer hover:bg-[rgba(31_35_41_0.15)] active:bg-[rgba(31_35_41_0.2)]',
+            )}
+          />
+        );
+
+        if (!showUserProfile) {
+          return <div key={user.user_id}>{userView}</div>;
+        }
+
+        return (
+          <Popover key={user.user_id}>
+            <PopoverTrigger asChild>
+              <div>{userView}</div>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              sideOffset={8}
+              className="w-[320px] border-0 border-border/50 bg-card p-0 shadow-[0px_8px_24px_8px_rgba(31_35_41_0.04),0px_6px_12px_rgba(31_35_41_0.04),0px_4px_8px_-8px_rgba(31_35_41_0.06)]"
+            >
+              <UserProfile value={user} accountType={accountType} />
+            </PopoverContent>
+          </Popover>
+        );
+      })}
     </div>
   );
 };
