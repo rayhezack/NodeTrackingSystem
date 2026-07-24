@@ -318,14 +318,10 @@ const RecordsTable = ({
                         {rec.platform || '-'}
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                        {rec.dataOwner.length > 0
-                          ? `${rec.dataOwner.length} 人`
-                          : '-'}
+                        {ownerNames(rec.dataOwner, rec.dataOwnerIds)}
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
-                        {rec.devOwner.length > 0
-                          ? `${rec.devOwner.length} 人`
-                          : '-'}
+                        {ownerNames(rec.devOwner, rec.devOwnerIds)}
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         {formatTime(rec.updatedAt)}
@@ -363,3 +359,11 @@ const RecordsTable = ({
 };
 
 export default RecordsTable;
+
+function ownerNames(names: string[], ids: string[]): string {
+  const readableNames = names
+    .map((name) => name.trim())
+    .filter((name) => name && !/^\d+$/.test(name) && !name.startsWith('ou_'));
+  if (readableNames.length) return readableNames.join('、');
+  return ids.length ? `${ids.length} 人` : '-';
+}

@@ -145,9 +145,9 @@ export function useUserValue(
 
       // Object 模式：提取 raw 数据，返回标准 User 类型
       if (isMultiple) {
-        return (internalVal as UserSelectItemValue[]).map((u) => u.raw!);
+        return (internalVal as UserSelectItemValue[]).map(toExternalUser);
       }
-      return (internalVal as UserSelectItemValue).raw!;
+      return toExternalUser(internalVal as UserSelectItemValue);
     },
     [isIdMode],
   );
@@ -156,5 +156,14 @@ export function useUserValue(
     internalValue,
     isLoading,
     toExternalValue,
+  };
+}
+
+function toExternalUser(user: UserSelectItemValue): User {
+  return {
+    ...(user.raw || {}),
+    user_id: user.raw?.user_id || user.id,
+    name: user.name,
+    avatar: user.avatar || user.raw?.avatar,
   };
 }

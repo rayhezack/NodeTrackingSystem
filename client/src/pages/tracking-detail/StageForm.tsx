@@ -308,7 +308,7 @@ function toUserArray(value: unknown): TrackingUserRef[] {
     .map<TrackingUserRef | null>((item) => {
       if (typeof item === 'string' || typeof item === 'number') {
         const id = extractNumericUserId(item);
-        return id ? { user_id: id, name: id } : null;
+        return id ? { user_id: id } : null;
       }
       if (item && typeof item === 'object') {
         const objectValue = item as Record<string, unknown>;
@@ -325,7 +325,7 @@ function toUserArray(value: unknown): TrackingUserRef[] {
         return {
           user_id: id,
           larkUserId,
-          name: typeof name === 'string' ? name : id,
+          ...(typeof name === 'string' && name !== id ? { name } : {}),
         };
       }
       return null;

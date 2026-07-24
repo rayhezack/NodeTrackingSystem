@@ -1,0 +1,32 @@
+import { BitableService } from '../../server/modules/bitable/bitable.service';
+
+describe('Base 写入值标准化', () => {
+  it('应忽略空 URL 和空日期，并将有效日期转换为时间戳', async () => {
+    const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+    const capabilityService = {
+      loadWithConfig: jest.fn().mockReturnValue({ call }),
+    };
+    const service = new BitableService(capabilityService as never);
+
+    await service.batchAddRecords('workbench', [
+      {
+        事件中文名: '测试需求',
+        需求链接: '',
+        DS验收证据: '',
+        DS验收时间: '',
+        稳定归档时间: '2026-07-24 15:30',
+      },
+    ]);
+
+    expect(call).toHaveBeenCalledWith('batchAddRecords', {
+      records: [
+        {
+          record: {
+            事件中文名: '测试需求',
+            稳定归档时间: new Date('2026-07-24T15:30').getTime(),
+          },
+        },
+      ],
+    });
+  });
+});

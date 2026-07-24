@@ -377,6 +377,7 @@ export class TrackingService {
     );
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
+    const requirementLink = (body.requirementLink || '').trim();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         evt_id: evtId,
@@ -384,7 +385,7 @@ export class TrackingService {
         '事件定义': body.eventDefinition || '',
         '触发时机': body.triggerTiming || '',
         '需求背景': body.requirementBackground || '',
-        '需求链接': body.requirementLink || '',
+        ...(requirementLink ? { '需求链接': requirementLink } : {}),
         '指标/使用场景': body.metricScenario || '',
         '流程阶段': '需求录入',
         '记录类型': '埋点设计',
@@ -399,8 +400,6 @@ export class TrackingService {
         '评审意见': '',
         '埋点开发状态': '未开始',
         'DS验收状态': '未开始',
-        'DS验收证据': '',
-        'DS验收时间': '',
         '上线监控状态': '未开始',
         '上线监控结论': '',
         '发布门禁状态': '未检查',
@@ -415,7 +414,6 @@ export class TrackingService {
         '公共属性要求': body.commonProps || '',
         '参数明细入口': source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
         '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
-        '稳定归档时间': '',
       },
     ]);
 
@@ -655,9 +653,9 @@ export class TrackingService {
       uiStage: getUiStageFromBase(stage),
       priority: cellText(record.record['优先级']) || 'P2',
       platform: cellText(record.record['端']) || '-',
-      dataOwner: users.data.ids,
+      dataOwner: users.data.names,
       dataOwnerIds: users.data.ids,
-      devOwner: users.dev.ids,
+      devOwner: users.dev.names,
       devOwnerIds: users.dev.ids,
       updatedAt: cellTimestamp(record.record['创建时间']),
     };
@@ -864,7 +862,7 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
       if (typeof item === 'string' || typeof item === 'number') {
         const id = String(item);
         acc.ids.push(id);
-        acc.items.push({ user_id: id, name: id });
+        acc.items.push({ user_id: id });
         return acc;
       }
       if (item && typeof item === 'object') {
@@ -886,7 +884,7 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
             (typeof candidate === 'string' && candidate.length > 0) ||
             typeof candidate === 'number',
         ) || '';
-        const name = typeof user.name === 'string' ? user.name : id;
+        const name = typeof user.name === 'string' ? user.name.trim() : '';
         const normalizedId = id ? String(id) : '';
         const larkUserId = [
           user.larkUserId,
@@ -896,12 +894,12 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
           user.lark_id,
         ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
         if (normalizedId) acc.ids.push(normalizedId);
-        if (name) acc.names.push(name);
+        if (name && name !== normalizedId) acc.names.push(name);
         if (normalizedId) {
           acc.items.push({
             user_id: normalizedId,
             larkUserId,
-            name: String(name),
+            ...(name && name !== normalizedId ? { name } : {}),
           });
         }
       }

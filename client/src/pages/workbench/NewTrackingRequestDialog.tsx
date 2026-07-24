@@ -384,7 +384,7 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
       return {
         user_id: id,
         larkUserId,
-        name: typeof name === 'string' ? name : id,
+        ...(typeof name === 'string' && name !== id ? { name } : {}),
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));

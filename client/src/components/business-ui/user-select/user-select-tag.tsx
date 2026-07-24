@@ -77,6 +77,7 @@ export const UserSelectTag = ({
       suffix={closeButton}
       size={size}
       disabled={disabled}
+      enableProfile={false}
     />
   );
 };

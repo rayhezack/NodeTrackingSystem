@@ -395,7 +395,8 @@ export class BitableService {
         .map(([fieldName, value]) => [
           fieldName,
           normalizeCellValue(fieldMap.get(fieldName), value),
-        ]),
+        ] as const)
+        .filter(([, value]) => value !== undefined),
     );
   }
 
@@ -489,6 +490,8 @@ function normalizeCellValue(
       return Array.isArray(value) ? cellText(value[0]) : cellText(value);
     case 4:
       return toStringArray(value);
+    case 5:
+      return toDateTimeCell(value);
     case 11:
       return toNumberArray(value);
     case 15:
@@ -532,18 +535,38 @@ function toNumberArray(value: unknown): number[] {
   );
 }
 
-function toUrlCell(value: unknown): { text: string; link: string } | null {
-  if (value == null) return null;
+function toDateTimeCell(value: unknown): number | unknown | undefined {
+  if (value == null || value === '') return undefined;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : undefined;
+  }
+  if (typeof value !== 'string') return value;
+
+  const text = value.trim();
+  if (!text) return undefined;
+  const localDateTime = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(text)
+    ? text.replace(' ', 'T')
+    : text;
+  const timestamp = Date.parse(localDateTime);
+  return Number.isFinite(timestamp) ? timestamp : value;
+}
+
+function toUrlCell(value: unknown): { text: string; link: string } | undefined {
+  if (value == null) return undefined;
   if (typeof value === 'object' && !Array.isArray(value)) {
     const objectValue = value as Record<string, unknown>;
     const link = cellText(objectValue.link || objectValue.url || objectValue.href).trim();
     const text = cellText(objectValue.text || objectValue.name || link).trim();
-    if (!link) return null;
+    if (!link) return undefined;
     return { text: text || link, link };
   }
 
   const link = cellText(value).trim();
-  if (!link) return null;
+  if (!link) return undefined;
   return { text: link, link };
 }
 
