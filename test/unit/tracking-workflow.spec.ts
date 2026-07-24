@@ -167,4 +167,104 @@ describe('工作流 Base 回写', () => {
       { id: 'rec_1', record: { 评审状态: '已拒绝' } },
     ]);
   });
+
+  it('完成上线后应自动新增正式查询库事件', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'test_event',
+          事件中文名: '测试事件',
+          流程阶段: '上线监控',
+          端: ['iOS', 'Android'],
+          版本: '2.0.0',
+          事件定义: '用户点击测试入口时上报',
+          触发时机: '点击入口后触发',
+          '指标/使用场景': '测试转化漏斗',
+          正式状态: '待开发',
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_official' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      fields: {
+        发布状态: '发布成功',
+        上线监控状态: '通过',
+      },
+      targetStage: '稳定归档',
+    });
+
+    expect(bitable.searchRecords).toHaveBeenCalledWith('queryLibrary', {
+      fieldNames: [
+        'evt_id',
+        '事件中文名',
+        '端',
+        '上线版本',
+        '状态',
+        '生命周期状态',
+        '参数明细入口',
+        '事件定义',
+        '触发时机',
+        '指标/使用场景',
+      ],
+      pageSize: 200,
+    });
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('queryLibrary', [
+      expect.objectContaining({
+        evt_id: 'test_event',
+        事件中文名: '测试事件',
+        端: ['iOS', 'Android'],
+        上线版本: '2.0.0',
+        状态: '已上线',
+        生命周期状态: '稳定归档',
+        事件定义: '用户点击测试入口时上报',
+        触发时机: '点击入口后触发',
+        '指标/使用场景': '测试转化漏斗',
+      }),
+    ]);
+  });
+
+  it('正式查询库已有同 evt_id 时应更新而不是重复新增', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'test_event',
+          事件中文名: '测试事件',
+          流程阶段: '稳定归档',
+          端: ['iOS'],
+          版本: '2.1.0',
+          正式状态: '已上线',
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [{ id: 'rec_official', record: { evt_id: 'test_event' } }],
+        hasMore: false,
+      }),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      fields: { 事件中文名: '测试事件 v2' },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenNthCalledWith(2, 'queryLibrary', [
+      {
+        id: 'rec_official',
+        record: expect.objectContaining({
+          evt_id: 'test_event',
+          事件中文名: '测试事件 v2',
+          上线版本: '2.1.0',
+          状态: '已上线',
+        }),
+      },
+    ]);
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
 });

@@ -187,7 +187,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     permissionKey: 'canEditAcceptance',
     fields: [
       { key: 'acceptanceStatus', label: '验收状态', type: 'select', baseField: 'DS验收状态', options: ACCEPTANCE_STATUS_OPTIONS },
-      { key: 'acceptanceEvidence', label: '验收证据链接', type: 'url', baseField: 'DS验收证据', placeholder: '粘贴验收查询、截图或日志链接' },
+      { key: 'acceptanceEvidence', label: '验收证据', type: 'textarea', baseField: 'DS验收证据', placeholder: '填写验收口径、查询结果、截图说明或日志摘要' },
       { key: 'acceptanceTime', label: '验收时间', type: 'date', baseField: 'DS验收时间' },
     ],
   },

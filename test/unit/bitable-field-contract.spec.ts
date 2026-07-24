@@ -6,6 +6,10 @@ function fieldIds(instanceKey: keyof typeof BITABLE_FIELDS): Record<string, stri
   );
 }
 
+function fieldByName(instanceKey: keyof typeof BITABLE_FIELDS, name: string) {
+  return BITABLE_FIELDS[instanceKey].find((field) => field.name === name);
+}
+
 describe('线上 Base 字段契约', () => {
   it('App 与 Web 工作台应使用线上真实字段 ID', () => {
     const expectedSharedIds = {
@@ -38,6 +42,16 @@ describe('线上 Base 字段契约', () => {
       需求录入人: 'fldmXg85mP',
       UI图: 'fldhJiDfHu',
     });
+    expect(fieldByName('workbench', 'DS验收证据')).toMatchObject({
+      type: 1,
+      bizType: 'Text',
+      writeable: true,
+    });
+    expect(fieldByName('webWorkbench', 'DS验收证据')).toMatchObject({
+      type: 1,
+      bizType: 'Text',
+      writeable: true,
+    });
   });
 
   it('App 与 Web 参数表应使用同一套线上字段 ID', () => {
@@ -62,5 +76,31 @@ describe('线上 Base 字段契约', () => {
       ...expectedIds,
       Web适用性: 'fldtJMMilx',
     });
+  });
+
+  it('正式查询库事件字段应允许服务端写入', () => {
+    const writableFields = [
+      'evt_id',
+      '事件中文名',
+      '端',
+      '上线版本',
+      '状态',
+      '生命周期状态',
+      '参数明细入口',
+      '事件定义',
+      '触发时机',
+      '指标/使用场景',
+    ];
+
+    for (const instanceKey of ['queryLibrary', 'webQueryLibrary'] as const) {
+      for (const fieldName of writableFields) {
+        expect(fieldByName(instanceKey, fieldName)).toMatchObject({
+          writeable: true,
+        });
+      }
+      expect(fieldByName(instanceKey, '关联参数明细（系统）')).toMatchObject({
+        writeable: false,
+      });
+    }
   });
 });

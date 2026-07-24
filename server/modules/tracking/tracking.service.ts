@@ -89,6 +89,19 @@ const WORKBENCH_FIELDS = [
   '创建时间',
 ] as const;
 
+const OFFICIAL_QUERY_FIELDS = [
+  'evt_id',
+  '事件中文名',
+  '端',
+  '上线版本',
+  '状态',
+  '生命周期状态',
+  '参数明细入口',
+  '事件定义',
+  '触发时机',
+  '指标/使用场景',
+] as const;
+
 const PARAM_BASE_FIELDS = [
   '设计参数主键',
   'evt_id',
@@ -477,6 +490,7 @@ export class TrackingService {
       }
     }
     normalizeWorkbenchPatch(patch, ref.source);
+    const nextRecord = { ...current.record, ...patch };
 
     const currentEvtId = cellText(current.record['evt_id']);
     const hasEvtIdPatch = Object.prototype.hasOwnProperty.call(patch, 'evt_id');
@@ -486,6 +500,7 @@ export class TrackingService {
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
+    await this.syncOfficialQueryLibrary(ref.source, nextRecord);
     return { success: true, recordId, currentStage };
   }
 
@@ -567,6 +582,33 @@ export class TrackingService {
     for (let index = 0; index < updates.length; index += 200) {
       await this.bitable.batchUpdateRecords(paramDetailKey(source), updates.slice(index, index + 200));
     }
+  }
+
+  private async syncOfficialQueryLibrary(
+    source: TrackingSource,
+    record: Record<string, unknown>,
+  ): Promise<void> {
+    const officialRecord = toOfficialQueryRecord(source, record);
+    if (!officialRecord) return;
+
+    const evtId = cellText(officialRecord.evt_id).trim().toLowerCase();
+    const instanceKey = queryLibraryKey(source);
+    const result = await this.bitable.searchRecords(instanceKey, {
+      fieldNames: [...OFFICIAL_QUERY_FIELDS],
+      pageSize: 200,
+    });
+    const existing = result.records.find(
+      (item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId,
+    );
+
+    if (existing) {
+      await this.bitable.batchUpdateRecords(instanceKey, [
+        { id: existing.id, record: officialRecord },
+      ]);
+      return;
+    }
+
+    await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
   }
 
   async deleteParam(paramRecordId: string): Promise<DeleteParamResponse> {
@@ -868,6 +910,10 @@ function cellText(value: Cell): string {
   return '';
 }
 
+function firstText(...values: Cell[]): string {
+  return values.map(cellText).find(Boolean) || '';
+}
+
 function cellUsers(value: Cell): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
   const values = Array.isArray(value) ? value : value ? [value] : [];
   return values.reduce(
@@ -1098,8 +1144,67 @@ function paramDetailKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webParamDetail' : 'paramDetail';
 }
 
+function queryLibraryKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webQueryLibrary' : 'queryLibrary';
+}
+
 function paramFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_PARAM_FIELDS : APP_PARAM_FIELDS;
+}
+
+function paramBaseLink(source: TrackingSource): string {
+  return source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK;
+}
+
+function toOfficialQueryRecord(
+  source: TrackingSource,
+  record: Record<string, unknown>,
+): Record<string, unknown> | null {
+  if (!shouldSyncOfficialQueryRecord(record)) return null;
+
+  const evtId = cellText(record['evt_id']).trim();
+  const eventName = cellText(record['事件中文名']).trim();
+  if (!evtId || !eventName) return null;
+
+  return {
+    evt_id: evtId,
+    '事件中文名': eventName,
+    '端': toPlatformCell(cellText(record['端']), source),
+    '上线版本': firstText(record['版本'], record['最低版本']) || '1.0.0',
+    '状态': getOfficialQueryStatus(record),
+    '生命周期状态': cellText(record['流程阶段']) || '上线监控',
+    '参数明细入口': cellText(record['参数明细入口']) || paramBaseLink(source),
+    '事件定义': cellText(record['事件定义']),
+    '触发时机': cellText(record['触发时机']),
+    '指标/使用场景': cellText(record['指标/使用场景']),
+  };
+}
+
+function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean {
+  if (!cellText(record['evt_id']).trim() || !cellText(record['事件中文名']).trim()) {
+    return false;
+  }
+
+  const stage = cellText(record['流程阶段']);
+  const officialStatus = cellText(record['正式状态']);
+  const publishStatus = cellText(record['发布状态']);
+  const monitorStatus = cellText(record['上线监控状态']);
+
+  return (
+    officialStatus === '已上线' ||
+    stage === '稳定归档' ||
+    (stage === '上线监控' &&
+      publishStatus === '发布成功' &&
+      ['通过', '豁免'].includes(monitorStatus))
+  );
+}
+
+function getOfficialQueryStatus(record: Record<string, unknown>): string {
+  const officialStatus = cellText(record['正式状态']);
+  if (officialStatus && officialStatus !== '待开发' && officialStatus !== '未归档') {
+    return officialStatus;
+  }
+  return '已上线';
 }
 
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
