@@ -595,10 +595,10 @@ function toLinkArray(value: unknown): unknown {
   const values = Array.isArray(value) ? value : value ? [value] : [];
   return values
     .map((item) => {
-      if (typeof item === 'string' && item.trim()) return { id: item.trim() };
+      if (typeof item === 'string' && item.trim()) return item.trim();
       if (item && typeof item === 'object') {
         const id = (item as Record<string, unknown>).id;
-        if (typeof id === 'string' && id.trim()) return { id: id.trim() };
+        if (typeof id === 'string' && id.trim()) return id.trim();
       }
       return null;
     })

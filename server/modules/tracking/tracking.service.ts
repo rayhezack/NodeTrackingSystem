@@ -809,7 +809,7 @@ export class TrackingService {
       '版本': body.version || version || '1.0.0',
       '变更类型': normalizeChangeType(body.changeType),
       '来源设计记录ID': recordId,
-      '关联设计': [{ id: recordId }],
+      '关联设计': [recordId],
     };
   }
 }

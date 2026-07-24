@@ -29,4 +29,35 @@ describe('Base 写入值标准化', () => {
       ],
     });
   });
+
+  it.each(['paramDetail', 'webParamDetail'] as const)(
+    '%s 双向关联字段应写为记录 ID 字符串数组',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_param' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchAddRecords(instanceKey, [
+        {
+          evt_id: 'test_event',
+          参数名: 'button_name',
+          关联设计: [{ id: 'rec_design' }],
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchAddRecords', {
+        records: [
+          {
+            record: {
+              evt_id: 'test_event',
+              参数名: 'button_name',
+              关联设计: ['rec_design'],
+            },
+          },
+        ],
+      });
+    },
+  );
 });
