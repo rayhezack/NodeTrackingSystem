@@ -7,9 +7,9 @@ describe('工作流 Base 回写', () => {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
         record: {
-          '事件中文名': '测试需求',
-          '流程阶段': '需求录入',
-          '需求提出人': [{ id: 'ou_sunwen', name: '孙文' }],
+          事件中文名: '测试需求',
+          流程阶段: '需求录入',
+          需求提出人: [{ id: 'ou_sunwen', name: '孙文' }],
         },
       }),
       searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
@@ -33,9 +33,9 @@ describe('工作流 Base 回写', () => {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
         record: {
-          '事件中文名': '测试需求',
-          '流程阶段': '需求录入',
-          '需求提出人': [
+          事件中文名: '测试需求',
+          流程阶段: '需求录入',
+          需求提出人: [
             {
               id: '1867390536304713',
               name: { zh_cn: '孙文', en_us: 'Sun Wen' },
@@ -62,9 +62,9 @@ describe('工作流 Base 回写', () => {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
         record: {
-          'evt_id': '',
-          '流程阶段': '需求录入',
-          '需求提出人': [{ id: 'ou_sunwen', name: '孙文' }],
+          evt_id: '',
+          流程阶段: '需求录入',
+          需求提出人: [{ id: 'ou_sunwen', name: '孙文' }],
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
@@ -76,8 +76,8 @@ describe('工作流 Base 回写', () => {
       actorLarkId: 'ou_sunwen',
       stageId: 'requirement',
       fields: {
-        '需求提出人': [],
-        '需求背景': '保留负责人',
+        需求提出人: [],
+        需求背景: '保留负责人',
       },
       targetStage: '埋点设计',
     });
@@ -86,8 +86,8 @@ describe('工作流 Base 回写', () => {
       {
         id: 'rec_1',
         record: {
-          '需求背景': '保留负责人',
-          '流程阶段': '埋点设计',
+          需求背景: '保留负责人',
+          流程阶段: '埋点设计',
         },
       },
     ]);
@@ -98,8 +98,8 @@ describe('工作流 Base 回写', () => {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
         record: {
-          'evt_id': '',
-          '流程阶段': '需求录入',
+          evt_id: '',
+          流程阶段: '需求录入',
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
@@ -111,8 +111,8 @@ describe('工作流 Base 回写', () => {
       actorId: '1867390536304713',
       stageId: 'design',
       fields: {
-        'evt_id': 'test_event',
-        '事件定义': '点击测试按钮时上报',
+        evt_id: 'test_event',
+        事件定义: '点击测试按钮时上报',
       },
       targetStage: '埋点设计',
     });
@@ -121,9 +121,9 @@ describe('工作流 Base 回写', () => {
       {
         id: 'rec_1',
         record: {
-          'evt_id': 'test_event',
-          '事件定义': '点击测试按钮时上报',
-          '流程阶段': '埋点设计',
+          evt_id: 'test_event',
+          事件定义: '点击测试按钮时上报',
+          流程阶段: '埋点设计',
         },
       },
     ]);
@@ -172,12 +172,39 @@ describe('工作流 Base 回写', () => {
       fields: { 评审状态: '需修改' },
     });
 
-    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
-      { id: 'rec_1', record: { 评审状态: '已拒绝' } },
-    ]);
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [{ id: 'rec_1', record: { 评审状态: '已拒绝' } }]);
   });
 
-  it('完成上线后应自动新增正式查询库事件', async () => {
+  it('完成上线后应自动新增正式查询库事件并同步正式参数', async () => {
+    const searchRecords = jest
+      .fn()
+      .mockResolvedValueOnce({ records: [], hasMore: false })
+      .mockResolvedValueOnce({
+        records: [
+          {
+            id: 'rec_param_1',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'button_name',
+              数据类型: 'STRING',
+              必传规则: '必传',
+              条件说明: '点击入口时必传',
+              '枚举/取值范围': 'submit/cancel',
+              参数定义: '按钮名称',
+              '默认值/示例': 'submit',
+              App适用性: 'App通用',
+              参数状态: '已发布',
+              版本: '2.0.0',
+              变更类型: '新增',
+              来源设计记录ID: 'rec_1',
+              关联设计: [{ id: 'rec_1' }],
+            },
+          },
+        ],
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({ records: [], hasMore: false });
+    const batchAddRecords = jest.fn().mockImplementation(async (instanceKey: string) => (instanceKey === 'queryLibrary' ? [{ id: 'rec_official' }] : [{ id: 'rec_official_param_1' }]));
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
@@ -194,8 +221,8 @@ describe('工作流 Base 回写', () => {
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
-      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
-      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_official' }]),
+      searchRecords,
+      batchAddRecords,
     };
     const service = new TrackingService(bitable as unknown as BitableService);
 
@@ -210,21 +237,10 @@ describe('工作流 Base 回写', () => {
     });
 
     expect(bitable.searchRecords).toHaveBeenCalledWith('queryLibrary', {
-      fieldNames: [
-        'evt_id',
-        '事件中文名',
-        '端',
-        '上线版本',
-        '状态',
-        '生命周期状态',
-        '参数明细入口',
-        '事件定义',
-        '触发时机',
-        '指标/使用场景',
-      ],
+      fieldNames: ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'],
       pageSize: 200,
     });
-    expect(bitable.batchAddRecords).toHaveBeenCalledWith('queryLibrary', [
+    expect(batchAddRecords).toHaveBeenCalledWith('queryLibrary', [
       expect.objectContaining({
         evt_id: 'test_event',
         事件中文名: '测试事件',
@@ -235,6 +251,27 @@ describe('工作流 Base 回写', () => {
         事件定义: '用户点击测试入口时上报',
         触发时机: '点击入口后触发',
         '指标/使用场景': '测试转化漏斗',
+        参数明细入口: 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2',
+      }),
+    ]);
+    expect(batchAddRecords).toHaveBeenCalledWith('officialParamDetail', [
+      expect.objectContaining({
+        参数主键: 'test_event.button_name',
+        evt_id: 'test_event',
+        事件中文名: '测试事件',
+        参数名: 'button_name',
+        数据类型: 'STRING',
+        必传规则: '必传',
+        条件说明: '点击入口时必传',
+        '枚举/取值范围': 'submit/cancel',
+        参数定义: '按钮名称',
+        版本: '2.0.0',
+        参数状态: '正式',
+        事件状态: '已上线',
+        来源表: '埋点设计库',
+        关联事件: ['rec_official'],
+        App适用性: 'App通用',
+        备注: '默认值/示例：submit',
       }),
     ]);
   });

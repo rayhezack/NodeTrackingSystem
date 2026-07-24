@@ -1,73 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  GetOfficialEventsParams,
-  GetOfficialEventsResponse,
-  GetOfficialParamsResponse,
-  OfficialEvent,
-  OfficialParam,
-  TrackingSource,
-} from '@shared/api.interface';
+import type { GetOfficialEventsParams, GetOfficialEventsResponse, GetOfficialParamsResponse, OfficialEvent, OfficialParam, TrackingSource } from '@shared/api.interface';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import type { BitableInstanceKey } from '../bitable/bitable.constants';
 
-const APP_OFFICIAL_FIELDS = [
+const APP_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
+
+const WEB_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
+
+const OFFICIAL_PARAM_BASE_FIELDS = [
+  '参数主键',
   'evt_id',
   '事件中文名',
-  '端',
-  '上线版本',
-  '状态',
-  '生命周期状态',
-  '参数明细入口',
-  '事件定义',
-  '触发时机',
-  '指标/使用场景',
-] as const;
-
-const WEB_OFFICIAL_FIELDS = [
-  'evt_id',
-  '事件中文名',
-  '端',
-  '上线版本',
-  '状态',
-  '生命周期状态',
-  '参数明细入口',
-  '事件定义',
-  '触发时机',
-  '指标/使用场景',
-] as const;
-
-const PARAM_BASE_FIELDS = [
-  '设计参数主键',
-  'evt_id',
   '参数名',
   '数据类型',
   '必传规则',
+  '条件说明',
   '枚举/取值范围',
   '参数定义',
-  '默认值/示例',
-  '参数状态',
   '版本',
-  '变更类型',
-  '来源设计记录ID',
-  '关联设计',
+  '参数状态',
+  '事件状态',
+  '来源表',
+  '关联事件',
+  '备注',
 ] as const;
 
-const APP_PARAM_FIELDS = [
-  ...PARAM_BASE_FIELDS.slice(0, 8),
-  'App适用性',
-  ...PARAM_BASE_FIELDS.slice(8),
-] as const;
+const APP_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), 'App适用性', ...OFFICIAL_PARAM_BASE_FIELDS.slice(13)] as const;
 
-const WEB_PARAM_FIELDS = [
-  ...PARAM_BASE_FIELDS.slice(0, 8),
-  'Web适用性',
-  ...PARAM_BASE_FIELDS.slice(8),
-] as const;
+const WEB_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), 'Web适用性', ...OFFICIAL_PARAM_BASE_FIELDS.slice(13)] as const;
 
-const APP_PARAM_BASE_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblesT69TDCUKzhs';
-const WEB_PARAM_BASE_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblMaw89yVi68YY6';
+const APP_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
+const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 
 @Injectable()
 export class QueryLibraryService {
@@ -78,11 +41,8 @@ export class QueryLibraryService {
     const pageSize = Number(params.pageSize || 50);
     const offset = Number(params.pageToken || 0);
     const keyword = (params.keyword || '').trim().toLowerCase();
-    const result = await this.bitable.searchRecords(queryLibraryKey(source), {
-      fieldNames: [...officialFields(source)],
-      pageSize: 200,
-    });
-    const filtered = result.records
+    const records = await this.searchAllRecords(queryLibraryKey(source), officialFields(source));
+    const filtered = records
       .map((record) => this.toOfficialEvent(record, source))
       .filter((event) => {
         if (!event.evtId) return false;
@@ -109,14 +69,12 @@ export class QueryLibraryService {
 
     const evtId = cellText(record.record['evt_id']);
     const baseLink = cellText(record.record['参数明细入口']) || paramBaseLink(ref.source);
-    const result = await this.bitable.searchRecords(paramDetailKey(ref.source), {
-      fieldNames: [...paramFields(ref.source)],
-      pageSize: 200,
-    });
-    const params = result.records
-      .filter((paramRecord) => cellText(paramRecord.record['evt_id']) === evtId)
+    const records = await this.searchAllRecords(officialParamDetailKey(ref.source), officialParamFields(ref.source));
+    const params = records
+      .filter((paramRecord) => isOfficialParamForEvent(paramRecord, ref.rawId, evtId))
       .map((paramRecord) => this.toOfficialParam(paramRecord, ref.source))
       .filter((param) => param.paramKey || param.paramName)
+      .filter((param) => param.status !== '已废弃')
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 
     return { items: params, total: params.length, baseLink };
@@ -131,13 +89,7 @@ export class QueryLibraryService {
       platform: cellText(record.record['端']) || '-',
       version: firstText(record.record['上线版本'], record.record['版本']) || '-',
       paramLink: cellText(record.record['参数明细入口']) || paramBaseLink(source),
-      status:
-        firstText(
-          record.record['状态'],
-          record.record['正式状态'],
-          record.record['生命周期状态'],
-          record.record['流程阶段'],
-        ) || '-',
+      status: firstText(record.record['状态'], record.record['正式状态'], record.record['生命周期状态'], record.record['流程阶段']) || '-',
     };
   }
 
@@ -146,20 +98,34 @@ export class QueryLibraryService {
     const evtId = cellText(record.record['evt_id']);
     const paramName = cellText(record.record['参数名']);
     return {
-      paramKey: buildParamKey(evtId, paramName) || cellText(record.record['设计参数主键']),
+      paramKey: cellText(record.record['参数主键']) || buildParamKey(evtId, paramName),
       paramName,
       paramType: cellText(record.record['数据类型']) || '-',
       required: requiredRule === '必传' || requiredRule === '条件必传',
       requiredRule: requiredRule || '非必传',
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
-      example: cellText(record.record['默认值/示例']),
-      platform: normalizeParamApplicability(
-        cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
-        source,
-      ),
+      example: cellText(record.record['备注']),
+      platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
       status: cellText(record.record['参数状态']),
     };
+  }
+
+  private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[]): Promise<BitableRecord[]> {
+    const records: BitableRecord[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const result = await this.bitable.searchRecords(instanceKey, {
+        fieldNames: [...fieldNames],
+        pageSize: 200,
+        ...(pageToken ? { pageToken } : {}),
+      });
+      records.push(...result.records);
+      pageToken = result.hasMore ? result.pageToken : undefined;
+    } while (pageToken);
+
+    return records;
   }
 }
 
@@ -171,16 +137,16 @@ function queryLibraryKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webQueryLibrary' : 'queryLibrary';
 }
 
-function paramDetailKey(source: TrackingSource): BitableInstanceKey {
-  return source === 'web' ? 'webParamDetail' : 'paramDetail';
+function officialParamDetailKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webOfficialParamDetail' : 'officialParamDetail';
 }
 
 function officialFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_OFFICIAL_FIELDS : APP_OFFICIAL_FIELDS;
 }
 
-function paramFields(source: TrackingSource): readonly string[] {
-  return source === 'web' ? WEB_PARAM_FIELDS : APP_PARAM_FIELDS;
+function officialParamFields(source: TrackingSource): readonly string[] {
+  return source === 'web' ? WEB_OFFICIAL_PARAM_FIELDS : APP_OFFICIAL_PARAM_FIELDS;
 }
 
 function paramBaseLink(source: TrackingSource): string {
@@ -209,9 +175,7 @@ function dedupeOfficialEvents(items: OfficialEvent[]): OfficialEvent[] {
 }
 
 function mergeTextList(left: string, right: string): string {
-  const values = [...left.split(/[、,，]/), ...right.split(/[、,，]/)]
-    .map((item) => item.trim())
-    .filter((item) => item && item !== '-');
+  const values = [...left.split(/[、,，]/), ...right.split(/[、,，]/)].map((item) => item.trim()).filter((item) => item && item !== '-');
   return Array.from(new Set(values)).join('、') || '-';
 }
 
@@ -223,6 +187,26 @@ function buildParamKey(evtId?: string, paramName?: string): string {
   const eventId = String(evtId || '').trim();
   const name = String(paramName || '').trim();
   return eventId && name ? `${eventId}.${name}` : '';
+}
+
+function isOfficialParamForEvent(record: BitableRecord, officialEventRecordId: string, evtId: string): boolean {
+  const linkedEventIds = cellIds(record.record['关联事件']);
+  if (linkedEventIds.includes(officialEventRecordId)) return true;
+  return Boolean(evtId) && cellText(record.record.evt_id) === evtId;
+}
+
+function cellIds(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return items
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const id = (item as Record<string, unknown>).id;
+        return typeof id === 'string' ? id : '';
+      }
+      return '';
+    })
+    .filter(Boolean);
 }
 
 function normalizeParamApplicability(value: string, source: TrackingSource): string {
@@ -245,7 +229,10 @@ function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
   return `${source}:${rawId}`;
 }
 
-function parseScopedRecordId(recordId: string): { source: TrackingSource; rawId: string } {
+function parseScopedRecordId(recordId: string): {
+  source: TrackingSource;
+  rawId: string;
+} {
   if (recordId.startsWith('web:')) {
     return { source: 'web', rawId: recordId.slice(4) };
   }
@@ -265,7 +252,10 @@ function cellText(value: unknown): string {
     return String(value);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => cellText(item)).filter(Boolean).join('、');
+    return value
+      .map((item) => cellText(item))
+      .filter(Boolean)
+      .join('、');
   }
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;

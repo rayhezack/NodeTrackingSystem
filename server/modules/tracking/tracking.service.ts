@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   CreateParamRequest,
   CreateParamResponse,
@@ -33,19 +28,9 @@ import type {
   UpdateTrackingRecordRequest,
   UpdateTrackingRecordResponse,
 } from '@shared/api.interface';
-import {
-  UI_STAGE_NODES,
-  PRIORITY_WEIGHT,
-  type BitableInstanceKey,
-} from '../bitable/bitable.constants';
+import { UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
-import {
-  calculatePermissions,
-  getBaseStageFromUi,
-  getUiStageFromBase,
-  isStageTransitionValid,
-  type StagePermissions,
-} from '../bitable/bitable.utils';
+import { calculatePermissions, getBaseStageFromUi, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
 
 const WORKBENCH_FIELDS = [
   'evt_id',
@@ -89,18 +74,7 @@ const WORKBENCH_FIELDS = [
   '创建时间',
 ] as const;
 
-const OFFICIAL_QUERY_FIELDS = [
-  'evt_id',
-  '事件中文名',
-  '端',
-  '上线版本',
-  '状态',
-  '生命周期状态',
-  '参数明细入口',
-  '事件定义',
-  '触发时机',
-  '指标/使用场景',
-] as const;
+const OFFICIAL_QUERY_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
 
 const PARAM_BASE_FIELDS = [
   '设计参数主键',
@@ -119,17 +93,31 @@ const PARAM_BASE_FIELDS = [
   '关联设计',
 ] as const;
 
-const APP_PARAM_FIELDS = [
-  ...PARAM_BASE_FIELDS.slice(0, 9),
-  'App适用性',
-  ...PARAM_BASE_FIELDS.slice(9),
+const APP_PARAM_FIELDS = [...PARAM_BASE_FIELDS.slice(0, 9), 'App适用性', ...PARAM_BASE_FIELDS.slice(9)] as const;
+
+const WEB_PARAM_FIELDS = [...PARAM_BASE_FIELDS.slice(0, 9), 'Web适用性', ...PARAM_BASE_FIELDS.slice(9)] as const;
+
+const OFFICIAL_PARAM_BASE_FIELDS = [
+  '参数主键',
+  'evt_id',
+  '事件中文名',
+  '参数名',
+  '数据类型',
+  '必传规则',
+  '条件说明',
+  '枚举/取值范围',
+  '参数定义',
+  '版本',
+  '参数状态',
+  '事件状态',
+  '来源表',
+  '关联事件',
+  '备注',
 ] as const;
 
-const WEB_PARAM_FIELDS = [
-  ...PARAM_BASE_FIELDS.slice(0, 9),
-  'Web适用性',
-  ...PARAM_BASE_FIELDS.slice(9),
-] as const;
+const APP_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 14), 'App适用性', ...OFFICIAL_PARAM_BASE_FIELDS.slice(14)] as const;
+
+const WEB_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 14), 'Web适用性', ...OFFICIAL_PARAM_BASE_FIELDS.slice(14)] as const;
 
 const PERMISSION_RECORD_TYPE = '权限配置';
 const PERMISSION_RECORD_NAME = '系统权限配置';
@@ -139,23 +127,17 @@ const BOOTSTRAP_ADMIN_USER_IDS = new Set([
   '1867390536304713',
   '7648831973842095079',
 ]);
-const APP_DESIGN_PARAM_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblesT69TDCUKzhs';
-const WEB_DESIGN_PARAM_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblMaw89yVi68YY6';
+const APP_DESIGN_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblesT69TDCUKzhs';
+const WEB_DESIGN_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblMaw89yVi68YY6';
+const APP_OFFICIAL_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
+const WEB_OFFICIAL_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 const TRACKING_SOURCES: TrackingSource[] = ['app', 'web'];
 
 type Cell = unknown;
 type ScopedRecordRef = { source: TrackingSource; rawId: string };
 type PermissionKey = keyof StagePermissions;
 
-const USER_FIELD_NAMES = new Set([
-  '需求提出人',
-  '需求录入人',
-  '数据负责人',
-  '研发负责人',
-  'DS验收人',
-]);
+const USER_FIELD_NAMES = new Set(['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
   requirement: 'canEditRequirement',
@@ -168,58 +150,58 @@ const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
 };
 const FIELD_PERMISSION_BY_STAGE_ID: Record<string, Record<string, PermissionKey>> = {
   requirement: {
-    '需求提出人': 'canEditRequirement',
-    '需求录入人': 'canEditRequirement',
-    '需求背景': 'canEditRequirement',
-    '需求链接': 'canEditRequirement',
+    需求提出人: 'canEditRequirement',
+    需求录入人: 'canEditRequirement',
+    需求背景: 'canEditRequirement',
+    需求链接: 'canEditRequirement',
     '指标/使用场景': 'canEditRequirement',
-    '优先级': 'canEditRequirement',
-    '端': 'canEditRequirement',
-    '数据负责人': 'canEditRequirement',
-    '研发负责人': 'canEditRequirement',
-    'DS验收人': 'canEditRequirement',
+    优先级: 'canEditRequirement',
+    端: 'canEditRequirement',
+    数据负责人: 'canEditRequirement',
+    研发负责人: 'canEditRequirement',
+    DS验收人: 'canEditRequirement',
   },
   design: {
-    'evt_id': 'canEditDesign',
-    '事件中文名': 'canEditDesign',
-    '优先级': 'canEditDesign',
-    '端': 'canEditDesign',
-    '事件定义': 'canEditDesign',
-    '触发时机': 'canEditDesign',
-    'UI图': 'canEditDesign',
-    '处理方': 'canEditDesign',
-    '公共属性要求': 'canEditDesign',
-    '版本': 'canEditDesign',
-    '最低版本': 'canEditDesign',
-    '变更类型': 'canEditDesign',
-    '评审状态': 'canEditDesign',
+    evt_id: 'canEditDesign',
+    事件中文名: 'canEditDesign',
+    优先级: 'canEditDesign',
+    端: 'canEditDesign',
+    事件定义: 'canEditDesign',
+    触发时机: 'canEditDesign',
+    UI图: 'canEditDesign',
+    处理方: 'canEditDesign',
+    公共属性要求: 'canEditDesign',
+    版本: 'canEditDesign',
+    最低版本: 'canEditDesign',
+    变更类型: 'canEditDesign',
+    评审状态: 'canEditDesign',
   },
   review: {
-    '评审状态': 'canEditReview',
-    '评审意见': 'canEditReview',
+    评审状态: 'canEditReview',
+    评审意见: 'canEditReview',
   },
   dev: {
-    '研发负责人': 'canEditDev',
-    '埋点开发状态': 'canEditDev',
+    研发负责人: 'canEditDev',
+    埋点开发状态: 'canEditDev',
   },
   acceptance: {
-    'DS验收人': 'canEditAcceptance',
-    'DS验收状态': 'canEditAcceptance',
-    'DS验收证据': 'canEditAcceptance',
-    'DS验收时间': 'canEditAcceptance',
+    DS验收人: 'canEditAcceptance',
+    DS验收状态: 'canEditAcceptance',
+    DS验收证据: 'canEditAcceptance',
+    DS验收时间: 'canEditAcceptance',
   },
   launch: {
-    '发布门禁状态': 'canEditLaunch',
-    '发布门禁失败原因': 'canEditLaunch',
-    '发布状态': 'canEditLaunch',
-    '发布错误': 'canEditLaunch',
-    '上线监控状态': 'canEditLaunch',
-    '上线监控结论': 'canEditLaunch',
-    '发布时间': 'canEditLaunch',
+    发布门禁状态: 'canEditLaunch',
+    发布门禁失败原因: 'canEditLaunch',
+    发布状态: 'canEditLaunch',
+    发布错误: 'canEditLaunch',
+    上线监控状态: 'canEditLaunch',
+    上线监控结论: 'canEditLaunch',
+    发布时间: 'canEditLaunch',
   },
   archive: {
-    '正式状态': 'canEditArchive',
-    '稳定归档时间': 'canEditArchive',
+    正式状态: 'canEditArchive',
+    稳定归档时间: 'canEditArchive',
   },
 };
 const FIELD_PERMISSION_BY_NAME: Record<string, PermissionKey> = {
@@ -232,28 +214,23 @@ const FIELD_PERMISSION_BY_NAME: Record<string, PermissionKey> = {
   ...FIELD_PERMISSION_BY_STAGE_ID.archive,
 };
 const TARGET_STAGE_PERMISSION_BY_BASE_STAGE: Record<string, PermissionKey> = {
-  '埋点设计': 'canEditRequirement',
-  '评审通过': 'canEditReview',
-  '数据验收': 'canEditDev',
-  '上线监控': 'canEditAcceptance',
-  '稳定归档': 'canEditLaunch',
-  '已废弃': 'canEditArchive',
+  埋点设计: 'canEditRequirement',
+  评审通过: 'canEditReview',
+  数据验收: 'canEditDev',
+  上线监控: 'canEditAcceptance',
+  稳定归档: 'canEditLaunch',
+  已废弃: 'canEditArchive',
 };
 
 @Injectable()
 export class TrackingService {
   constructor(private readonly bitable: BitableService) {}
 
-  async getStageStats(
-    params: GetStageStatsParams = {},
-  ): Promise<GetStageStatsResponse> {
+  async getStageStats(params: GetStageStatsParams = {}): Promise<GetStageStatsResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
     const countMap = new Map(UI_STAGE_NODES.map((stage) => [stage, 0]));
     for (const { record } of records) {
-      const uiStage = getUiStageFromBase(
-        cellText(record.record['流程阶段']),
-        cellText(record.record['评审状态']),
-      );
+      const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
       if (countMap.has(uiStage)) {
         countMap.set(uiStage, (countMap.get(uiStage) || 0) + 1);
       }
@@ -266,10 +243,7 @@ export class TrackingService {
     };
   }
 
-  async getMyTodos(
-    limit = 10,
-    params: GetMyTodosParams = {},
-  ): Promise<GetMyTodosResponse> {
+  async getMyTodos(limit = 10, params: GetMyTodosParams = {}): Promise<GetMyTodosResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
     const actorCandidates = uniqueStrings([params.actorId || '', params.actorLarkId || '']);
     if (!actorCandidates.length) {
@@ -290,10 +264,14 @@ export class TrackingService {
           todoRole: action.todoRole,
         };
       })
-      .filter((record): record is TrackingRecord & {
-        targetStage: string;
-        todoRole: string;
-      } => Boolean(record))
+      .filter(
+        (
+          record,
+        ): record is TrackingRecord & {
+          targetStage: string;
+          todoRole: string;
+        } => Boolean(record),
+      )
       .sort(compareTrackingRecord)
       .slice(0, limit)
       .map((record) => ({
@@ -342,11 +320,7 @@ export class TrackingService {
     };
   }
 
-  async getDetail(
-    recordId: string,
-    actorId?: string,
-    actorLarkId?: string,
-  ): Promise<GetTrackingDetailResponse> {
+  async getDetail(recordId: string, actorId?: string, actorLarkId?: string): Promise<GetTrackingDetailResponse> {
     const ref = parseScopedRecordId(recordId);
     const record = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!record) {
@@ -354,13 +328,7 @@ export class TrackingService {
     }
     const permissionConfig = await this.getStoredPermissionConfig();
     return {
-      data: this.toTrackingDetail(
-        record,
-        ref.source,
-        actorId,
-        actorLarkId,
-        permissionConfig,
-      ),
+      data: this.toTrackingDetail(record, ref.source, actorId, actorLarkId, permissionConfig),
     };
   }
 
@@ -378,35 +346,19 @@ export class TrackingService {
     return {
       config: effectiveConfig,
       initialized,
-      canManage: initialized
-        ? Boolean(
-            actorId &&
-              (effectiveConfig.admins.length === 0 ||
-                effectiveConfig.admins.includes(actorId) ||
-                isBootstrapAdmin(actorId)),
-          )
-        : Boolean(actorId),
+      canManage: initialized ? Boolean(actorId && (effectiveConfig.admins.length === 0 || effectiveConfig.admins.includes(actorId) || isBootstrapAdmin(actorId))) : Boolean(actorId),
     };
   }
 
-  async updatePermissionConfig(
-    body: UpdatePermissionConfigRequest,
-  ): Promise<UpdatePermissionConfigResponse> {
+  async updatePermissionConfig(body: UpdatePermissionConfigRequest): Promise<UpdatePermissionConfigResponse> {
     const actorId = (body.actorId || '').trim();
     if (!actorId) {
       throw new BadRequestException('无法识别当前用户，不能更新权限配置');
     }
 
     const existing = await this.getPermissionRecord();
-    const currentConfig = existing
-      ? parsePermissionConfig(existing.record['需求背景'])
-      : emptyPermissionConfig();
-    if (
-      existing &&
-      currentConfig.admins.length > 0 &&
-      !currentConfig.admins.includes(actorId) &&
-      !isBootstrapAdmin(actorId)
-    ) {
+    const currentConfig = existing ? parsePermissionConfig(existing.record['需求背景']) : emptyPermissionConfig();
+    if (existing && currentConfig.admins.length > 0 && !currentConfig.admins.includes(actorId) && !isBootstrapAdmin(actorId)) {
       throw new ForbiddenException('只有管理员可以更新权限配置');
     }
 
@@ -425,18 +377,16 @@ export class TrackingService {
     // 避免因为业务枚举、人员字段或系统只读字段导致初始化 400。
     const record = {
       evt_id: PERMISSION_RECORD_EVT_ID,
-      '事件中文名': PERMISSION_RECORD_NAME,
-      '需求背景': JSON.stringify(nextConfig),
-      '流程阶段': '稳定归档',
-      '记录类型': '模板',
-      '优先级': 'P2',
-      '版本': 'system',
+      事件中文名: PERMISSION_RECORD_NAME,
+      需求背景: JSON.stringify(nextConfig),
+      流程阶段: '稳定归档',
+      记录类型: '模板',
+      优先级: 'P2',
+      版本: 'system',
     };
 
     if (existing) {
-      await this.bitable.batchUpdateRecords('workbench', [
-        { id: existing.id, record },
-      ]);
+      await this.bitable.batchUpdateRecords('workbench', [{ id: existing.id, record }]);
     } else {
       await this.bitable.batchAddRecords('workbench', [record]);
     }
@@ -444,9 +394,7 @@ export class TrackingService {
     return { success: true, config: nextConfig };
   }
 
-  async createRecord(
-    body: CreateTrackingRecordRequest,
-  ): Promise<CreateTrackingRecordResponse> {
+  async createRecord(body: CreateTrackingRecordRequest): Promise<CreateTrackingRecordResponse> {
     const source = normalizeSource(body.source);
     const evtId = (body.evtId || '').trim();
     const eventName = (body.eventName || '').trim();
@@ -458,74 +406,62 @@ export class TrackingService {
 
     const records = await this.listWorkbenchRecords(source);
     if (evtId) {
-      const duplicate = records.find(
-        (record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase(),
-      );
+      const duplicate = records.find((record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase());
       if (duplicate) {
         throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
       }
     }
 
     const actorCellId = body.actorId;
-    const requesterCells = createUserCells(
-      body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : [],
-    );
-    const recorderCells = createUserCells(
-      body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
-    );
-    const dataOwnerCells = createUserCells(
-      body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : [],
-    );
+    const requesterCells = createUserCells(body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : []);
+    const recorderCells = createUserCells(body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : []);
+    const dataOwnerCells = createUserCells(body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : []);
     const devOwnerCells = createUserCells(body.devOwnerIds);
-    const dsAcceptorCells = createUserCells(
-      body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : [],
-    );
+    const dsAcceptorCells = createUserCells(body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : []);
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
     const requirementLink = (body.requirementLink || '').trim();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         evt_id: evtId,
-        '事件中文名': eventName,
-        '事件定义': body.eventDefinition || '',
-        '触发时机': body.triggerTiming || '',
-        '需求背景': body.requirementBackground || '',
-        ...(requirementLink ? { '需求链接': requirementLink } : {}),
+        事件中文名: eventName,
+        事件定义: body.eventDefinition || '',
+        触发时机: body.triggerTiming || '',
+        需求背景: body.requirementBackground || '',
+        ...(requirementLink ? { 需求链接: requirementLink } : {}),
         '指标/使用场景': body.metricScenario || '',
-        '流程阶段': '需求录入',
-        '记录类型': '埋点设计',
-        '优先级': body.priority || 'P2',
-        '端': toPlatformCell(body.platform, source),
-        '需求提出人': requesterCells,
-        '需求录入人': recorderCells,
-        '数据负责人': dataOwnerCells,
-        '研发负责人': devOwnerCells,
-        'DS验收人': dsAcceptorCells,
-        '评审状态': '草稿',
-        '评审意见': '',
-        '埋点开发状态': '未开始',
-        'DS验收状态': '未开始',
-        '上线监控状态': '未开始',
-        '上线监控结论': '',
-        '发布门禁状态': '未检查',
-        '发布门禁失败原因': '',
-        '发布状态': '未发布',
-        '发布错误': '',
-        '正式状态': '待开发',
-        '版本': body.version || '1.0.0',
-        '最低版本': body.minVersion || body.version || '1.0.0',
-        '变更类型': normalizeChangeType(body.changeType),
-        '处理方': normalizeHandler(body.handler, source),
-        '公共属性要求': body.commonProps || '',
-        '参数明细入口': source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
-        '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
+        流程阶段: '需求录入',
+        记录类型: '埋点设计',
+        优先级: body.priority || 'P2',
+        端: toPlatformCell(body.platform, source),
+        需求提出人: requesterCells,
+        需求录入人: recorderCells,
+        数据负责人: dataOwnerCells,
+        研发负责人: devOwnerCells,
+        DS验收人: dsAcceptorCells,
+        评审状态: '草稿',
+        评审意见: '',
+        埋点开发状态: '未开始',
+        DS验收状态: '未开始',
+        上线监控状态: '未开始',
+        上线监控结论: '',
+        发布门禁状态: '未检查',
+        发布门禁失败原因: '',
+        发布状态: '未发布',
+        发布错误: '',
+        正式状态: '待开发',
+        版本: body.version || '1.0.0',
+        最低版本: body.minVersion || body.version || '1.0.0',
+        变更类型: normalizeChangeType(body.changeType),
+        处理方: normalizeHandler(body.handler, source),
+        公共属性要求: body.commonProps || '',
+        参数明细入口: source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
+        参数拆行状态: body.initialParams?.length ? '已拆行' : '未拆行',
       },
     ]);
 
     const paramRecords = (body.initialParams || [])
-      .map((param) =>
-        this.toParamRecord(source, created.id, evtId, body.version || '1.0.0', param),
-      )
+      .map((param) => this.toParamRecord(source, created.id, evtId, body.version || '1.0.0', param))
       .filter((record) => cellText(record.evt_id) && cellText(record['参数名']));
 
     if (paramRecords.length) {
@@ -540,10 +476,7 @@ export class TrackingService {
     };
   }
 
-  async updateRecord(
-    recordId: string,
-    body: UpdateTrackingRecordRequest,
-  ): Promise<UpdateTrackingRecordResponse> {
+  async updateRecord(recordId: string, body: UpdateTrackingRecordRequest): Promise<UpdateTrackingRecordResponse> {
     const ref = parseScopedRecordId(recordId);
     const workbench = workbenchKey(ref.source);
     const current = await this.bitable.getRecord(workbench, ref.rawId);
@@ -564,9 +497,7 @@ export class TrackingService {
       currentStage = targetStage;
     }
     if (Object.prototype.hasOwnProperty.call(patch, '端')) {
-      patch['端'] = Array.isArray(patch['端'])
-        ? patch['端']
-        : toPlatformCell(cellText(patch['端']), ref.source);
+      patch['端'] = Array.isArray(patch['端']) ? patch['端'] : toPlatformCell(cellText(patch['端']), ref.source);
     }
     for (const fieldName of USER_FIELD_NAMES) {
       if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
@@ -589,7 +520,7 @@ export class TrackingService {
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
-    await this.syncOfficialQueryLibrary(ref.source, nextRecord);
+    await this.syncOfficialQueryLibrary(ref.source, ref.rawId, nextRecord);
     return { success: true, recordId, currentStage };
   }
 
@@ -613,10 +544,7 @@ export class TrackingService {
     return { items, total: items.length };
   }
 
-  async createParam(
-    recordId: string,
-    body: CreateParamRequest,
-  ): Promise<CreateParamResponse> {
+  async createParam(recordId: string, body: CreateParamRequest): Promise<CreateParamResponse> {
     const ref = parseScopedRecordId(recordId);
     const detail = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!detail) {
@@ -629,17 +557,15 @@ export class TrackingService {
       throw new BadRequestException('evt_id 和参数名不能为空');
     }
 
-    const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [
-      this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body),
-    ]);
+    const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body)]);
 
-    return { success: true, recordId: encodeScopedRecordId(ref.source, created.id) };
+    return {
+      success: true,
+      recordId: encodeScopedRecordId(ref.source, created.id),
+    };
   }
 
-  async updateParam(
-    paramRecordId: string,
-    body: UpdateParamRequest,
-  ): Promise<UpdateParamResponse> {
+  async updateParam(paramRecordId: string, body: UpdateParamRequest): Promise<UpdateParamResponse> {
     const ref = parseScopedRecordId(paramRecordId);
     const paramRecord = await this.bitable.getRecord(paramDetailKey(ref.source), ref.rawId);
     if (!paramRecord) {
@@ -649,21 +575,29 @@ export class TrackingService {
     await this.assertCanEditParams(designRecord, body.actorId, body.actorLarkId);
 
     const fields = body.fields || {};
-    const patch = hasApiParamFields(fields)
-      ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source)
-      : fields;
-    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [
-      { id: ref.rawId, record: patch },
-    ]);
+    const patch = hasApiParamFields(fields) ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source) : fields;
+    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: patch }]);
     return { success: true, recordId: paramRecordId };
   }
 
-  private async syncParamEvtId(
-    source: TrackingSource,
-    designRecordId: string,
-    previousEvtId: string,
-    nextEvtId: string,
-  ): Promise<void> {
+  private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[]): Promise<BitableRecord[]> {
+    const records: BitableRecord[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const result = await this.bitable.searchRecords(instanceKey, {
+        fieldNames: [...fieldNames],
+        pageSize: 200,
+        ...(pageToken ? { pageToken } : {}),
+      });
+      records.push(...result.records);
+      pageToken = result.hasMore ? result.pageToken : undefined;
+    } while (pageToken);
+
+    return records;
+  }
+
+  private async syncParamEvtId(source: TrackingSource, designRecordId: string, previousEvtId: string, nextEvtId: string): Promise<void> {
     const result = await this.bitable.searchRecords(paramDetailKey(source), {
       fieldNames: [...paramFields(source)],
       pageSize: 200,
@@ -681,38 +615,89 @@ export class TrackingService {
     }
   }
 
-  private async syncOfficialQueryLibrary(
-    source: TrackingSource,
-    record: Record<string, unknown>,
-  ): Promise<void> {
+  private async syncOfficialQueryLibrary(source: TrackingSource, designRecordId: string, record: Record<string, unknown>): Promise<void> {
     const officialRecord = toOfficialQueryRecord(source, record);
     if (!officialRecord) return;
 
     const evtId = cellText(officialRecord.evt_id).trim().toLowerCase();
     const instanceKey = queryLibraryKey(source);
-    const result = await this.bitable.searchRecords(instanceKey, {
-      fieldNames: [...OFFICIAL_QUERY_FIELDS],
-      pageSize: 200,
-    });
-    const existing = result.records.find(
-      (item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId,
-    );
+    const records = await this.searchAllRecords(instanceKey, OFFICIAL_QUERY_FIELDS);
+    const existing = records.find((item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId);
 
+    let officialEventRecordId = existing?.id;
     if (existing) {
-      await this.bitable.batchUpdateRecords(instanceKey, [
-        { id: existing.id, record: officialRecord },
-      ]);
-      return;
+      await this.bitable.batchUpdateRecords(instanceKey, [{ id: existing.id, record: officialRecord }]);
+    } else {
+      const [created] = await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
+      officialEventRecordId = created?.id;
     }
 
-    await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
+    if (officialEventRecordId) {
+      await this.syncOfficialParams(source, designRecordId, record, officialEventRecordId);
+    }
   }
 
-  async deleteParam(
-    paramRecordId: string,
-    actorId?: string,
-    actorLarkId?: string,
-  ): Promise<DeleteParamResponse> {
+  private async syncOfficialParams(source: TrackingSource, designRecordId: string, designRecord: Record<string, unknown>, officialEventRecordId: string): Promise<void> {
+    const evtId = cellText(designRecord['evt_id']).trim();
+    if (!evtId) return;
+
+    const designParams = (await this.searchAllRecords(paramDetailKey(source), paramFields(source))).filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId));
+    const officialParamKey = officialParamDetailKey(source);
+    const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
+    const existingByParamKey = new Map<string, BitableRecord>();
+    const existingForEvent: BitableRecord[] = [];
+
+    for (const item of officialParams) {
+      const paramKey = getOfficialParamKey(item.record).toLowerCase();
+      if (paramKey) {
+        existingByParamKey.set(paramKey, item);
+      }
+      if (isOfficialParamForEvent(item, officialEventRecordId, evtId)) {
+        existingForEvent.push(item);
+      }
+    }
+
+    const activeParamKeys = new Set<string>();
+    const updates: { id: string; record: Record<string, unknown> }[] = [];
+    const inserts: Record<string, unknown>[] = [];
+
+    for (const designParam of designParams) {
+      const officialParam = toOfficialParamRecord(source, designRecord, designParam.record, officialEventRecordId);
+      if (!officialParam) continue;
+
+      const paramKey = cellText(officialParam['参数主键']).trim().toLowerCase();
+      activeParamKeys.add(paramKey);
+      const existing = existingByParamKey.get(paramKey);
+      if (existing) {
+        updates.push({ id: existing.id, record: officialParam });
+      } else {
+        inserts.push(officialParam);
+      }
+    }
+
+    for (const officialParam of existingForEvent) {
+      const paramKey = getOfficialParamKey(officialParam.record).toLowerCase();
+      if (!paramKey || activeParamKeys.has(paramKey)) continue;
+      if (cellText(officialParam.record['参数状态']) === '已废弃') continue;
+      updates.push({
+        id: officialParam.id,
+        record: {
+          参数状态: '已废弃',
+          事件状态: getOfficialQueryStatus(designRecord),
+          关联事件: [officialEventRecordId],
+        },
+      });
+    }
+
+    for (let index = 0; index < updates.length; index += 200) {
+      await this.bitable.batchUpdateRecords(officialParamKey, updates.slice(index, index + 200));
+    }
+    for (let index = 0; index < inserts.length; index += 200) {
+      await this.bitable.batchAddRecords(officialParamKey, inserts.slice(index, index + 200));
+    }
+  }
+
+  async deleteParam(paramRecordId: string, actorId?: string, actorLarkId?: string): Promise<DeleteParamResponse> {
     const ref = parseScopedRecordId(paramRecordId);
     const paramRecord = await this.bitable.getRecord(paramDetailKey(ref.source), ref.rawId);
     if (!paramRecord) {
@@ -721,9 +706,7 @@ export class TrackingService {
     const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
     await this.assertCanEditParams(designRecord, actorId, actorLarkId);
 
-    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [
-      { id: ref.rawId, record: { '参数状态': '废弃' } },
-    ]);
+    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: { 参数状态: '废弃' } }]);
     return { success: true };
   }
 
@@ -734,16 +717,8 @@ export class TrackingService {
     }
   }
 
-  private async assertCanUpdateRecord(
-    record: BitableRecord,
-    body: UpdateTrackingRecordRequest,
-  ): Promise<void> {
-    const permissions = await this.getActorPermissionsForRecord(
-      record,
-      body.actorId,
-      body.actorLarkId,
-      '更新需求',
-    );
+  private async assertCanUpdateRecord(record: BitableRecord, body: UpdateTrackingRecordRequest): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(record, body.actorId, body.actorLarkId, '更新需求');
     const requiredPermissions = getRequiredPermissionsForUpdate(body);
     const denied = requiredPermissions.filter((permission) => !permissions[permission]);
     if (denied.length) {
@@ -751,28 +726,14 @@ export class TrackingService {
     }
   }
 
-  private async assertCanEditParams(
-    record: BitableRecord,
-    actorId?: string,
-    actorLarkId?: string,
-  ): Promise<void> {
-    const permissions = await this.getActorPermissionsForRecord(
-      record,
-      actorId,
-      actorLarkId,
-      '维护参数',
-    );
+  private async assertCanEditParams(record: BitableRecord, actorId?: string, actorLarkId?: string): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(record, actorId, actorLarkId, '维护参数');
     if (!permissions.canEditParams) {
       throw new ForbiddenException('当前用户无权限维护参数');
     }
   }
 
-  private async getActorPermissionsForRecord(
-    record: BitableRecord,
-    actorId: string | undefined,
-    actorLarkId: string | undefined,
-    actionLabel: string,
-  ): Promise<StagePermissions> {
+  private async getActorPermissionsForRecord(record: BitableRecord, actorId: string | undefined, actorLarkId: string | undefined, actionLabel: string): Promise<StagePermissions> {
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
     if (!actorCandidates.length) {
       throw new ForbiddenException(`无法识别当前用户，不能${actionLabel}`);
@@ -782,22 +743,13 @@ export class TrackingService {
     }
 
     const permissionConfig = await this.getStoredPermissionConfig();
-    return calculateRawRecordPermissions(
-      record.record,
-      actorId,
-      actorLarkId,
-      permissionConfig,
-    );
+    return calculateRawRecordPermissions(record.record, actorId, actorLarkId, permissionConfig);
   }
 
-  private async findDesignRecordForParam(
-    source: TrackingSource,
-    paramRecord: BitableRecord,
-  ): Promise<BitableRecord> {
+  private async findDesignRecordForParam(source: TrackingSource, paramRecord: BitableRecord): Promise<BitableRecord> {
     const sourceRecordId = cellText(paramRecord.record['来源设计记录ID']);
     const linkedRecordIds = cellIds(paramRecord.record['关联设计']);
-    const candidateIds = uniqueStrings([sourceRecordId, ...linkedRecordIds])
-      .map((id) => normalizeScopedRawId(id, source));
+    const candidateIds = uniqueStrings([sourceRecordId, ...linkedRecordIds]).map((id) => normalizeScopedRawId(id, source));
 
     for (const candidateId of candidateIds) {
       const designRecord = await this.bitable.getRecord(workbenchKey(source), candidateId);
@@ -810,9 +762,7 @@ export class TrackingService {
         fieldNames: [...WORKBENCH_FIELDS],
         pageSize: 200,
       });
-      const designRecord = result.records.find(
-        (item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId,
-      );
+      const designRecord = result.records.find((item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId);
       if (designRecord) return designRecord;
     }
 
@@ -829,18 +779,10 @@ export class TrackingService {
       fieldNames: [...WORKBENCH_FIELDS],
       pageSize: 200,
     });
-    return (
-      result.records.find(
-        (record) =>
-          cellText(record.record['evt_id']) === PERMISSION_RECORD_EVT_ID ||
-          cellText(record.record['记录类型']) === PERMISSION_RECORD_TYPE,
-      ) || null
-    );
+    return result.records.find((record) => cellText(record.record['evt_id']) === PERMISSION_RECORD_EVT_ID || cellText(record.record['记录类型']) === PERMISSION_RECORD_TYPE) || null;
   }
 
-  private async listWorkbenchRecordsBySource(
-    sourceFilter?: TrackingSourceFilter,
-  ): Promise<Array<{ source: TrackingSource; record: BitableRecord }>> {
+  private async listWorkbenchRecordsBySource(sourceFilter?: TrackingSourceFilter): Promise<Array<{ source: TrackingSource; record: BitableRecord }>> {
     const filter = normalizeSourceFilter(sourceFilter);
     const sources = filter === 'all' ? TRACKING_SOURCES : [filter];
     const results = await Promise.all(
@@ -860,12 +802,7 @@ export class TrackingService {
     return result.records.filter((record) => {
       const evtId = cellText(record.record['evt_id']);
       const type = cellText(record.record['记录类型']);
-      return (
-        evtId !== PERMISSION_RECORD_EVT_ID &&
-        type !== '模板' &&
-        type !== PERMISSION_RECORD_TYPE &&
-        (type === '埋点设计' || Boolean(evtId) || Boolean(cellText(record.record['事件中文名'])))
-      );
+      return evtId !== PERMISSION_RECORD_EVT_ID && type !== '模板' && type !== PERMISSION_RECORD_TYPE && (type === '埋点设计' || Boolean(evtId) || Boolean(cellText(record.record['事件中文名'])));
     });
   }
 
@@ -881,10 +818,7 @@ export class TrackingService {
       evtId: cellText(record.record['evt_id']),
       eventName: cellText(record.record['事件中文名']) || '未命名需求',
       stage,
-      uiStage: getUiStageFromBase(
-        stage,
-        cellText(record.record['评审状态']),
-      ),
+      uiStage: getUiStageFromBase(stage, cellText(record.record['评审状态'])),
       priority: cellText(record.record['优先级']) || 'P2',
       platform: cellText(record.record['端']) || '-',
       dataOwner: users.data.names,
@@ -895,13 +829,7 @@ export class TrackingService {
     };
   }
 
-  private toTrackingDetail(
-    record: BitableRecord,
-    source: TrackingSource,
-    actorId?: string,
-    actorLarkId?: string,
-    permissionConfig?: PermissionConfig | null,
-  ): TrackingDetail {
+  private toTrackingDetail(record: BitableRecord, source: TrackingSource, actorId?: string, actorLarkId?: string, permissionConfig?: PermissionConfig | null): TrackingDetail {
     const requester = cellUsers(record.record['需求提出人']);
     const recorder = cellUsers(record.record['需求录入人']);
     const dataOwner = cellUsers(record.record['数据负责人']);
@@ -926,58 +854,15 @@ export class TrackingService {
       devOwnerIds: devOwner.ids,
       dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
-      requirementFields: pickFields(record.record, [
-        '需求提出人',
-        '需求录入人',
-        '需求背景',
-        '需求链接',
-        '指标/使用场景',
-        '优先级',
-        '端',
-        '数据负责人',
-        '研发负责人',
-        'DS验收人',
-      ]),
-      designFields: pickFields(record.record, [
-        'evt_id',
-        '事件中文名',
-        '优先级',
-        '端',
-        '事件定义',
-        '触发时机',
-        'UI图',
-        '处理方',
-        '公共属性要求',
-        '版本',
-        '最低版本',
-        '变更类型',
-        '参数拆行状态',
-      ]),
+      requirementFields: pickFields(record.record, ['需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
+      designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', 'UI图', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
       reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
       devFields: pickFields(record.record, ['研发负责人', '埋点开发状态']),
       acceptanceFields: pickFields(record.record, ['DS验收人', 'DS验收状态', 'DS验收证据', 'DS验收时间']),
-      launchFields: pickFields(record.record, [
-        '发布门禁状态',
-        '发布门禁失败原因',
-        '发布状态',
-        '发布错误',
-        '上线监控状态',
-        '上线监控结论',
-        '发布时间',
-      ]),
+      launchFields: pickFields(record.record, ['发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间']),
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       permissions: actor
-        ? calculateRecordPermissions(
-            actor,
-            actorCandidates,
-            requester.ids,
-            recorder.ids,
-            dataOwner.ids,
-            devOwner.ids,
-            dsAcceptor.ids,
-            permissionConfig,
-            stage,
-          )
+        ? calculateRecordPermissions(actor, actorCandidates, requester.ids, recorder.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, stage)
         : calculatePermissions('', [], [], []),
     };
   }
@@ -1007,62 +892,45 @@ export class TrackingService {
       definition: cellText(record.record['参数定义']),
       defaultValue: cellText(record.record['默认值/示例']),
       example: cellText(record.record['默认值/示例']),
-      platform: normalizeParamApplicability(
-        cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']),
-        source,
-      ),
+      platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
       status: cellText(record.record['参数状态']) || '草稿',
       version: cellText(record.record['版本']),
       changeType: cellText(record.record['变更类型']) || '新增',
     };
   }
 
-  private toParamRecord(
-    source: TrackingSource,
-    recordId: string,
-    evtId: string,
-    version: string,
-    body: CreateParamRequest,
-  ): Record<string, unknown> {
+  private toParamRecord(source: TrackingSource, recordId: string, evtId: string, version: string, body: CreateParamRequest): Record<string, unknown> {
     const paramName = (body.paramName || '').trim();
     const eventId = (body.evtId || evtId).trim();
     const platformField = source === 'web' ? 'Web适用性' : 'App适用性';
     return {
       evt_id: eventId,
-      '参数名': paramName,
-      '数据类型': normalizeParamType(body.paramType),
-      '必传规则': normalizeRequiredRule(body.requiredRule, body.required),
-      '条件说明': body.triggerCondition || '',
+      参数名: paramName,
+      数据类型: normalizeParamType(body.paramType),
+      必传规则: normalizeRequiredRule(body.requiredRule, body.required),
+      条件说明: body.triggerCondition || '',
       '枚举/取值范围': body.enumRange || '',
-      '参数定义': body.definition || '',
+      参数定义: body.definition || '',
       '默认值/示例': body.example || body.defaultValue || '',
       [platformField]: normalizeParamApplicability(body.platform, source),
-      '参数状态': normalizeParamStatus(body.status),
-      '版本': body.version || version || '1.0.0',
-      '变更类型': normalizeChangeType(body.changeType),
-      '来源设计记录ID': recordId,
-      '关联设计': [recordId],
+      参数状态: normalizeParamStatus(body.status),
+      版本: body.version || version || '1.0.0',
+      变更类型: normalizeChangeType(body.changeType),
+      来源设计记录ID: recordId,
+      关联设计: [recordId],
     };
   }
 }
 
 function compareTrackingRecord(a: TrackingRecord, b: TrackingRecord): number {
-  const priorityDiff =
-    (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
+  const priorityDiff = (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
   if (priorityDiff !== 0) return priorityDiff;
   return b.updatedAt - a.updatedAt;
 }
 
 function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, unknown> {
   return Object.fromEntries(
-    fields.map((field) => [
-      field,
-      USER_FIELD_NAMES.has(field)
-        ? cellUsers(record[field]).items
-        : ATTACHMENT_FIELD_NAMES.has(field)
-          ? cellFiles(record[field])
-          : cellText(record[field]),
-    ]),
+    fields.map((field) => [field, USER_FIELD_NAMES.has(field) ? cellUsers(record[field]).items : ATTACHMENT_FIELD_NAMES.has(field) ? cellFiles(record[field]) : cellText(record[field])]),
   );
 }
 
@@ -1077,7 +945,10 @@ function cellText(value: Cell): string {
     return String(value);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => cellText(item)).filter(Boolean).join('、');
+    return value
+      .map((item) => cellText(item))
+      .filter(Boolean)
+      .join('、');
   }
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;
@@ -1096,7 +967,11 @@ function firstText(...values: Cell[]): string {
   return values.map(cellText).find(Boolean) || '';
 }
 
-function cellUsers(value: Cell): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
+function cellUsers(value: Cell): {
+  ids: string[];
+  names: string[];
+  items: TrackingUserRef[];
+} {
   const values = Array.isArray(value) ? value : value ? [value] : [];
   return values.reduce(
     (acc, item) => {
@@ -1108,34 +983,16 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
       }
       if (item && typeof item === 'object') {
         const user = item as Record<string, unknown>;
-        const id = [
-          user.user_id,
-          user.userId,
-          user.miaoda_user_id,
-          user.miaodaUserID,
-          user.employee_id,
-          user.employeeID,
-          user.id,
-          user.open_id,
-          user.openId,
-          user.larkUserId,
-          user.lark_user_id,
-        ].find(
-          (candidate): candidate is string | number =>
-            (typeof candidate === 'string' && candidate.length > 0) ||
-            typeof candidate === 'number',
-        ) || '';
+        const id =
+          [user.user_id, user.userId, user.miaoda_user_id, user.miaodaUserID, user.employee_id, user.employeeID, user.id, user.open_id, user.openId, user.larkUserId, user.lark_user_id].find(
+            (candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number',
+          ) || '';
         const name = localizedText(user.name) || localizedText(user.en_name);
         const normalizedId = id ? String(id) : '';
-        const larkUserId = [
-          user.larkUserId,
-          user.lark_user_id,
-          user.open_id,
-          user.openId,
-          user.lark_id,
-        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
-        const resolvedLarkUserId =
-          larkUserId || (normalizedId.startsWith('ou_') ? normalizedId : undefined);
+        const larkUserId = [user.larkUserId, user.lark_user_id, user.open_id, user.openId, user.lark_id].find(
+          (candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0,
+        );
+        const resolvedLarkUserId = larkUserId || (normalizedId.startsWith('ou_') ? normalizedId : undefined);
         if (normalizedId) acc.ids.push(normalizedId);
         if (name && name !== normalizedId) acc.names.push(name);
         if (normalizedId) {
@@ -1148,7 +1005,11 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
       }
       return acc;
     },
-    { ids: [] as string[], names: [] as string[], items: [] as TrackingUserRef[] },
+    {
+      ids: [] as string[],
+      names: [] as string[],
+      items: [] as TrackingUserRef[],
+    },
   );
 }
 
@@ -1194,13 +1055,7 @@ function cellTimestamp(value: Cell): number {
 }
 
 function createUserCells(value?: unknown): number[] {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? value.split(/[、,，/]/)
-      : value
-        ? [value]
-        : [];
+  const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[、,，/]/) : value ? [value] : [];
 
   return uniqueNumbers(values.map(extractNumericUserId).filter((id): id is number => id !== null));
 }
@@ -1220,16 +1075,7 @@ function extractNumericUserId(item: unknown): number | null {
   }
   if (item && typeof item === 'object') {
     const user = item as Record<string, unknown>;
-    for (const key of [
-      'user_id',
-      'userId',
-      'userID',
-      'miaoda_user_id',
-      'miaodaUserID',
-      'employee_id',
-      'employeeID',
-      'id',
-    ]) {
+    for (const key of ['user_id', 'userId', 'userID', 'miaoda_user_id', 'miaodaUserID', 'employee_id', 'employeeID', 'id']) {
       const id = extractNumericUserId(user[key]);
       if (id !== null) return id;
     }
@@ -1275,19 +1121,14 @@ function parsePermissionConfig(value: Cell): PermissionConfig {
 }
 
 function uniqueStrings(values: string[] = []): string[] {
-  return Array.from(
-    new Set(values.map((value) => String(value || '').trim()).filter(Boolean)),
-  );
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 }
 
 function isBootstrapAdmin(actorId?: string): boolean {
   return Boolean(actorId && BOOTSTRAP_ADMIN_USER_IDS.has(actorId));
 }
 
-function isAdminActor(
-  actorCandidates: string[],
-  permissionConfig?: PermissionConfig | null,
-): boolean {
+function isAdminActor(actorCandidates: string[], permissionConfig?: PermissionConfig | null): boolean {
   if (actorCandidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return true;
   }
@@ -1330,18 +1171,23 @@ function queryLibraryKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webQueryLibrary' : 'queryLibrary';
 }
 
+function officialParamDetailKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webOfficialParamDetail' : 'officialParamDetail';
+}
+
 function paramFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_PARAM_FIELDS : APP_PARAM_FIELDS;
 }
 
-function paramBaseLink(source: TrackingSource): string {
-  return source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK;
+function officialParamFields(source: TrackingSource): readonly string[] {
+  return source === 'web' ? WEB_OFFICIAL_PARAM_FIELDS : APP_OFFICIAL_PARAM_FIELDS;
 }
 
-function toOfficialQueryRecord(
-  source: TrackingSource,
-  record: Record<string, unknown>,
-): Record<string, unknown> | null {
+function officialParamBaseLink(source: TrackingSource): string {
+  return source === 'web' ? WEB_OFFICIAL_PARAM_LINK : APP_OFFICIAL_PARAM_LINK;
+}
+
+function toOfficialQueryRecord(source: TrackingSource, record: Record<string, unknown>): Record<string, unknown> | null {
   if (!shouldSyncOfficialQueryRecord(record)) return null;
 
   const evtId = cellText(record['evt_id']).trim();
@@ -1350,16 +1196,61 @@ function toOfficialQueryRecord(
 
   return {
     evt_id: evtId,
-    '事件中文名': eventName,
-    '端': toPlatformCell(cellText(record['端']), source),
-    '上线版本': firstText(record['版本'], record['最低版本']) || '1.0.0',
-    '状态': getOfficialQueryStatus(record),
-    '生命周期状态': cellText(record['流程阶段']) || '上线监控',
-    '参数明细入口': cellText(record['参数明细入口']) || paramBaseLink(source),
-    '事件定义': cellText(record['事件定义']),
-    '触发时机': cellText(record['触发时机']),
+    事件中文名: eventName,
+    端: toPlatformCell(cellText(record['端']), source),
+    上线版本: firstText(record['版本'], record['最低版本']) || '1.0.0',
+    状态: getOfficialQueryStatus(record),
+    生命周期状态: cellText(record['流程阶段']) || '上线监控',
+    参数明细入口: officialParamBaseLink(source),
+    事件定义: cellText(record['事件定义']),
+    触发时机: cellText(record['触发时机']),
     '指标/使用场景': cellText(record['指标/使用场景']),
   };
+}
+
+function toOfficialParamRecord(source: TrackingSource, designRecord: Record<string, unknown>, designParam: Record<string, unknown>, officialEventRecordId: string): Record<string, unknown> | null {
+  const evtId = firstText(designParam.evt_id, designRecord['evt_id']).trim();
+  const paramName = cellText(designParam['参数名']).trim();
+  const paramKey = buildParamKey(evtId, paramName);
+  if (!paramKey) return null;
+
+  const platformField = source === 'web' ? 'Web适用性' : 'App适用性';
+  const example = cellText(designParam['默认值/示例']).trim();
+  const remark = cellText(designParam['备注']).trim() || (example ? `默认值/示例：${example}` : '');
+
+  return {
+    参数主键: paramKey,
+    evt_id: evtId,
+    事件中文名: cellText(designRecord['事件中文名']),
+    参数名: paramName,
+    数据类型: normalizeParamType(cellText(designParam['数据类型'])),
+    必传规则: normalizeRequiredRule(cellText(designParam['必传规则'])),
+    条件说明: cellText(designParam['条件说明']),
+    '枚举/取值范围': cellText(designParam['枚举/取值范围']),
+    参数定义: cellText(designParam['参数定义']),
+    版本: firstText(designParam['版本'], designRecord['版本'], designRecord['最低版本']) || '1.0.0',
+    参数状态: normalizeOfficialParamStatus(cellText(designParam['参数状态']), cellText(designParam['变更类型'])),
+    事件状态: getOfficialQueryStatus(designRecord),
+    来源表: '埋点设计库',
+    关联事件: [officialEventRecordId],
+    [platformField]: normalizeParamApplicability(cellText(designParam[platformField]), source),
+    备注: remark,
+  };
+}
+
+function normalizeOfficialParamStatus(paramStatus: string, changeType: string): string {
+  if (paramStatus === '废弃' || changeType === '废弃') return '已废弃';
+  return '正式';
+}
+
+function isOfficialParamForEvent(record: BitableRecord, officialEventRecordId: string, evtId: string): boolean {
+  const linkedEventIds = cellIds(record.record['关联事件']);
+  if (linkedEventIds.includes(officialEventRecordId)) return true;
+  return Boolean(evtId) && cellText(record.record.evt_id) === evtId;
+}
+
+function getOfficialParamKey(record: Record<string, unknown>): string {
+  return cellText(record['参数主键']) || buildParamKey(cellText(record.evt_id), cellText(record['参数名']));
 }
 
 function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean {
@@ -1372,13 +1263,7 @@ function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean
   const publishStatus = cellText(record['发布状态']);
   const monitorStatus = cellText(record['上线监控状态']);
 
-  return (
-    officialStatus === '已上线' ||
-    stage === '稳定归档' ||
-    (stage === '上线监控' &&
-      publishStatus === '发布成功' &&
-      ['通过', '豁免'].includes(monitorStatus))
-  );
+  return officialStatus === '已上线' || stage === '稳定归档' || (stage === '上线监控' && publishStatus === '发布成功' && ['通过', '豁免'].includes(monitorStatus));
 }
 
 function getOfficialQueryStatus(record: Record<string, unknown>): string {
@@ -1413,12 +1298,7 @@ function normalizeScopedRawId(recordId: string, source: TrackingSource): string 
   return trimmed;
 }
 
-function calculateRawRecordPermissions(
-  record: Record<string, Cell>,
-  actorId?: string,
-  actorLarkId?: string,
-  permissionConfig?: PermissionConfig | null,
-): StagePermissions {
+function calculateRawRecordPermissions(record: Record<string, Cell>, actorId?: string, actorLarkId?: string, permissionConfig?: PermissionConfig | null): StagePermissions {
   const requester = cellUsers(record['需求提出人']);
   const recorder = cellUsers(record['需求录入人']);
   const dataOwner = cellUsers(record['数据负责人']);
@@ -1427,22 +1307,10 @@ function calculateRawRecordPermissions(
   const actor = actorId || actorLarkId || '';
   const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
 
-  return calculateRecordPermissions(
-    actor,
-    actorCandidates,
-    requester.ids,
-    recorder.ids,
-    dataOwner.ids,
-    devOwner.ids,
-    dsAcceptor.ids,
-    permissionConfig,
-    cellText(record['流程阶段']) || '需求录入',
-  );
+  return calculateRecordPermissions(actor, actorCandidates, requester.ids, recorder.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, cellText(record['流程阶段']) || '需求录入');
 }
 
-function getRequiredPermissionsForUpdate(
-  body: UpdateTrackingRecordRequest,
-): PermissionKey[] {
+function getRequiredPermissionsForUpdate(body: UpdateTrackingRecordRequest): PermissionKey[] {
   const required = new Set<PermissionKey>();
   const stageId = String(body.stageId || '').trim();
   const stageFieldPermissions = FIELD_PERMISSION_BY_STAGE_ID[stageId] || {};
@@ -1453,11 +1321,7 @@ function getRequiredPermissionsForUpdate(
       continue;
     }
 
-    required.add(
-      stageFieldPermissions[fieldName] ||
-        FIELD_PERMISSION_BY_NAME[fieldName] ||
-        'canEditDesign',
-    );
+    required.add(stageFieldPermissions[fieldName] || FIELD_PERMISSION_BY_NAME[fieldName] || 'canEditDesign');
   }
 
   const transitionPermission = getTransitionPermission(body.targetStage, stageId);
@@ -1468,16 +1332,9 @@ function getRequiredPermissionsForUpdate(
   return Array.from(required);
 }
 
-function getTransitionPermission(
-  targetStage?: string,
-  stageId?: string,
-): PermissionKey | null {
+function getTransitionPermission(targetStage?: string, stageId?: string): PermissionKey | null {
   if (!targetStage) return null;
-  return (
-    TARGET_STAGE_PERMISSION_BY_BASE_STAGE[getBaseStageFromUi(targetStage)] ||
-    (stageId ? STAGE_PERMISSION_BY_STAGE_ID[stageId] : undefined) ||
-    'canEditDesign'
-  );
+  return TARGET_STAGE_PERMISSION_BY_BASE_STAGE[getBaseStageFromUi(targetStage)] || (stageId ? STAGE_PERMISSION_BY_STAGE_ID[stageId] : undefined) || 'canEditDesign';
 }
 
 function mergePermissions(items: StagePermissions[]): StagePermissions {
@@ -1493,10 +1350,7 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
   };
 }
 
-function getTodoAction(
-  record: BitableRecord,
-  actorCandidates: string[],
-): { stage: string; targetStage: string; todoRole: string } | null {
+function getTodoAction(record: BitableRecord, actorCandidates: string[]): { stage: string; targetStage: string; todoRole: string } | null {
   const baseStage = cellText(record.record['流程阶段']);
   const requesters = cellUsers(record.record['需求提出人']).ids;
   const recorders = cellUsers(record.record['需求录入人']).ids;
@@ -1514,46 +1368,70 @@ function getTodoAction(
   switch (baseStage) {
     case '需求录入':
       if (isRequester || isRecorder || isDataParticipant) {
-        return { stage: '埋点提需', targetStage: 'requirement', todoRole: getFirstRole([
-          [isRequester, '提需人'],
-          [isRecorder, '录入人'],
-          [isDataOwner, '数据负责人'],
-          [isAcceptor, 'DS验收人'],
-        ]) };
+        return {
+          stage: '埋点提需',
+          targetStage: 'requirement',
+          todoRole: getFirstRole([
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+          ]),
+        };
       }
       return null;
     case '埋点设计':
       if (isDataParticipant) {
-        return { stage: '埋点设计', targetStage: 'design', todoRole: getFirstRole([
-          [isDataOwner, '数据负责人'],
-          [isAcceptor, 'DS验收人'],
-        ]) };
+        return {
+          stage: '埋点设计',
+          targetStage: 'design',
+          todoRole: getFirstRole([
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+          ]),
+        };
       }
       return null;
     case '评审通过':
       if (isDevOwner) {
-        return { stage: '埋点开发', targetStage: 'dev', todoRole: '研发负责人' };
+        return {
+          stage: '埋点开发',
+          targetStage: 'dev',
+          todoRole: '研发负责人',
+        };
       }
       return null;
     case '埋点开发':
       if (isDevOwner) {
-        return { stage: '埋点开发', targetStage: 'dev', todoRole: '研发负责人' };
+        return {
+          stage: '埋点开发',
+          targetStage: 'dev',
+          todoRole: '研发负责人',
+        };
       }
       return null;
     case '数据验收':
       if (isDataParticipant) {
-        return { stage: '埋点校验', targetStage: 'acceptance', todoRole: getFirstRole([
-          [isDataOwner, '数据负责人'],
-          [isAcceptor, 'DS验收人'],
-        ]) };
+        return {
+          stage: '埋点校验',
+          targetStage: 'acceptance',
+          todoRole: getFirstRole([
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+          ]),
+        };
       }
       return null;
     case '上线监控':
       if (isDataParticipant) {
-        return { stage: '埋点上线', targetStage: 'launch', todoRole: getFirstRole([
-          [isDataOwner, '数据负责人'],
-          [isAcceptor, 'DS验收人'],
-        ]) };
+        return {
+          stage: '埋点上线',
+          targetStage: 'launch',
+          todoRole: getFirstRole([
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+          ]),
+        };
       }
       return null;
     default:
@@ -1561,20 +1439,26 @@ function getTodoAction(
   }
 }
 
-function getAdminTodoAction(
-  record: BitableRecord,
-): { stage: string; targetStage: string; todoRole: string } | null {
+function getAdminTodoAction(record: BitableRecord): { stage: string; targetStage: string; todoRole: string } | null {
   const baseStage = cellText(record.record['流程阶段']);
   switch (baseStage) {
     case '需求录入':
-      return { stage: '埋点提需', targetStage: 'requirement', todoRole: '管理员' };
+      return {
+        stage: '埋点提需',
+        targetStage: 'requirement',
+        todoRole: '管理员',
+      };
     case '埋点设计':
       return { stage: '埋点设计', targetStage: 'design', todoRole: '管理员' };
     case '评审通过':
     case '埋点开发':
       return { stage: '埋点开发', targetStage: 'dev', todoRole: '管理员' };
     case '数据验收':
-      return { stage: '埋点校验', targetStage: 'acceptance', todoRole: '管理员' };
+      return {
+        stage: '埋点校验',
+        targetStage: 'acceptance',
+        todoRole: '管理员',
+      };
     case '上线监控':
       return { stage: '埋点上线', targetStage: 'launch', todoRole: '管理员' };
     default:
@@ -1615,14 +1499,8 @@ function calculateRecordPermissions(
   currentStage?: string,
 ) {
   const candidates = uniqueStrings([actorId, ...actorCandidates]);
-  const base = mergePermissions(
-    candidates.map((candidate) =>
-      calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor),
-    ),
-  );
-  const canEditRequirementByRequester = candidates.some(
-    (candidate) => requesters.includes(candidate) || recorders.includes(candidate),
-  ) && (!currentStage || currentStage === '需求录入');
+  const base = mergePermissions(candidates.map((candidate) => calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor)));
+  const canEditRequirementByRequester = candidates.some((candidate) => requesters.includes(candidate) || recorders.includes(candidate)) && (!currentStage || currentStage === '需求录入');
   if (candidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return fullStagePermissions();
   }
@@ -1645,7 +1523,9 @@ function calculateRecordPermissions(
 }
 
 function normalizeParamType(value?: string): string {
-  const raw = String(value || 'STRING').trim().toUpperCase();
+  const raw = String(value || 'STRING')
+    .trim()
+    .toUpperCase();
   const typeMap: Record<string, string> = {
     STRING: 'STRING',
     TEXT: 'STRING',
@@ -1666,9 +1546,7 @@ function normalizeParamType(value?: string): string {
 function normalizeParamStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (!raw || raw === '正常' || raw === '已评审') return '草稿';
-  return ['草稿', '评审中', '已通过', '已发布', '待补定义', '废弃'].includes(raw)
-    ? raw
-    : '草稿';
+  return ['草稿', '评审中', '已通过', '已发布', '待补定义', '废弃'].includes(raw) ? raw : '草稿';
 }
 
 function normalizeRequiredRule(value?: string, required = false): string {
@@ -1683,10 +1561,7 @@ function buildParamKey(evtId?: string, paramName?: string): string {
   return eventId && name ? `${eventId}.${name}` : '';
 }
 
-function normalizeWorkbenchPatch(
-  patch: Record<string, unknown>,
-  source: TrackingSource,
-): void {
+function normalizeWorkbenchPatch(patch: Record<string, unknown>, source: TrackingSource): void {
   if (Object.prototype.hasOwnProperty.call(patch, '处理方')) {
     patch['处理方'] = normalizeHandler(cellText(patch['处理方']), source);
   }
@@ -1721,9 +1596,7 @@ function normalizeWorkbenchPatch(
 
 function normalizeHandler(value: unknown, source: TrackingSource): string {
   const raw = String(value || '').trim();
-  const allowed = source === 'web'
-    ? ['前端', '服务端', '前端/服务端']
-    : ['客户端', '客户端/服务端'];
+  const allowed = source === 'web' ? ['前端', '服务端', '前端/服务端'] : ['客户端', '客户端/服务端'];
   return allowed.includes(raw) ? raw : allowed[0];
 }
 
@@ -1746,23 +1619,17 @@ function normalizeDevStatus(value?: string): string {
 function normalizeReviewStatus(value?: string): string {
   const raw = String(value || '').trim();
   const normalized = raw === '需修改' ? '已拒绝' : raw;
-  return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized)
-    ? normalized
-    : '草稿';
+  return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized) ? normalized : '草稿';
 }
 
 function normalizeAcceptanceStatus(value?: string): string {
   const raw = String(value || '').trim();
-  return ['未开始', '验收中', '通过', '不通过', '豁免'].includes(raw)
-    ? raw
-    : '未开始';
+  return ['未开始', '验收中', '通过', '不通过', '豁免'].includes(raw) ? raw : '未开始';
 }
 
 function normalizeMonitorStatus(value?: string): string {
   const raw = String(value || '').trim();
-  return ['未开始', '监控中', '通过', '异常', '豁免'].includes(raw)
-    ? raw
-    : '未开始';
+  return ['未开始', '监控中', '通过', '异常', '豁免'].includes(raw) ? raw : '未开始';
 }
 
 function normalizeGateStatus(value?: string): string {
@@ -1780,33 +1647,16 @@ function normalizePublishStatus(value?: string): string {
 function normalizeOfficialStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (raw === '未归档') return '待开发';
-  return ['待开发', '待验收', '已验收', '已上线', '已废弃', '待治理'].includes(raw)
-    ? raw
-    : '待开发';
+  return ['待开发', '待验收', '已验收', '已上线', '已废弃', '待治理'].includes(raw) ? raw : '待开发';
 }
 
 function hasApiParamFields(fields: Record<string, unknown>): boolean {
-  return [
-    'paramName',
-    'paramType',
-    'required',
-    'requiredRule',
-    'triggerCondition',
-    'enumRange',
-    'definition',
-    'defaultValue',
-    'example',
-    'platform',
-    'status',
-    'version',
-    'changeType',
-  ].some((key) => Object.prototype.hasOwnProperty.call(fields, key));
+  return ['paramName', 'paramType', 'required', 'requiredRule', 'triggerCondition', 'enumRange', 'definition', 'defaultValue', 'example', 'platform', 'status', 'version', 'changeType'].some((key) =>
+    Object.prototype.hasOwnProperty.call(fields, key),
+  );
 }
 
-function toParamPatch(
-  fields: Partial<CreateParamRequest>,
-  source: TrackingSource,
-): Record<string, unknown> {
+function toParamPatch(fields: Partial<CreateParamRequest>, source: TrackingSource): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (fields.evtId !== undefined) patch.evt_id = fields.evtId;
   if (fields.paramName !== undefined) patch['参数名'] = fields.paramName;
@@ -1821,10 +1671,7 @@ function toParamPatch(
     patch['默认值/示例'] = fields.example || fields.defaultValue || '';
   }
   if (fields.platform !== undefined) {
-    patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeParamApplicability(
-      fields.platform,
-      source,
-    );
+    patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeParamApplicability(fields.platform, source);
   }
   if (fields.status !== undefined) patch['参数状态'] = normalizeParamStatus(fields.status);
   if (fields.version !== undefined) patch['版本'] = fields.version;
@@ -1832,24 +1679,14 @@ function toParamPatch(
   return patch;
 }
 
-function normalizeParamApplicability(
-  value: unknown,
-  source: TrackingSource,
-): string {
+function normalizeParamApplicability(value: unknown, source: TrackingSource): string {
   const raw = String(value || '').trim();
   if (source === 'web') {
     const alias: Record<string, string> = {
       Web: '仅Web',
     };
     const normalized = alias[raw] || raw || 'Web通用';
-    return [
-      'Web通用',
-      '仅Web',
-      'Web&App历史兼容',
-      'Web/App差异待拆',
-      '待确认',
-      '无特殊参数',
-    ].includes(normalized) ? normalized : 'Web通用';
+    return ['Web通用', '仅Web', 'Web&App历史兼容', 'Web/App差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'Web通用';
   }
 
   const alias: Record<string, string> = {
@@ -1860,14 +1697,5 @@ function normalizeParamApplicability(
     'iOS, Android': 'App通用',
   };
   const normalized = alias[raw] || raw || 'App通用';
-  return [
-    'App通用',
-    '仅App',
-    '仅iOS',
-    '仅Android',
-    'Web&App历史兼容',
-    'App/Web差异待拆',
-    '待确认',
-    '无特殊参数',
-  ].includes(normalized) ? normalized : 'App通用';
+  return ['App通用', '仅App', '仅iOS', '仅Android', 'Web&App历史兼容', 'App/Web差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'App通用';
 }

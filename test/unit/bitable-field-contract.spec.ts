@@ -1,9 +1,7 @@
-import { BITABLE_FIELDS } from '../../server/modules/bitable/bitable.constants';
+import { BITABLE_FIELDS, BITABLE_TABLE_IDS } from '../../server/modules/bitable/bitable.constants';
 
 function fieldIds(instanceKey: keyof typeof BITABLE_FIELDS): Record<string, string> {
-  return Object.fromEntries(
-    BITABLE_FIELDS[instanceKey].map((field) => [field.name, field.id]),
-  );
+  return Object.fromEntries(BITABLE_FIELDS[instanceKey].map((field) => [field.name, field.id]));
 }
 
 function fieldByName(instanceKey: keyof typeof BITABLE_FIELDS, name: string) {
@@ -79,18 +77,7 @@ describe('线上 Base 字段契约', () => {
   });
 
   it('正式查询库事件字段应允许服务端写入', () => {
-    const writableFields = [
-      'evt_id',
-      '事件中文名',
-      '端',
-      '上线版本',
-      '状态',
-      '生命周期状态',
-      '参数明细入口',
-      '事件定义',
-      '触发时机',
-      '指标/使用场景',
-    ];
+    const writableFields = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'];
 
     for (const instanceKey of ['queryLibrary', 'webQueryLibrary'] as const) {
       for (const fieldName of writableFields) {
@@ -100,6 +87,48 @@ describe('线上 Base 字段契约', () => {
       }
       expect(fieldByName(instanceKey, '关联参数明细（系统）')).toMatchObject({
         writeable: false,
+      });
+    }
+  });
+
+  it('正式查询库参数表应允许归档同步写入，并通过参数侧维护双向关联', () => {
+    expect(BITABLE_TABLE_IDS).toMatchObject({
+      officialParamDetail: 'tblEYv9lGZeenbT2',
+      webOfficialParamDetail: 'tblNAMKr5S38iXJQ',
+    });
+
+    const writableFields = [
+      '参数主键',
+      'evt_id',
+      '事件中文名',
+      '参数名',
+      '数据类型',
+      '必传规则',
+      '条件说明',
+      '枚举/取值范围',
+      '参数定义',
+      '版本',
+      '参数状态',
+      '事件状态',
+      '来源表',
+      '关联事件',
+      '备注',
+    ];
+
+    for (const instanceKey of ['officialParamDetail', 'webOfficialParamDetail'] as const) {
+      for (const fieldName of writableFields) {
+        expect(fieldByName(instanceKey, fieldName)).toMatchObject({
+          writeable: true,
+        });
+      }
+      expect(fieldByName(instanceKey, instanceKey === 'webOfficialParamDetail' ? 'Web适用性' : 'App适用性')).toMatchObject({
+        id: 'fldBmL56Ol',
+        writeable: true,
+      });
+      expect(fieldByName(instanceKey, '关联事件')).toMatchObject({
+        id: 'fldtVORQx7',
+        type: 18,
+        writeable: true,
       });
     }
   });

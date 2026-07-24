@@ -1,9 +1,4 @@
-import type {
-  BitableAggregateResult,
-  BitableFilter,
-  BitableRecord,
-  BitableSearchResult,
-} from './bitable.service';
+import type { BitableAggregateResult, BitableFilter, BitableRecord, BitableSearchResult } from './bitable.service';
 import type { BitableInstanceKey } from './bitable.constants';
 
 const SUNWEN_USER = {
@@ -16,10 +11,8 @@ const DEV_USER = {
   name: '研发负责人',
 };
 
-const OFFICIAL_PARAM_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2&view=vewRdNFVsL';
-const WEB_OFFICIAL_PARAM_LINK =
-  'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
+const OFFICIAL_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2&view=vewRdNFVsL';
+const WEB_OFFICIAL_PARAM_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 
 type Dataset = Record<BitableInstanceKey, Map<string, Record<string, unknown>>>;
 
@@ -36,14 +29,14 @@ function officialEvent(fields: {
 }): Record<string, unknown> {
   return {
     evt_id: fields.evtId,
-    '事件中文名': fields.eventName,
-    '端': fields.platform || 'iOS、Android',
-    '上线版本': fields.version || '1.0.0',
-    '状态': fields.status || '已上线',
-    '生命周期状态': fields.lifecycleStatus || '稳定',
-    '参数明细入口': OFFICIAL_PARAM_LINK,
-    '事件定义': fields.definition,
-    '触发时机': fields.trigger,
+    事件中文名: fields.eventName,
+    端: fields.platform || 'iOS、Android',
+    上线版本: fields.version || '1.0.0',
+    状态: fields.status || '已上线',
+    生命周期状态: fields.lifecycleStatus || '稳定',
+    参数明细入口: OFFICIAL_PARAM_LINK,
+    事件定义: fields.definition,
+    触发时机: fields.trigger,
     '指标/使用场景': fields.scenario,
   };
 }
@@ -60,26 +53,68 @@ function webOfficialEvent(fields: {
 }): Record<string, unknown> {
   return {
     evt_id: fields.evtId,
-    '事件中文名': fields.eventName,
-    '端': 'Web',
-    '上线版本': fields.version || '1.0.0',
-    '状态': fields.status || '已上线',
-    '生命周期状态': fields.lifecycleStatus || '稳定',
-    '参数明细入口': WEB_OFFICIAL_PARAM_LINK,
-    '事件定义': fields.definition,
-    '触发时机': fields.trigger,
+    事件中文名: fields.eventName,
+    端: 'Web',
+    上线版本: fields.version || '1.0.0',
+    状态: fields.status || '已上线',
+    生命周期状态: fields.lifecycleStatus || '稳定',
+    参数明细入口: WEB_OFFICIAL_PARAM_LINK,
+    事件定义: fields.definition,
+    触发时机: fields.trigger,
     '指标/使用场景': fields.scenario,
+  };
+}
+
+function officialParam(fields: {
+  evtId: string;
+  eventName: string;
+  eventRecordId: string;
+  paramName: string;
+  definition: string;
+  type?: string;
+  requiredRule?: string;
+  enumRange?: string;
+  platform?: string;
+  version?: string;
+  remark?: string;
+}): Record<string, unknown> {
+  return {
+    参数主键: `${fields.evtId}.${fields.paramName}`,
+    evt_id: fields.evtId,
+    事件中文名: fields.eventName,
+    参数名: fields.paramName,
+    数据类型: fields.type || 'STRING',
+    必传规则: fields.requiredRule || '非必传',
+    条件说明: '',
+    '枚举/取值范围': fields.enumRange || '',
+    参数定义: fields.definition,
+    版本: fields.version || '1.0.0',
+    参数状态: '正式',
+    事件状态: '已上线',
+    来源表: '埋点设计库',
+    关联事件: [{ id: fields.eventRecordId }],
+    App适用性: fields.platform || 'App通用',
+    备注: fields.remark || '',
+  };
+}
+
+function webOfficialParam(
+  fields: Omit<Parameters<typeof officialParam>[0], 'platform'> & {
+    platform?: string;
+  },
+): Record<string, unknown> {
+  const record = officialParam(fields);
+  delete record['App适用性'];
+  return {
+    ...record,
+    Web适用性: fields.platform || 'Web通用',
   };
 }
 
 export function isPluginMissingError(error: unknown): boolean {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const errorName = error instanceof Error ? error.name : '';
-  return (
-    errorName.includes('PluginNotFound') ||
-    errorMessage.includes('Plugin not found') ||
-    errorMessage.includes('@official-plugins/feishu-bitable')
-  );
+  return errorName.includes('PluginNotFound') || errorMessage.includes('Plugin not found') || errorMessage.includes('@official-plugins/feishu-bitable');
 }
 
 export function shouldUseLocalBitableFallback(): boolean {
@@ -94,80 +129,80 @@ export class LocalBitableFallback {
         'recvqasv6kXTJ1',
         {
           evt_id: 'app_launch',
-          '事件中文名': 'App 启动',
-          '事件定义': '用户打开 App 并完成初始化时上报，用于衡量启动活跃、渠道质量与首屏性能。',
-          '触发时机': 'App 冷启动或热启动完成，首个可交互页面曝光后触发。',
-          '需求背景': '统一管理启动事件口径，支撑 DAU、启动漏斗和渠道归因分析。',
-          '需求链接': 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf',
+          事件中文名: 'App 启动',
+          事件定义: '用户打开 App 并完成初始化时上报，用于衡量启动活跃、渠道质量与首屏性能。',
+          触发时机: 'App 冷启动或热启动完成，首个可交互页面曝光后触发。',
+          需求背景: '统一管理启动事件口径，支撑 DAU、启动漏斗和渠道归因分析。',
+          需求链接: 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf',
           '指标/使用场景': 'DAU、启动成功率、启动耗时分层、渠道质量评估。',
-          '流程阶段': '埋点设计',
-          '记录类型': '需求',
-          '优先级': 'P1',
-          '端': 'iOS、Android',
-          '数据负责人': [SUNWEN_USER],
-          '研发负责人': [DEV_USER],
-          'DS验收人': [SUNWEN_USER],
-          '评审状态': '评审中',
-          '评审意见': 'MVP 本地预览数据：请确认启动定义、公共属性和必传参数。',
-          '埋点开发状态': '未开始',
-          'DS验收状态': '未开始',
-          'DS验收证据': '',
-          'DS验收时间': '',
-          '上线监控状态': '未开始',
-          '上线监控结论': '',
-          '发布门禁状态': '待检查',
-          '发布门禁失败原因': '',
-          '发布状态': '未发布',
-          '发布错误': '',
-          '正式状态': '未归档',
-          '版本': '1.0.0',
-          '最低版本': '1.0.0',
-          '变更类型': '新增',
-          '处理方': '客户端',
-          '公共属性要求': 'user_id、device_id、app_version、platform、network_type、channel',
-          '参数拆行状态': '已拆行',
-          '稳定归档时间': '',
-          '创建时间': Date.now(),
+          流程阶段: '埋点设计',
+          记录类型: '需求',
+          优先级: 'P1',
+          端: 'iOS、Android',
+          数据负责人: [SUNWEN_USER],
+          研发负责人: [DEV_USER],
+          DS验收人: [SUNWEN_USER],
+          评审状态: '评审中',
+          评审意见: 'MVP 本地预览数据：请确认启动定义、公共属性和必传参数。',
+          埋点开发状态: '未开始',
+          DS验收状态: '未开始',
+          DS验收证据: '',
+          DS验收时间: '',
+          上线监控状态: '未开始',
+          上线监控结论: '',
+          发布门禁状态: '待检查',
+          发布门禁失败原因: '',
+          发布状态: '未发布',
+          发布错误: '',
+          正式状态: '未归档',
+          版本: '1.0.0',
+          最低版本: '1.0.0',
+          变更类型: '新增',
+          处理方: '客户端',
+          公共属性要求: 'user_id、device_id、app_version、platform、network_type、channel',
+          参数拆行状态: '已拆行',
+          稳定归档时间: '',
+          创建时间: Date.now(),
         },
       ],
       [
         'rec_local_checkout_click',
         {
           evt_id: 'checkout_click',
-          '事件中文名': '支付按钮点击',
-          '事件定义': '用户在订单确认页点击支付按钮时上报。',
-          '触发时机': '点击支付 CTA 后、调起支付前触发。',
-          '需求背景': '用于分析下单转化漏斗和支付入口点击质量。',
-          '需求链接': '',
+          事件中文名: '支付按钮点击',
+          事件定义: '用户在订单确认页点击支付按钮时上报。',
+          触发时机: '点击支付 CTA 后、调起支付前触发。',
+          需求背景: '用于分析下单转化漏斗和支付入口点击质量。',
+          需求链接: '',
           '指标/使用场景': '支付点击率、下单漏斗、支付失败归因。',
-          '流程阶段': '埋点开发',
-          '记录类型': '需求',
-          '优先级': 'P1',
-          '端': 'iOS、Android',
-          '数据负责人': [SUNWEN_USER],
-          '研发负责人': [DEV_USER],
-          'DS验收人': [SUNWEN_USER],
-          '评审状态': '已通过',
-          '评审意见': '',
-          '埋点开发状态': '开发中',
-          'DS验收状态': '未开始',
-          'DS验收证据': '',
-          'DS验收时间': '',
-          '上线监控状态': '未开始',
-          '上线监控结论': '',
-          '发布门禁状态': '通过',
-          '发布门禁失败原因': '',
-          '发布状态': '未发布',
-          '发布错误': '',
-          '正式状态': '未归档',
-          '版本': '1.0.0',
-          '最低版本': '1.0.0',
-          '变更类型': '新增',
-          '处理方': '客户端',
-          '公共属性要求': 'order_id、sku_count、pay_amount、currency',
-          '参数拆行状态': '已拆行',
-          '稳定归档时间': '',
-          '创建时间': Date.now() - 3600_000,
+          流程阶段: '埋点开发',
+          记录类型: '需求',
+          优先级: 'P1',
+          端: 'iOS、Android',
+          数据负责人: [SUNWEN_USER],
+          研发负责人: [DEV_USER],
+          DS验收人: [SUNWEN_USER],
+          评审状态: '已通过',
+          评审意见: '',
+          埋点开发状态: '开发中',
+          DS验收状态: '未开始',
+          DS验收证据: '',
+          DS验收时间: '',
+          上线监控状态: '未开始',
+          上线监控结论: '',
+          发布门禁状态: '通过',
+          发布门禁失败原因: '',
+          发布状态: '未发布',
+          发布错误: '',
+          正式状态: '未归档',
+          版本: '1.0.0',
+          最低版本: '1.0.0',
+          变更类型: '新增',
+          处理方: '客户端',
+          公共属性要求: 'order_id、sku_count、pay_amount、currency',
+          参数拆行状态: '已拆行',
+          稳定归档时间: '',
+          创建时间: Date.now() - 3600_000,
         },
       ],
     ]),
@@ -175,81 +210,81 @@ export class LocalBitableFallback {
       [
         'rec_param_launch_type',
         {
-          '设计参数主键': 'app_launch.launch_type',
+          设计参数主键: 'app_launch.launch_type',
           evt_id: 'app_launch',
-          '参数名': 'launch_type',
-          '数据类型': 'STRING',
-          '必传规则': '必传',
-          '条件说明': '',
+          参数名: 'launch_type',
+          数据类型: 'STRING',
+          必传规则: '必传',
+          条件说明: '',
           '枚举/取值范围': 'cold、hot、push、deeplink',
-          '参数定义': '启动类型，用于区分冷启动、热启动和外部唤起。',
+          参数定义: '启动类型，用于区分冷启动、热启动和外部唤起。',
           '默认值/示例': 'cold',
-          'App适用性': 'App通用',
-          '参数状态': '草稿',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'recvqasv6kXTJ1',
-          '关联设计': [{ id: 'recvqasv6kXTJ1' }],
+          App适用性: 'App通用',
+          参数状态: '草稿',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'recvqasv6kXTJ1',
+          关联设计: [{ id: 'recvqasv6kXTJ1' }],
         },
       ],
       [
         'rec_param_entry_source',
         {
-          '设计参数主键': 'app_launch.entry_source',
+          设计参数主键: 'app_launch.entry_source',
           evt_id: 'app_launch',
-          '参数名': 'entry_source',
-          '数据类型': 'STRING',
-          '必传规则': '条件必传',
-          '条件说明': '外部渠道或 Push 唤起时必传。',
+          参数名: 'entry_source',
+          数据类型: 'STRING',
+          必传规则: '条件必传',
+          条件说明: '外部渠道或 Push 唤起时必传。',
           '枚举/取值范围': 'organic、push、deeplink、ad',
-          '参数定义': '启动来源，用于评估渠道带来的启动行为。',
+          参数定义: '启动来源，用于评估渠道带来的启动行为。',
           '默认值/示例': 'organic',
-          'App适用性': 'App通用',
-          '参数状态': '草稿',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'recvqasv6kXTJ1',
-          '关联设计': [{ id: 'recvqasv6kXTJ1' }],
+          App适用性: 'App通用',
+          参数状态: '草稿',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'recvqasv6kXTJ1',
+          关联设计: [{ id: 'recvqasv6kXTJ1' }],
         },
       ],
       [
         'rec_param_start_cost_ms',
         {
-          '设计参数主键': 'app_launch.start_cost_ms',
+          设计参数主键: 'app_launch.start_cost_ms',
           evt_id: 'app_launch',
-          '参数名': 'start_cost_ms',
-          '数据类型': 'INTEGER',
-          '必传规则': '非必传',
-          '条件说明': '',
+          参数名: 'start_cost_ms',
+          数据类型: 'INTEGER',
+          必传规则: '非必传',
+          条件说明: '',
           '枚举/取值范围': '>=0',
-          '参数定义': '从进程启动到首页可交互的耗时，单位毫秒。',
+          参数定义: '从进程启动到首页可交互的耗时，单位毫秒。',
           '默认值/示例': '820',
-          'App适用性': 'App通用',
-          '参数状态': '草稿',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'recvqasv6kXTJ1',
-          '关联设计': [{ id: 'recvqasv6kXTJ1' }],
+          App适用性: 'App通用',
+          参数状态: '草稿',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'recvqasv6kXTJ1',
+          关联设计: [{ id: 'recvqasv6kXTJ1' }],
         },
       ],
       [
         'rec_param_checkout_order_id',
         {
-          '设计参数主键': 'checkout_click.order_id',
+          设计参数主键: 'checkout_click.order_id',
           evt_id: 'checkout_click',
-          '参数名': 'order_id',
-          '数据类型': 'STRING',
-          '必传规则': '必传',
-          '条件说明': '',
+          参数名: 'order_id',
+          数据类型: 'STRING',
+          必传规则: '必传',
+          条件说明: '',
           '枚举/取值范围': '',
-          '参数定义': '订单唯一标识。',
+          参数定义: '订单唯一标识。',
           '默认值/示例': 'ord_123',
-          'App适用性': 'App通用',
-          '参数状态': '已评审',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'rec_local_checkout_click',
-          '关联设计': [{ id: 'rec_local_checkout_click' }],
+          App适用性: 'App通用',
+          参数状态: '已评审',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'rec_local_checkout_click',
+          关联设计: [{ id: 'rec_local_checkout_click' }],
         },
       ],
     ]),
@@ -367,45 +402,70 @@ export class LocalBitableFallback {
         }),
       ],
     ]),
+    officialParamDetail: new Map([
+      [
+        'rec_official_param_page_view_page_id',
+        officialParam({
+          evtId: 'page_view',
+          eventName: '页面访问',
+          eventRecordId: 'rec_official_page_view',
+          paramName: 'page_id',
+          definition: '页面唯一标识，用于页面级漏斗和路径分析。',
+          requiredRule: '必传',
+        }),
+      ],
+      [
+        'rec_official_param_page_view_source',
+        officialParam({
+          evtId: 'page_view',
+          eventName: '页面访问',
+          eventRecordId: 'rec_official_page_view',
+          paramName: 'source',
+          definition: '页面访问来源，用于识别入口和流量质量。',
+          requiredRule: '非必传',
+          remark: '默认值/示例：home',
+        }),
+      ],
+    ]),
     webWorkbench: new Map([
       [
         'rec_web_homepage_view',
         {
           evt_id: 'web_homepage_view',
-          '事件中文名': 'Web 首页访问',
-          '事件定义': '用户进入 Web 首页并完成首屏渲染时上报，用于衡量站点访问规模、来源质量与首屏转化。',
-          '触发时机': 'Web 首页首屏核心内容可见后触发。',
-          '需求背景': '补齐 Web 端访问口径，支撑增长投放、落地页转化和跨端用户行为分析。',
-          '需求链接': 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf',
+          事件中文名: 'Web 首页访问',
+          事件定义: '用户进入 Web 首页并完成首屏渲染时上报，用于衡量站点访问规模、来源质量与首屏转化。',
+          触发时机: 'Web 首页首屏核心内容可见后触发。',
+          需求背景: '补齐 Web 端访问口径，支撑增长投放、落地页转化和跨端用户行为分析。',
+          需求链接: 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf',
           '指标/使用场景': 'Web PV、UV、来源转化、首屏点击漏斗。',
-          '流程阶段': '埋点设计',
-          '记录类型': '埋点设计',
-          '优先级': 'P1',
-          '端': 'Web',
-          '数据负责人': [SUNWEN_USER],
-          '研发负责人': [DEV_USER],
-          'DS验收人': [SUNWEN_USER],
-          '评审状态': '评审中',
-          '评审意见': 'MVP 本地预览数据：请确认 Web 页面定义、公共属性和首批参数。',
-          '埋点开发状态': '未开始',
-          'DS验收状态': '未开始',
-          'DS验收证据': '',
-          'DS验收时间': '',
-          '上线监控状态': '未开始',
-          '上线监控结论': '',
-          '发布门禁状态': '未检查',
-          '发布门禁失败原因': '',
-          '发布状态': '未发布',
-          '发布错误': '',
-          '正式状态': '待开发',
-          '版本': '1.0.0',
-          '最低版本': '1.0.0',
-          '变更类型': '新增',
-          '处理方': '前端',
-          '公共属性要求': 'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os',
-          '参数拆行状态': '已拆行',
-          '稳定归档时间': '',
-          '创建时间': Date.now() - 1800_000,
+          流程阶段: '埋点设计',
+          记录类型: '埋点设计',
+          优先级: 'P1',
+          端: 'Web',
+          数据负责人: [SUNWEN_USER],
+          研发负责人: [DEV_USER],
+          DS验收人: [SUNWEN_USER],
+          评审状态: '评审中',
+          评审意见: 'MVP 本地预览数据：请确认 Web 页面定义、公共属性和首批参数。',
+          埋点开发状态: '未开始',
+          DS验收状态: '未开始',
+          DS验收证据: '',
+          DS验收时间: '',
+          上线监控状态: '未开始',
+          上线监控结论: '',
+          发布门禁状态: '未检查',
+          发布门禁失败原因: '',
+          发布状态: '未发布',
+          发布错误: '',
+          正式状态: '待开发',
+          版本: '1.0.0',
+          最低版本: '1.0.0',
+          变更类型: '新增',
+          处理方: '前端',
+          公共属性要求: 'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os',
+          参数拆行状态: '已拆行',
+          稳定归档时间: '',
+          创建时间: Date.now() - 1800_000,
         },
       ],
     ]),
@@ -413,41 +473,41 @@ export class LocalBitableFallback {
       [
         'rec_web_param_page_url',
         {
-          '设计参数主键': 'web_homepage_view.page_url',
+          设计参数主键: 'web_homepage_view.page_url',
           evt_id: 'web_homepage_view',
-          '参数名': 'page_url',
-          '数据类型': 'STRING',
-          '必传规则': '必传',
-          '条件说明': '',
+          参数名: 'page_url',
+          数据类型: 'STRING',
+          必传规则: '必传',
+          条件说明: '',
           '枚举/取值范围': '',
-          '参数定义': '当前访问页面的完整 URL，用于页面口径和来源链路分析。',
+          参数定义: '当前访问页面的完整 URL，用于页面口径和来源链路分析。',
           '默认值/示例': 'https://pollo.ai/',
-          'Web适用性': 'Web通用',
-          '参数状态': '草稿',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'rec_web_homepage_view',
-          '关联设计': [{ id: 'rec_web_homepage_view' }],
+          Web适用性: 'Web通用',
+          参数状态: '草稿',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'rec_web_homepage_view',
+          关联设计: [{ id: 'rec_web_homepage_view' }],
         },
       ],
       [
         'rec_web_param_referrer',
         {
-          '设计参数主键': 'web_homepage_view.referrer',
+          设计参数主键: 'web_homepage_view.referrer',
           evt_id: 'web_homepage_view',
-          '参数名': 'referrer',
-          '数据类型': 'STRING',
-          '必传规则': '非必传',
-          '条件说明': '',
+          参数名: 'referrer',
+          数据类型: 'STRING',
+          必传规则: '非必传',
+          条件说明: '',
           '枚举/取值范围': '',
-          '参数定义': '浏览器 referrer，用于识别上一跳来源。',
+          参数定义: '浏览器 referrer，用于识别上一跳来源。',
           '默认值/示例': 'https://google.com',
-          'Web适用性': 'Web通用',
-          '参数状态': '草稿',
-          '版本': '1.0.0',
-          '变更类型': '新增',
-          '来源设计记录ID': 'rec_web_homepage_view',
-          '关联设计': [{ id: 'rec_web_homepage_view' }],
+          Web适用性: 'Web通用',
+          参数状态: '草稿',
+          版本: '1.0.0',
+          变更类型: '新增',
+          来源设计记录ID: 'rec_web_homepage_view',
+          关联设计: [{ id: 'rec_web_homepage_view' }],
         },
       ],
     ]),
@@ -483,6 +543,30 @@ export class LocalBitableFallback {
         }),
       ],
     ]),
+    webOfficialParamDetail: new Map([
+      [
+        'rec_web_official_param_page_view_url',
+        webOfficialParam({
+          evtId: 'web_page_view',
+          eventName: 'Web 页面访问',
+          eventRecordId: 'rec_web_official_page_view',
+          paramName: 'page_url',
+          definition: '当前访问页面的完整 URL。',
+          requiredRule: '必传',
+        }),
+      ],
+      [
+        'rec_web_official_param_page_view_referrer',
+        webOfficialParam({
+          evtId: 'web_page_view',
+          eventName: 'Web 页面访问',
+          eventRecordId: 'rec_web_official_page_view',
+          paramName: 'referrer',
+          definition: '浏览器 referrer，用于识别上一跳来源。',
+          requiredRule: '非必传',
+        }),
+      ],
+    ]),
   };
 
   searchRecords(
@@ -500,9 +584,7 @@ export class LocalBitableFallback {
 
     const pageSize = params.pageSize || 200;
     const offset = Number(params.pageToken || 0);
-    const records = rows
-      .slice(offset, offset + pageSize)
-      .map((record) => projectRecord(record, params.fieldNames));
+    const records = rows.slice(offset, offset + pageSize).map((record) => projectRecord(record, params.fieldNames));
 
     const nextOffset = offset + pageSize;
     return {
@@ -518,10 +600,7 @@ export class LocalBitableFallback {
     return record ? cloneRecord({ id: recordId, record }) : null;
   }
 
-  batchAddRecords(
-    instanceKey: BitableInstanceKey,
-    records: Record<string, unknown>[],
-  ): { id: string }[] {
+  batchAddRecords(instanceKey: BitableInstanceKey, records: Record<string, unknown>[]): { id: string }[] {
     return records.map((record) => {
       const id = `rec_local_${Date.now()}_${this.nextId++}`;
       this.dataset[instanceKey].set(id, cloneValue(record) as Record<string, unknown>);
@@ -529,10 +608,7 @@ export class LocalBitableFallback {
     });
   }
 
-  batchUpdateRecords(
-    instanceKey: BitableInstanceKey,
-    updates: { id: string; record: Record<string, unknown> }[],
-  ): { id: string }[] {
+  batchUpdateRecords(instanceKey: BitableInstanceKey, updates: { id: string; record: Record<string, unknown> }[]): { id: string }[] {
     return updates.map((update) => {
       const current = this.dataset[instanceKey].get(update.id) || {};
       const patch = cloneValue(update.record) as Record<string, unknown>;
@@ -559,9 +635,7 @@ function projectRecord(record: BitableRecord, fieldNames?: string[]): BitableRec
   }
   return {
     id: record.id,
-    record: Object.fromEntries(
-      fieldNames.map((fieldName) => [fieldName, cloneValue(record.record[fieldName])]),
-    ),
+    record: Object.fromEntries(fieldNames.map((fieldName) => [fieldName, cloneValue(record.record[fieldName])])),
   };
 }
 
@@ -593,7 +667,10 @@ function cellText(value: unknown): string {
     return String(value);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => cellText(item)).filter(Boolean).join('、');
+    return value
+      .map((item) => cellText(item))
+      .filter(Boolean)
+      .join('、');
   }
   if (typeof value === 'object') {
     const objectValue = value as Record<string, unknown>;
@@ -605,7 +682,10 @@ function cellText(value: unknown): string {
 }
 
 function cloneRecord(record: BitableRecord): BitableRecord {
-  return { id: record.id, record: cloneValue(record.record) as Record<string, unknown> };
+  return {
+    id: record.id,
+    record: cloneValue(record.record) as Record<string, unknown>,
+  };
 }
 
 function cloneValue(value: unknown): unknown {
