@@ -14,20 +14,11 @@ import {
   userInfoToUser,
   createUnknownUser,
 } from '@client/src/components/business-ui/user-select/utils';
-import { getI18nText } from '@client/src/components/business-ui/utils/user';
+import {
+  getObjectUserIdsToFetch,
+  resolveObjectUserValue,
+} from '@client/src/components/business-ui/user-select/user-value.utils';
 import type { User } from '@client/src/components/business-ui/types/user';
-
-/**
- * 将 User 转换为 UserSelectItemValue
- */
-function userToItemValue(user: User, accountType: AccountType): UserSelectItemValue {
-  return {
-    id: accountType === 'lark' ? (user.larkUserId || user.user_id || '') : (user.user_id || user.larkUserId || ''),
-    name: getI18nText(user.name) || '未知用户',
-    avatar: user.avatar,
-    raw: user,
-  };
-}
 
 export type UseUserValueResult = {
   /**
@@ -76,9 +67,9 @@ export function useUserValue(
 
   // ID 模式下需要获取的 ID 列表（去重和排序，确保相同的 ID 集合有相同的 queryKey）
   const idsToFetch = useMemo(() => {
-    if (!isIdMode) return [];
+    if (!isIdMode) return getObjectUserIdsToFetch(value);
     return [...new Set(currentIds.map(String))].filter(Boolean).sort();
-  }, [isIdMode, currentIds]);
+  }, [isIdMode, currentIds, value]);
 
   // 使用 react-query hook 获取用户信息
   const { data: response, isLoading } = useUsersByIds(idsToFetch, accountType);
@@ -110,9 +101,11 @@ export function useUserValue(
     if (!isIdMode) {
       // Object 模式：将 User 转换为 UserSelectItemValue
       if (Array.isArray(value)) {
-        return (value as User[]).map((user) => userToItemValue(user, accountType));
+        return (value as User[]).map((user) =>
+          resolveObjectUserValue(user, accountType, usersMap),
+        );
       }
-      return userToItemValue(value as User, accountType);
+      return resolveObjectUserValue(value as User, accountType, usersMap);
     }
 
     const users = currentIds

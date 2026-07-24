@@ -35,6 +35,25 @@ describe('详情阶段表单状态', () => {
     ]);
   });
 
+  it('应保留人员选择器返回的多语言姓名', () => {
+    expect(typeof utils.toTrackingUserRefs).toBe('function');
+    if (!utils.toTrackingUserRefs) return;
+
+    expect(
+      utils.toTrackingUserRefs([
+        {
+          user_id: '1867390536304713',
+          name: { zh_cn: '孙文', en_us: 'Sun Wen' },
+        },
+      ]),
+    ).toEqual([
+      {
+        user_id: '1867390536304713',
+        name: '孙文',
+      },
+    ]);
+  });
+
   it('只回写用户实际修改过的字段，避免空表单覆盖 Base', () => {
     expect(typeof utils.buildStageUpdateRequest).toBe('function');
     if (!utils.buildStageUpdateRequest) return;

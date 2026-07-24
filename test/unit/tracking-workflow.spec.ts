@@ -28,6 +28,35 @@ describe('工作流 Base 回写', () => {
     expect(result.data.requirementFields['需求提出人']).toEqual(result.data.requester);
   });
 
+  it('详情接口应保留 Base 人员字段的多语言姓名', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          '事件中文名': '测试需求',
+          '流程阶段': '需求录入',
+          '需求提出人': [
+            {
+              id: '1867390536304713',
+              name: { zh_cn: '孙文', en_us: 'Sun Wen' },
+            },
+          ],
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getDetail('app:rec_1');
+
+    expect(result.data.requester).toEqual([
+      {
+        user_id: '1867390536304713',
+        name: '孙文',
+      },
+    ]);
+  });
+
   it('不应使用空人员数组覆盖 Base 中已有的必填负责人', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({

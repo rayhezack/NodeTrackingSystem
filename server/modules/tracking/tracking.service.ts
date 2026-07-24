@@ -889,7 +889,7 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
             (typeof candidate === 'string' && candidate.length > 0) ||
             typeof candidate === 'number',
         ) || '';
-        const name = typeof user.name === 'string' ? user.name.trim() : '';
+        const name = localizedText(user.name) || localizedText(user.en_name);
         const normalizedId = id ? String(id) : '';
         const larkUserId = [
           user.larkUserId,
@@ -905,7 +905,7 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
         if (normalizedId) {
           acc.items.push({
             user_id: normalizedId,
-            larkUserId: resolvedLarkUserId,
+            ...(resolvedLarkUserId ? { larkUserId: resolvedLarkUserId } : {}),
             ...(name && name !== normalizedId ? { name } : {}),
           });
         }
@@ -914,6 +914,19 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
     },
     { ids: [] as string[], names: [] as string[], items: [] as TrackingUserRef[] },
   );
+}
+
+function localizedText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return '';
+
+  const text = value as Record<string, unknown>;
+  for (const key of ['zh_cn', 'en_us', 'ja_jp']) {
+    if (typeof text[key] === 'string' && text[key].trim()) {
+      return text[key].trim();
+    }
+  }
+  return '';
 }
 
 function cellIds(value: Cell): string[] {

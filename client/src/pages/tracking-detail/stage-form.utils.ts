@@ -36,13 +36,12 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
       const larkUserId = firstLarkUserId(user);
       const id = numericId || larkUserId;
       if (!id) return null;
+      const name = localizedText(user.name);
 
       return {
         user_id: id,
         ...(larkUserId ? { larkUserId } : {}),
-        ...(typeof user.name === 'string' && user.name.trim()
-          ? { name: user.name.trim() }
-          : {}),
+        ...(name ? { name } : {}),
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
@@ -86,4 +85,17 @@ function firstLarkUserId(user: Record<string, unknown>): string {
 
 function isLarkUserId(value: string): boolean {
   return value.startsWith('ou_');
+}
+
+function localizedText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return '';
+
+  const text = value as Record<string, unknown>;
+  for (const key of ['zh_cn', 'en_us', 'ja_jp']) {
+    if (typeof text[key] === 'string' && text[key].trim()) {
+      return text[key].trim();
+    }
+  }
+  return '';
 }
