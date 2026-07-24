@@ -80,6 +80,12 @@ const TrackingDetailPage = () => {
     try {
       const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
       setDetail(res.data);
+      const matchedStage = SIDEBAR_STAGES.find((stage) =>
+        stage.baseStages.includes(res.data.stage),
+      );
+      if (matchedStage) {
+        setActiveStage(matchedStage.id);
+      }
     } catch (err) {
       logger.error('刷新详情失败', err);
     }

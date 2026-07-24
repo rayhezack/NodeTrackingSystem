@@ -29,5 +29,10 @@ describe('提需创建记录', () => {
     expect(record).not.toHaveProperty('DS验收证据');
     expect(record).not.toHaveProperty('DS验收时间');
     expect(record).not.toHaveProperty('稳定归档时间');
+    expect(record['需求提出人']).toEqual([1867390536304713]);
+    expect(record['需求录入人']).toEqual([1867390536304713]);
+    expect(record['数据负责人']).toEqual([1867390536304713]);
+    expect(record['研发负责人']).toEqual([1867390536304713]);
+    expect(record['DS验收人']).toEqual([1867390536304713]);
   });
 });

@@ -19,9 +19,12 @@ import { updateTrackingRecord } from '@client/src/api/tracking';
 import type {
   TrackingAttachment,
   TrackingDetail,
-  TrackingUserRef,
 } from '@shared/api.interface';
 import ParamDesigner from './param-designer/ParamDesigner';
+import {
+  buildStageUpdateRequest,
+  toTrackingUserRefs,
+} from './stage-form.utils';
 
 interface StageFormProps {
   stageId: string;
@@ -66,7 +69,7 @@ function getFieldValue(
       break;
     }
   }
-  if (field.type === 'user') return toUserArray(val);
+  if (field.type === 'user') return toTrackingUserRefs(val);
   if (field.type === 'attachment') return toAttachmentArray(val);
   if (val == null) return '';
   if (field.baseField === '端') return toPlatformText(val);
@@ -84,6 +87,7 @@ function getFieldValue(
 const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
   const stageConfig: StageConfig | undefined = SIDEBAR_STAGES.find((s) => s.id === stageId);
   const [formData, setFormData] = useState<Record<string, FormValue>>({});
+  const [dirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
 
   // 初始化表单数据
@@ -94,6 +98,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
       initial[field.key] = getFieldValue(detail, field);
     }
     setFormData(initial);
+    setDirtyFieldNames(new Set());
   }, [stageConfig, detail]);
 
   if (!stageConfig) {
@@ -102,6 +107,10 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
 
   const handleChange = (key: string, value: FormValue) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
+    const field = stageConfig.fields.find((item) => item.key === key);
+    if (field) {
+      setDirtyFieldNames((prev) => new Set(prev).add(field.baseField));
+    }
   };
 
   const handleSave = async () => {
@@ -111,7 +120,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
       const fields: Record<string, unknown> = {};
       for (const field of stageConfig.fields) {
         const value = formData[field.key];
-        // 只有值变化了才提交（简化处理：全部提交）
+        // 先按字段类型序列化，最终只提交本次实际修改过的字段。
         if (field.type === 'user') {
           fields[field.baseField] = toStringArray(value);
         } else if (field.type === 'attachment') {
@@ -121,7 +130,12 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
         }
       }
 
-      await updateTrackingRecord(detail.recordId, { fields });
+      const request = buildStageUpdateRequest(
+        stageId,
+        fields,
+        dirtyFieldNames,
+      );
+      await updateTrackingRecord(detail.recordId, request);
       toast.success('保存成功');
       onSaved?.();
     } catch (error) {
@@ -198,7 +212,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
                 multiple
                 valueType="object"
                 accountType="apaas"
-                value={toUserArray(formData[field.key])}
+                value={toTrackingUserRefs(formData[field.key])}
                 onChange={(value) => handleChange(field.key, Array.isArray(value) ? value : [])}
                 disabled={disabled}
                 placeholder={`搜索${field.label}`}
@@ -246,7 +260,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
           ) : (
             <>
               <Save className="h-4 w-4" />
-              保存
+              {stageId === 'requirement' ? '保存并进入埋点设计' : '保存'}
             </>
           )}
         </Button>
@@ -299,38 +313,6 @@ function toStringArray(value: unknown): string[] {
       .filter((item) => /^\d+$/.test(item)));
   }
   return [];
-}
-
-function toUserArray(value: unknown): TrackingUserRef[] {
-  if (value == null) return [];
-  const values = Array.isArray(value) ? value : [value];
-  return values
-    .map<TrackingUserRef | null>((item) => {
-      if (typeof item === 'string' || typeof item === 'number') {
-        const id = extractNumericUserId(item);
-        return id ? { user_id: id } : null;
-      }
-      if (item && typeof item === 'object') {
-        const objectValue = item as Record<string, unknown>;
-        const id = extractNumericUserId(objectValue);
-        if (!id) return null;
-        const larkUserId = [
-          objectValue.larkUserId,
-          objectValue.lark_user_id,
-          objectValue.lark_id,
-          objectValue.open_id,
-          objectValue.openId,
-        ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
-        const name = objectValue.name;
-        return {
-          user_id: id,
-          larkUserId,
-          ...(typeof name === 'string' && name !== id ? { name } : {}),
-        };
-      }
-      return null;
-    })
-    .filter((item): item is TrackingUserRef => Boolean(item));
 }
 
 function toAttachmentArray(value: unknown): TrackingAttachment[] {

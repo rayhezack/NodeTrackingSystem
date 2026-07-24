@@ -464,7 +464,12 @@ export class TrackingService {
     }
     for (const fieldName of USER_FIELD_NAMES) {
       if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
-        patch[fieldName] = createUserCells(patch[fieldName]);
+        const userCells = createUserCells(patch[fieldName]);
+        if (!userCells.length && cellUsers(current.record[fieldName]).ids.length) {
+          delete patch[fieldName];
+        } else {
+          patch[fieldName] = userCells;
+        }
       }
     }
     normalizeWorkbenchPatch(patch, ref.source);
@@ -893,12 +898,14 @@ function cellUsers(value: Cell): { ids: string[]; names: string[]; items: Tracki
           user.openId,
           user.lark_id,
         ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
+        const resolvedLarkUserId =
+          larkUserId || (normalizedId.startsWith('ou_') ? normalizedId : undefined);
         if (normalizedId) acc.ids.push(normalizedId);
         if (name && name !== normalizedId) acc.names.push(name);
         if (normalizedId) {
           acc.items.push({
             user_id: normalizedId,
-            larkUserId,
+            larkUserId: resolvedLarkUserId,
             ...(name && name !== normalizedId ? { name } : {}),
           });
         }
