@@ -3,16 +3,33 @@ import { UI_STAGE_NODES, isUiNodeCompleted, isUiNodeActive } from './stage-confi
 
 interface ProcessFlowBarProps {
   baseStage: string;
+  reviewStatus?: string;
+  officialStatus?: string;
   onNodeClick?: (nodeKey: string) => void;
 }
 
-const ProcessFlowBar = ({ baseStage, onNodeClick }: ProcessFlowBarProps) => {
+const ProcessFlowBar = ({
+  baseStage,
+  reviewStatus = '',
+  officialStatus = '',
+  onNodeClick,
+}: ProcessFlowBarProps) => {
   return (
     <div className="overflow-x-auto border-b border-border bg-card px-4 py-4 sm:px-6">
-      <div className="flex min-w-[640px] items-center justify-between">
+      <div className="flex min-w-[760px] items-center justify-between">
         {UI_STAGE_NODES.map((node, index) => {
-          const completed = isUiNodeCompleted(baseStage, node.key);
-          const active = isUiNodeActive(baseStage, node.key);
+          const completed = isUiNodeCompleted(
+            baseStage,
+            node.key,
+            reviewStatus,
+            officialStatus,
+          );
+          const active = isUiNodeActive(
+            baseStage,
+            node.key,
+            reviewStatus,
+            officialStatus,
+          );
           const isLast = index === UI_STAGE_NODES.length - 1;
 
           return (

@@ -234,6 +234,7 @@ export const STAGE_UI_MAP: Record<string, string> = {
 export const STAGE_BASE_MAP: Record<string, string> = {
   '埋点提需': '需求录入',
   '埋点设计': '埋点设计',
+  '埋点评审': '埋点设计',
   '埋点开发': '埋点开发',
   '埋点校验': '数据验收',
   '埋点上线': '上线监控',
@@ -252,10 +253,11 @@ export const STAGE_ORDER = [
   '已废弃',
 ];
 
-// 6 个 UI 业务节点顺序
+// 7 个 UI 业务节点顺序
 export const UI_STAGE_NODES = [
   '埋点提需',
   '埋点设计',
+  '埋点评审',
   '埋点开发',
   '埋点校验',
   '埋点上线',

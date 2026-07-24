@@ -5,7 +5,17 @@ import {
   UI_STAGE_NODES,
 } from './bitable.constants';
 
-export function getUiStageFromBase(baseStage: string): string {
+export function getUiStageFromBase(
+  baseStage: string,
+  reviewStatus = '',
+): string {
+  if (
+    baseStage === '埋点设计' &&
+    reviewStatus &&
+    reviewStatus !== '草稿'
+  ) {
+    return '埋点评审';
+  }
   return STAGE_UI_MAP[baseStage] || baseStage;
 }
 
@@ -35,15 +45,16 @@ export function getUiNodeIndex(uiStage: string): number {
   return UI_STAGE_NODES.indexOf(uiStage);
 }
 
-export function getCurrentUiNode(baseStage: string): string {
-  return getUiStageFromBase(baseStage);
+export function getCurrentUiNode(baseStage: string, reviewStatus = ''): string {
+  return getUiStageFromBase(baseStage, reviewStatus);
 }
 
 export function isUiNodeCompleted(
   baseStage: string,
   uiNode: string,
+  reviewStatus = '',
 ): boolean {
-  const currentUiStage = getUiStageFromBase(baseStage);
+  const currentUiStage = getUiStageFromBase(baseStage, reviewStatus);
   const currentIdx = getUiNodeIndex(currentUiStage);
   const nodeIdx = getUiNodeIndex(uiNode);
 
@@ -54,8 +65,12 @@ export function isUiNodeCompleted(
   return nodeIdx < currentIdx;
 }
 
-export function isUiNodeActive(baseStage: string, uiNode: string): boolean {
-  const currentUiStage = getUiStageFromBase(baseStage);
+export function isUiNodeActive(
+  baseStage: string,
+  uiNode: string,
+  reviewStatus = '',
+): boolean {
+  const currentUiStage = getUiStageFromBase(baseStage, reviewStatus);
   return currentUiStage === uiNode;
 }
 

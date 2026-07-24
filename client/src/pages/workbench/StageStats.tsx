@@ -6,6 +6,7 @@ import type { StageStat } from '@shared/api.interface';
 const STAGE_LIST = [
   '埋点提需',
   '埋点设计',
+  '埋点评审',
   '埋点开发',
   '埋点校验',
   '埋点上线',
@@ -60,9 +61,9 @@ const StageStats = ({
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           {loading
-            ? Array.from({ length: 6 }).map((_, i) => (
+            ? Array.from({ length: 7 }).map((_, i) => (
                 <div
                   key={i}
                   className="rounded-sm border border-border bg-card p-4"

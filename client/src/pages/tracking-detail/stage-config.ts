@@ -105,10 +105,11 @@ export const OFFICIAL_STATUS_OPTIONS = [
   { value: '待治理', label: '待治理' },
 ];
 
-// 6 个 UI 流程节点（用于顶部流程条）
+// 7 个 UI 流程节点（用于顶部流程条）
 export const UI_STAGE_NODES = [
   { key: '埋点提需', label: '埋点提需' },
   { key: '埋点设计', label: '埋点设计' },
+  { key: '埋点评审', label: '埋点评审' },
   { key: '埋点开发', label: '埋点开发' },
   { key: '埋点校验', label: '埋点校验' },
   { key: '埋点上线', label: '埋点上线' },
@@ -160,7 +161,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
   {
     id: 'review',
     label: '评审',
-    uiNode: '埋点设计',
+    uiNode: '埋点评审',
     baseStages: [],
     permissionKey: 'canEditReview',
     fields: [
@@ -231,26 +232,71 @@ export const STAGE_UI_MAP: Record<string, string> = {
 };
 
 // 获取当前 UI 节点
-export function getCurrentUiNode(baseStage: string): string {
+export function getCurrentUiNode(
+  baseStage: string,
+  reviewStatus = '',
+  officialStatus = '',
+): string {
+  if (
+    baseStage === '埋点设计' &&
+    reviewStatus &&
+    reviewStatus !== '草稿'
+  ) {
+    return '埋点评审';
+  }
+  if (
+    ['稳定归档', '已废弃'].includes(baseStage) &&
+    ['已上线', '已废弃'].includes(officialStatus)
+  ) {
+    return '归档';
+  }
   return STAGE_UI_MAP[baseStage] || baseStage;
 }
 
 // UI 节点顺序索引
-const UI_NODE_ORDER = ['埋点提需', '埋点设计', '埋点开发', '埋点校验', '埋点上线', '归档'];
+const UI_NODE_ORDER = [
+  '埋点提需',
+  '埋点设计',
+  '埋点评审',
+  '埋点开发',
+  '埋点校验',
+  '埋点上线',
+  '归档',
+];
 
 export function getUiNodeIndex(uiNode: string): number {
   return UI_NODE_ORDER.indexOf(uiNode);
 }
 
 // 判断 UI 节点是否已完成
-export function isUiNodeCompleted(baseStage: string, uiNode: string): boolean {
-  const currentUi = getCurrentUiNode(baseStage);
+export function isUiNodeCompleted(
+  baseStage: string,
+  uiNode: string,
+  reviewStatus = '',
+  officialStatus = '',
+): boolean {
+  if (
+    uiNode === '归档' &&
+    ['稳定归档', '已废弃'].includes(baseStage) &&
+    ['已上线', '已废弃'].includes(officialStatus)
+  ) {
+    return true;
+  }
+  const currentUi = getCurrentUiNode(baseStage, reviewStatus, officialStatus);
   const currentIdx = getUiNodeIndex(currentUi);
   const nodeIdx = getUiNodeIndex(uiNode);
   return nodeIdx < currentIdx;
 }
 
 // 判断 UI 节点是否为当前激活
-export function isUiNodeActive(baseStage: string, uiNode: string): boolean {
-  return getCurrentUiNode(baseStage) === uiNode;
+export function isUiNodeActive(
+  baseStage: string,
+  uiNode: string,
+  reviewStatus = '',
+  officialStatus = '',
+): boolean {
+  return (
+    !isUiNodeCompleted(baseStage, uiNode, reviewStatus, officialStatus) &&
+    getCurrentUiNode(baseStage, reviewStatus, officialStatus) === uiNode
+  );
 }

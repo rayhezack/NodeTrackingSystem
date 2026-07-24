@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Save, Loader2, Upload, X, Image as ImageIcon } from 'lucide-react';
+import {
+  Save,
+  Loader2,
+  Upload,
+  X,
+  Image as ImageIcon,
+  CheckCircle2,
+  LockKeyhole,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
@@ -12,9 +20,25 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 import { Label } from '@client/src/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@client/src/components/ui/alert-dialog';
 import { UserSelect } from '@client/src/components/business-ui/user-select';
 import { uploadFile } from '@client/src/components/business-ui/api/files/service';
-import { SIDEBAR_STAGES, type StageConfig } from './stage-config';
+import {
+  SIDEBAR_STAGES,
+  isUiNodeActive,
+  isUiNodeCompleted,
+  type StageConfig,
+} from './stage-config';
 import { updateTrackingRecord } from '@client/src/api/tracking';
 import type {
   TrackingAttachment,
@@ -23,6 +47,7 @@ import type {
 import ParamDesigner from './param-designer/ParamDesigner';
 import {
   buildStageUpdateRequest,
+  buildStageCompletionRequest,
   toTrackingUserRefs,
 } from './stage-form.utils';
 
@@ -90,6 +115,7 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
   const [formData, setFormData] = useState<Record<string, FormValue>>({});
   const [dirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   // 初始化表单数据
   useEffect(() => {
@@ -114,30 +140,34 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
     }
   };
 
+  const serializeFields = (): Record<string, unknown> => {
+    const fields: Record<string, unknown> = {};
+    for (const field of stageConfig.fields) {
+      const value = formData[field.key];
+      if (
+        field.type === 'url' &&
+        dirtyFieldNames.has(field.baseField) &&
+        toTextValue(value) &&
+        !isHttpUrl(toTextValue(value))
+      ) {
+        throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
+      }
+      if (field.type === 'user') {
+        fields[field.baseField] = toStringArray(value);
+      } else if (field.type === 'attachment') {
+        fields[field.baseField] = toAttachmentArray(value);
+      } else {
+        fields[field.baseField] = toTextValue(value);
+      }
+    }
+    return fields;
+  };
+
   const handleSave = async () => {
     if (!canEdit) return;
     setSaving(true);
     try {
-      const fields: Record<string, unknown> = {};
-      for (const field of stageConfig.fields) {
-        const value = formData[field.key];
-        if (
-          field.type === 'url' &&
-          dirtyFieldNames.has(field.baseField) &&
-          toTextValue(value) &&
-          !isHttpUrl(toTextValue(value))
-        ) {
-          throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
-        }
-        // 先按字段类型序列化，最终只提交本次实际修改过的字段。
-        if (field.type === 'user') {
-          fields[field.baseField] = toStringArray(value);
-        } else if (field.type === 'attachment') {
-          fields[field.baseField] = toAttachmentArray(value);
-        } else {
-          fields[field.baseField] = toTextValue(value);
-        }
-      }
+      const fields = serializeFields();
 
       const request = buildStageUpdateRequest(
         stageId,
@@ -155,7 +185,43 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
     }
   };
 
-  const disabled = !canEdit || saving;
+  const handleComplete = async () => {
+    if (!canEdit) return;
+    setCompleting(true);
+    try {
+      const fields = serializeFields();
+      const request = buildStageCompletionRequest(
+        stageId,
+        fields,
+        dirtyFieldNames,
+      );
+      await updateTrackingRecord(detail.recordId, request);
+      toast.success(`${stageConfig.label}已标记完成`);
+      await onSaved?.();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '标记完成失败';
+      toast.error(msg);
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const officialStatus = toTextValue(detail.archiveFields['正式状态'] as FormValue);
+  const nodeCompleted = isUiNodeCompleted(
+    detail.stage,
+    stageConfig.uiNode,
+    detail.reviewStatus,
+    officialStatus,
+  );
+  const nodeActive = isUiNodeActive(
+    detail.stage,
+    stageConfig.uiNode,
+    detail.reviewStatus,
+    officialStatus,
+  );
+  const busy = saving || completing;
+  const disabled = !canEdit || busy;
+  const completionCopy = getCompletionCopy(stageId, stageConfig.label);
 
   return (
     <div className="space-y-6">
@@ -276,26 +342,80 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
         </div>
       )}
 
-      {/* 保存按钮 */}
-      <div className="flex justify-end border-t border-border pt-4">
-        <Button
-          onClick={handleSave}
-          disabled={disabled}
-          size="sm"
-          className="rounded-sm"
-        >
-          {saving ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {nodeCompleted ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              保存中...
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              节点已完成
+            </>
+          ) : nodeActive ? (
+            <>
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              当前节点
             </>
           ) : (
             <>
-              <Save className="h-4 w-4" />
-              {stageId === 'requirement' ? '保存并进入埋点设计' : '保存'}
+              <LockKeyhole className="h-4 w-4" />
+              尚未到达
             </>
           )}
-        </Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={disabled}
+            variant="outline"
+            size="sm"
+            className="rounded-sm"
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {saving ? '保存中...' : '保存'}
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                disabled={disabled || !nodeActive || nodeCompleted}
+                size="sm"
+                className="rounded-sm"
+              >
+                {completing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {nodeCompleted
+                  ? '已完成'
+                  : nodeActive
+                    ? completionCopy.buttonLabel
+                    : '尚未到达'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>{completionCopy.title}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {completionCopy.description}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
+                <AlertDialogAction
+                  className="rounded-sm"
+                  onClick={handleComplete}
+                >
+                  确认完成
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
     </div>
   );
@@ -314,6 +434,52 @@ function getOptionsForField(field: StageConfig['fields'][number], detail: Tracki
 }
 
 export default StageForm;
+
+function getCompletionCopy(stageId: string, stageLabel: string) {
+  const copies: Record<string, { buttonLabel: string; title: string; description: string }> = {
+    requirement: {
+      buttonLabel: '完成提需',
+      title: '确认完成需求录入？',
+      description: '将保存当前修改，并把流程推进到埋点设计。',
+    },
+    design: {
+      buttonLabel: '提交评审',
+      title: '确认完成埋点设计？',
+      description: '将保存当前修改，评审状态转为“评审中”，并进入埋点评审。',
+    },
+    review: {
+      buttonLabel: '确认通过',
+      title: '确认完成埋点评审？',
+      description: '将保存评审意见，评审状态转为“已通过”，并进入埋点开发。',
+    },
+    dev: {
+      buttonLabel: '完成开发',
+      title: '确认完成埋点开发？',
+      description: '开发状态将转为“已开发”，并进入埋点校验。',
+    },
+    acceptance: {
+      buttonLabel: '完成验收',
+      title: '确认完成数据验收？',
+      description: '将记录验收状态和当前时间，并进入埋点上线。',
+    },
+    launch: {
+      buttonLabel: '完成上线',
+      title: '确认完成埋点上线？',
+      description: '发布与监控将标记完成，记录当前时间，并进入归档。',
+    },
+    archive: {
+      buttonLabel: '完成归档',
+      title: '确认完成归档？',
+      description: '正式状态将标记为“已上线”，并记录稳定归档时间。',
+    },
+  };
+
+  return copies[stageId] || {
+    buttonLabel: '确认完成',
+    title: `确认完成${stageLabel}？`,
+    description: '将保存当前修改并标记该节点已完成。',
+  };
+}
 
 function toTextValue(value: FormValue | undefined): string {
   if (Array.isArray(value)) return value.join('、');

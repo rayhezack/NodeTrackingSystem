@@ -63,6 +63,7 @@ describe('Base 写入值标准化', () => {
 
   it.each([
     ['DS验收时间', 'not-a-date'],
+    ['发布时间', 'not-a-date'],
     ['稳定归档时间', '2026-99-99'],
   ])('应在调用 Base 前拒绝非法日期 %s', async (fieldName, value) => {
     const call = jest.fn();

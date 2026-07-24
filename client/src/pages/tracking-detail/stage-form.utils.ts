@@ -1,46 +1,89 @@
 import type { TrackingUserRef, UpdateTrackingRecordRequest } from '@shared/api.interface';
 
 export function buildStageUpdateRequest(
-  stageId: string,
+  _stageId: string,
   fields: Record<string, unknown>,
   dirtyFieldNames: Set<string>,
 ): UpdateTrackingRecordRequest {
-  const dirtyFields = Object.fromEntries(
-    Object.entries(fields).filter(([fieldName]) => dirtyFieldNames.has(fieldName)),
-  );
-
-  const targetStage = getTargetStage(stageId, fields);
   return {
-    fields: dirtyFields,
-    ...(targetStage ? { targetStage } : {}),
+    fields: pickDirtyFields(fields, dirtyFieldNames),
   };
 }
 
-export function getTargetStage(
+export function buildStageCompletionRequest(
   stageId: string,
   fields: Record<string, unknown>,
-): string | undefined {
+  dirtyFieldNames: Set<string>,
+  completedAt = new Date().toISOString(),
+): UpdateTrackingRecordRequest {
+  const dirtyFields = pickDirtyFields(fields, dirtyFieldNames);
+
   switch (stageId) {
     case 'requirement':
-      return '埋点设计';
+      return {
+        fields: dirtyFields,
+        targetStage: '埋点设计',
+      };
+    case 'design':
+      return {
+        fields: { ...dirtyFields, '评审状态': '评审中' },
+      };
     case 'review':
-      return fields['评审状态'] === '已通过' ? '评审通过' : undefined;
+      return {
+        fields: { ...dirtyFields, '评审状态': '已通过' },
+        targetStage: '评审通过',
+      };
     case 'dev':
-      return fields['埋点开发状态'] === '已开发' ? '数据验收' : undefined;
-    case 'acceptance':
-      return ['通过', '豁免'].includes(String(fields['DS验收状态'] || ''))
-        ? '上线监控'
-        : undefined;
-    case 'launch':
-      return fields['发布状态'] === '发布成功' &&
-        ['通过', '豁免'].includes(String(fields['上线监控状态'] || ''))
-        ? '稳定归档'
-        : undefined;
-    case 'archive':
-      return fields['正式状态'] === '已废弃' ? '已废弃' : undefined;
+      return {
+        fields: { ...dirtyFields, '埋点开发状态': '已开发' },
+        targetStage: '数据验收',
+      };
+    case 'acceptance': {
+      const acceptanceStatus = fields['DS验收状态'] === '豁免' ? '豁免' : '通过';
+      return {
+        fields: {
+          ...dirtyFields,
+          'DS验收状态': acceptanceStatus,
+          'DS验收时间': completedAt,
+        },
+        targetStage: '上线监控',
+      };
+    }
+    case 'launch': {
+      const monitorStatus = fields['上线监控状态'] === '豁免' ? '豁免' : '通过';
+      return {
+        fields: {
+          ...dirtyFields,
+          '发布状态': '发布成功',
+          '上线监控状态': monitorStatus,
+          '发布时间': completedAt,
+        },
+        targetStage: '稳定归档',
+      };
+    }
+    case 'archive': {
+      const officialStatus = fields['正式状态'] === '已废弃' ? '已废弃' : '已上线';
+      return {
+        fields: {
+          ...dirtyFields,
+          '正式状态': officialStatus,
+          '稳定归档时间': completedAt,
+        },
+        ...(officialStatus === '已废弃' ? { targetStage: '已废弃' } : {}),
+      };
+    }
     default:
-      return undefined;
+      return { fields: dirtyFields };
   }
+}
+
+function pickDirtyFields(
+  fields: Record<string, unknown>,
+  dirtyFieldNames: Set<string>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([fieldName]) => dirtyFieldNames.has(fieldName)),
+  );
 }
 
 export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {

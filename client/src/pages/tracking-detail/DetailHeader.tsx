@@ -1,6 +1,7 @@
 import { Badge } from '@client/src/components/ui/badge';
 import { UserDisplay } from '@client/src/components/business-ui/user-display';
 import type { TrackingDetail } from '@shared/api.interface';
+import { getCurrentUiNode } from './stage-config';
 
 interface DetailHeaderProps {
   detail: TrackingDetail;
@@ -14,7 +15,7 @@ function getStageBadgeVariant(stage: string): { variant: 'default' | 'secondary'
   if (stage === '已废弃') {
     return { variant: 'outline', style: { backgroundColor: 'hsl(0, 84%, 96%)', color: 'hsl(0, 84%, 60%)', borderColor: 'hsl(0, 84%, 85%)' } };
   }
-  if (stage === '评审通过' || stage === '埋点设计') {
+  if (['埋点设计', '埋点评审', '评审通过'].includes(stage)) {
     return { variant: 'outline', style: { backgroundColor: 'hsl(38, 92%, 96%)', color: 'hsl(38, 92%, 50%)', borderColor: 'hsl(38, 92%, 85%)' } };
   }
   return { variant: 'default' };
@@ -36,7 +37,12 @@ function getStatusStyle(status: string): React.CSSProperties {
 }
 
 const DetailHeader = ({ detail }: DetailHeaderProps) => {
-  const stageBadge = getStageBadgeVariant(detail.stage);
+  const displayStage = getCurrentUiNode(
+    detail.stage,
+    detail.reviewStatus,
+    fieldText(detail.archiveFields['正式状态']),
+  );
+  const stageBadge = getStageBadgeVariant(displayStage);
 
   return (
     <div className="border-b border-border bg-card px-6 py-4">
@@ -64,7 +70,7 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">阶段</span>
             <Badge variant={stageBadge.variant} style={stageBadge.style} className="rounded-sm">
-              {detail.stage || '-'}
+              {displayStage || '-'}
             </Badge>
           </div>
 
@@ -136,3 +142,9 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
 };
 
 export default DetailHeader;
+
+function fieldText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}

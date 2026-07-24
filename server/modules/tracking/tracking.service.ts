@@ -77,6 +77,7 @@ const WORKBENCH_FIELDS = [
   '发布门禁失败原因',
   '发布状态',
   '发布错误',
+  '发布时间',
   '正式状态',
   '版本',
   '最低版本',
@@ -153,7 +154,10 @@ export class TrackingService {
     const records = await this.listWorkbenchRecordsBySource(params.source);
     const countMap = new Map(UI_STAGE_NODES.map((stage) => [stage, 0]));
     for (const { record } of records) {
-      const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']));
+      const uiStage = getUiStageFromBase(
+        cellText(record.record['流程阶段']),
+        cellText(record.record['评审状态']),
+      );
       if (countMap.has(uiStage)) {
         countMap.set(uiStage, (countMap.get(uiStage) || 0) + 1);
       }
@@ -655,7 +659,10 @@ export class TrackingService {
       evtId: cellText(record.record['evt_id']),
       eventName: cellText(record.record['事件中文名']) || '未命名需求',
       stage,
-      uiStage: getUiStageFromBase(stage),
+      uiStage: getUiStageFromBase(
+        stage,
+        cellText(record.record['评审状态']),
+      ),
       priority: cellText(record.record['优先级']) || 'P2',
       platform: cellText(record.record['端']) || '-',
       dataOwner: users.data.names,

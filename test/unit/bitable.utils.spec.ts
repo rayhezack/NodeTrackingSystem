@@ -13,6 +13,7 @@ describe('阶段映射工具', () => {
     it('应正确映射 Base 枚举值到 UI 业务节点', () => {
       expect(getUiStageFromBase('需求录入')).toBe('埋点提需');
       expect(getUiStageFromBase('埋点设计')).toBe('埋点设计');
+      expect(getUiStageFromBase('埋点设计', '评审中')).toBe('埋点评审');
       expect(getUiStageFromBase('评审通过')).toBe('埋点开发');
       expect(getUiStageFromBase('埋点开发')).toBe('埋点开发');
       expect(getUiStageFromBase('数据验收')).toBe('埋点校验');
@@ -30,6 +31,7 @@ describe('阶段映射工具', () => {
     it('应正确映射 UI 业务节点到 Base 枚举值', () => {
       expect(getBaseStageFromUi('埋点提需')).toBe('需求录入');
       expect(getBaseStageFromUi('埋点设计')).toBe('埋点设计');
+      expect(getBaseStageFromUi('埋点评审')).toBe('埋点设计');
       expect(getBaseStageFromUi('埋点开发')).toBe('埋点开发');
       expect(getBaseStageFromUi('埋点校验')).toBe('数据验收');
       expect(getBaseStageFromUi('埋点上线')).toBe('上线监控');
@@ -70,6 +72,7 @@ describe('UI 节点状态判断', () => {
     it('当前阶段之前的节点应为已完成', () => {
       expect(isUiNodeCompleted('埋点开发', '埋点提需')).toBe(true);
       expect(isUiNodeCompleted('埋点开发', '埋点设计')).toBe(true);
+      expect(isUiNodeCompleted('埋点设计', '埋点设计', '评审中')).toBe(true);
     });
 
     it('当前阶段的节点不应为已完成', () => {
@@ -86,6 +89,7 @@ describe('UI 节点状态判断', () => {
     it('应正确判断当前激活节点', () => {
       expect(isUiNodeActive('需求录入', '埋点提需')).toBe(true);
       expect(isUiNodeActive('埋点设计', '埋点设计')).toBe(true);
+      expect(isUiNodeActive('埋点设计', '埋点评审', '评审中')).toBe(true);
       expect(isUiNodeActive('评审通过', '埋点开发')).toBe(true);
       expect(isUiNodeActive('埋点开发', '埋点开发')).toBe(true);
       expect(isUiNodeActive('数据验收', '埋点校验')).toBe(true);

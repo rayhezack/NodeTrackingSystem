@@ -4,10 +4,12 @@ type StageFormUtils = {
     fields: Record<string, unknown>,
     dirtyFieldNames: Set<string>,
   ) => { fields: Record<string, unknown>; targetStage?: string };
-  getTargetStage?: (
+  buildStageCompletionRequest?: (
     stageId: string,
     fields: Record<string, unknown>,
-  ) => string | undefined;
+    dirtyFieldNames: Set<string>,
+    completedAt?: string,
+  ) => { fields: Record<string, unknown>; targetStage?: string };
   toTrackingUserRefs?: (value: unknown) => Array<{
     user_id: string;
     larkUserId?: string;
@@ -80,7 +82,7 @@ describe('详情阶段表单状态', () => {
     });
   });
 
-  it('需求录入保存时应推进到埋点设计', () => {
+  it('普通保存不应推进流程', () => {
     expect(typeof utils.buildStageUpdateRequest).toBe('function');
     if (!utils.buildStageUpdateRequest) return;
 
@@ -92,34 +94,64 @@ describe('详情阶段表单状态', () => {
       ),
     ).toEqual({
       fields: { '需求背景': '验证工作流' },
-      targetStage: '埋点设计',
     });
   });
 
   it.each([
-    ['review', { '评审状态': '已通过' }, '评审通过'],
-    ['dev', { '埋点开发状态': '已开发' }, '数据验收'],
-    ['acceptance', { 'DS验收状态': '通过' }, '上线监控'],
+    ['requirement', {}, '埋点设计'],
+    ['review', { '评审意见': '通过' }, '评审通过'],
+    ['dev', {}, '数据验收'],
     ['acceptance', { 'DS验收状态': '豁免' }, '上线监控'],
-    [
-      'launch',
-      { '发布状态': '发布成功', '上线监控状态': '通过' },
-      '稳定归档',
-    ],
-    ['archive', { '正式状态': '已废弃' }, '已废弃'],
-  ])('满足完成条件时 %s 应推进到下一阶段', (stageId, fields, expected) => {
-    expect(typeof utils.getTargetStage).toBe('function');
-    expect(utils.getTargetStage?.(stageId as string, fields as Record<string, unknown>))
-      .toBe(expected);
+    ['launch', { '上线监控状态': '通过' }, '稳定归档'],
+  ])('确认完成 %s 时应推进到下一阶段', (stageId, fields, expected) => {
+    expect(typeof utils.buildStageCompletionRequest).toBe('function');
+    expect(
+      utils.buildStageCompletionRequest?.(
+        stageId as string,
+        fields as Record<string, unknown>,
+        new Set(Object.keys(fields)),
+        '2026-07-24T10:00:00.000Z',
+      ).targetStage,
+    ).toBe(expected);
   });
 
-  it.each([
-    ['review', { '评审状态': '已拒绝' }],
-    ['dev', { '埋点开发状态': '开发中' }],
-    ['acceptance', { 'DS验收状态': '不通过' }],
-    ['launch', { '发布状态': '发布成功', '上线监控状态': '异常' }],
-  ])('未满足完成条件时 %s 不应越级推进', (stageId, fields) => {
-    expect(utils.getTargetStage?.(stageId as string, fields as Record<string, unknown>))
-      .toBeUndefined();
+  it('设计确认完成时应进入评审，但不改写 Base 流程阶段', () => {
+    const request = utils.buildStageCompletionRequest?.(
+      'design',
+      { '事件定义': '点击时上报' },
+      new Set(['事件定义']),
+    );
+
+    expect(request).toEqual({
+      fields: {
+        '事件定义': '点击时上报',
+        '评审状态': '评审中',
+      },
+    });
+  });
+
+  it('验收和归档完成时应自动记录时间', () => {
+    const completedAt = '2026-07-24T10:00:00.000Z';
+    const acceptance = utils.buildStageCompletionRequest?.(
+      'acceptance',
+      {},
+      new Set(),
+      completedAt,
+    );
+    const archive = utils.buildStageCompletionRequest?.(
+      'archive',
+      {},
+      new Set(),
+      completedAt,
+    );
+
+    expect(acceptance?.fields).toEqual({
+      'DS验收状态': '通过',
+      'DS验收时间': completedAt,
+    });
+    expect(archive?.fields).toEqual({
+      '正式状态': '已上线',
+      '稳定归档时间': completedAt,
+    });
   });
 });

@@ -42,7 +42,7 @@ const TrackingDetailPage = () => {
         const normalizedRequestedStage = requestedStage === 'params' ? 'design' : requestedStage;
         const matchedStage =
           SIDEBAR_STAGES.find((s) => s.id === normalizedRequestedStage) ||
-            SIDEBAR_STAGES.find((s) => s.baseStages.includes(res.data.stage));
+            getActiveSidebarStage(res.data);
         if (matchedStage?.id) {
           setActiveStage(matchedStage.id);
         }
@@ -80,9 +80,7 @@ const TrackingDetailPage = () => {
     try {
       const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
       setDetail(res.data);
-      const matchedStage = SIDEBAR_STAGES.find((stage) =>
-        stage.baseStages.includes(res.data.stage),
-      );
+      const matchedStage = getActiveSidebarStage(res.data);
       if (matchedStage) {
         setActiveStage(matchedStage.id);
       }
@@ -161,7 +159,12 @@ const TrackingDetailPage = () => {
     );
   }
 
-  const currentUiNode = getCurrentUiNode(detail.stage);
+  const officialStatus = fieldText(detail.archiveFields['正式状态']);
+  const currentUiNode = getCurrentUiNode(
+    detail.stage,
+    detail.reviewStatus,
+    officialStatus,
+  );
 
   return (
     <div className="space-y-4">
@@ -186,6 +189,8 @@ const TrackingDetailPage = () => {
         {/* 流程条 */}
         <ProcessFlowBar
           baseStage={detail.stage}
+          reviewStatus={detail.reviewStatus}
+          officialStatus={officialStatus}
           onNodeClick={handleNodeClick}
         />
 
@@ -228,3 +233,18 @@ const TrackingDetailPage = () => {
 };
 
 export default TrackingDetailPage;
+
+function getActiveSidebarStage(detail: TrackingDetail) {
+  const uiNode = getCurrentUiNode(
+    detail.stage,
+    detail.reviewStatus,
+    fieldText(detail.archiveFields['正式状态']),
+  );
+  return SIDEBAR_STAGES.find((stage) => stage.uiNode === uiNode);
+}
+
+function fieldText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
