@@ -293,11 +293,15 @@ export interface OfficialParam {
   paramName: string;
   paramType: string;
   required: boolean;
+  enumRange?: string;
   definition: string;
   example: string;
+  platform?: string;
+  status?: string;
 }
 
 export interface GetOfficialParamsResponse {
   items: OfficialParam[];
   total: number;
+  baseLink?: string;
 }

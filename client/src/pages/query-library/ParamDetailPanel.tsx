@@ -15,6 +15,7 @@ export interface ExpandedRow {
   error: string | null;
   items: OfficialParam[];
   total: number;
+  baseLink?: string;
 }
 
 interface ParamDetailPanelProps {
@@ -73,16 +74,42 @@ export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
 
   if (rowData.items.length === 0) {
     return (
-      <div className="p-6 text-center text-xs text-muted-foreground">
-        暂无参数
+      <div className="flex flex-col items-center gap-2 p-6 text-center text-xs text-muted-foreground">
+        <span>暂无参数</span>
+        {rowData.baseLink && (
+          <a
+            href={rowData.baseLink}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+          >
+            打开参数 Base
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
     );
   }
 
   return (
     <div className="p-4 pl-10">
-      <div className="mb-2 text-xs font-medium text-muted-foreground">
-        参数明细（{rowData.total} 个）
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="text-xs font-medium text-muted-foreground">
+          参数明细（{rowData.total} 个）
+        </div>
+        {rowData.baseLink && (
+          <a
+            href={rowData.baseLink}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+          >
+            打开参数 Base
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
       <div className="rounded-sm border border-border bg-card">
         <Table>
@@ -99,6 +126,9 @@ export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
               </TableHead>
               <TableHead className="w-20 text-xs font-medium text-muted-foreground">
                 是否必传
+              </TableHead>
+              <TableHead className="w-40 text-xs font-medium text-muted-foreground">
+                枚举/范围
               </TableHead>
               <TableHead className="text-xs font-medium text-muted-foreground">
                 定义
@@ -131,6 +161,9 @@ export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
                   ) : (
                     <span className="text-muted-foreground">可选</span>
                   )}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground whitespace-normal break-words max-w-xs">
+                  {param.enumRange || "-"}
                 </TableCell>
                 <TableCell className="text-xs text-foreground/80 whitespace-normal break-words max-w-md">
                   <SmartCellValue

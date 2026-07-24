@@ -186,6 +186,17 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
         ))}
       </div>
 
+      {stageId === 'design' && (
+        <div className="border-t border-border pt-6">
+          <ParamDesigner
+            recordId={detail.recordId}
+            source={detail.source}
+            evtId={detail.evtId}
+            canEdit={detail.permissions.canEditParams}
+          />
+        </div>
+      )}
+
       {/* 保存按钮 */}
       <div className="flex justify-end border-t border-border pt-4">
         <Button
@@ -207,17 +218,6 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
           )}
         </Button>
       </div>
-
-      {stageId === 'design' && (
-        <div className="border-t border-border pt-6">
-          <ParamDesigner
-            recordId={detail.recordId}
-            source={detail.source}
-            evtId={detail.evtId}
-            canEdit={detail.permissions.canEditParams}
-          />
-        </div>
-      )}
     </div>
   );
 };

@@ -162,6 +162,7 @@ const QueryLibraryPage = () => {
             error: null,
             items: res.items,
             total: res.total,
+            baseLink: res.baseLink,
           },
         }));
       } catch (err) {

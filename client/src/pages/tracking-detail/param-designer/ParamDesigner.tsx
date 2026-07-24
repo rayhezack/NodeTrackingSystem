@@ -191,7 +191,6 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                 <TableHead className="h-9 text-xs font-medium py-0">参数名</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">参数类型</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">是否必传</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">触发条件</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">枚举范围</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">适用端</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">状态</TableHead>
@@ -221,9 +220,6 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                       ) : (
                         <Badge variant="outline" className="h-5 rounded-sm text-[10px] px-1.5 font-normal">可选</Badge>
                       )}
-                    </TableCell>
-                    <TableCell className="h-9 py-0 text-xs max-w-[180px] truncate">
-                      {item.triggerCondition || '-'}
                     </TableCell>
                     <TableCell className="h-9 py-0 text-xs max-w-[160px] truncate">
                       {item.enumRange || '-'}

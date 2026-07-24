@@ -45,7 +45,6 @@ const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest 
   paramName: '',
   paramType: 'STRING',
   required: false,
-  triggerCondition: '',
   enumRange: '',
   definition: '',
   defaultValue: '',
@@ -77,7 +76,6 @@ const ParamFormDialog = ({
         paramName: initialData.paramName,
         paramType: initialData.paramType || 'STRING',
         required: initialData.required,
-        triggerCondition: initialData.triggerCondition,
         enumRange: initialData.enumRange,
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
@@ -230,15 +228,6 @@ const ParamFormDialog = ({
               className={inputCls}
               value={form.defaultValue || ''}
               onChange={(e) => updateField('defaultValue', e.target.value)}
-            />
-          </FormField>
-
-          <FormField label="触发条件" className="sm:col-span-2 lg:col-span-3">
-            <Textarea
-              className={textareaCls}
-              value={form.triggerCondition || ''}
-              onChange={(e) => updateField('triggerCondition', e.target.value)}
-              placeholder="描述参数触发的具体条件..."
             />
           </FormField>
 
