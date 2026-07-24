@@ -383,7 +383,7 @@ export class TrackingService {
         '需求链接': body.requirementLink || '',
         '指标/使用场景': body.metricScenario || '',
         '流程阶段': '需求录入',
-        '记录类型': source === 'web' ? '埋点设计' : '需求',
+        '记录类型': '埋点设计',
         '优先级': body.priority || 'P2',
         '端': toPlatformCell(body.platform, source),
         '需求提出人': requesterCells,
@@ -399,15 +399,15 @@ export class TrackingService {
         'DS验收时间': '',
         '上线监控状态': '未开始',
         '上线监控结论': '',
-        '发布门禁状态': source === 'web' ? '未检查' : '待检查',
+        '发布门禁状态': '未检查',
         '发布门禁失败原因': '',
         '发布状态': '未发布',
         '发布错误': '',
-        '正式状态': source === 'web' ? '待开发' : '未归档',
+        '正式状态': '待开发',
         '版本': body.version || '1.0.0',
         '最低版本': body.minVersion || body.version || '1.0.0',
-        '变更类型': body.changeType || '新增',
-        '处理方': body.handler || (source === 'web' ? '前端' : '客户端'),
+        '变更类型': normalizeChangeType(body.changeType),
+        '处理方': normalizeHandler(body.handler, source),
         '公共属性要求': body.commonProps || '',
         '参数明细入口': source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
         '参数拆行状态': body.initialParams?.length ? '已拆行' : '未拆行',
@@ -465,6 +465,7 @@ export class TrackingService {
         patch[fieldName] = createUserCells(patch[fieldName]);
       }
     }
+    normalizeWorkbenchPatch(patch, ref.source);
 
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
     return { success: true, recordId, currentStage };
@@ -1218,6 +1219,77 @@ function normalizeParamStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (!raw || raw === '正常' || raw === '已评审') return '草稿';
   return raw;
+}
+
+function normalizeWorkbenchPatch(
+  patch: Record<string, unknown>,
+  source: TrackingSource,
+): void {
+  if (Object.prototype.hasOwnProperty.call(patch, '处理方')) {
+    patch['处理方'] = normalizeHandler(cellText(patch['处理方']), source);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '变更类型')) {
+    patch['变更类型'] = normalizeChangeType(cellText(patch['变更类型']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '埋点开发状态')) {
+    patch['埋点开发状态'] = normalizeDevStatus(cellText(patch['埋点开发状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '发布门禁状态')) {
+    patch['发布门禁状态'] = normalizeGateStatus(cellText(patch['发布门禁状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '发布状态')) {
+    patch['发布状态'] = normalizePublishStatus(cellText(patch['发布状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '正式状态')) {
+    patch['正式状态'] = normalizeOfficialStatus(cellText(patch['正式状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '记录类型')) {
+    patch['记录类型'] = '埋点设计';
+  }
+}
+
+function normalizeHandler(value: unknown, source: TrackingSource): string {
+  const raw = String(value || '').trim();
+  const allowed = source === 'web'
+    ? ['前端', '服务端', '前端/服务端']
+    : ['客户端', '客户端/服务端'];
+  return allowed.includes(raw) ? raw : allowed[0];
+}
+
+function normalizeChangeType(value?: string): string {
+  const raw = String(value || '').trim();
+  const alias: Record<string, string> = {
+    删除: '废弃',
+    不变: '修改',
+  };
+  const normalized = alias[raw] || raw;
+  return ['新增', '修改', '废弃', '口径调整'].includes(normalized) ? normalized : '新增';
+}
+
+function normalizeDevStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  if (raw === '已完成') return '已开发';
+  return ['未开始', '开发中', '已开发', '阻塞'].includes(raw) ? raw : '未开始';
+}
+
+function normalizeGateStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  if (raw === '待检查') return '未检查';
+  return ['未检查', '已通过', '阻塞', '豁免'].includes(raw) ? raw : '未检查';
+}
+
+function normalizePublishStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  if (raw === '已发布') return '发布成功';
+  return ['未发布', '发布中', '发布成功', '发布失败'].includes(raw) ? raw : '未发布';
+}
+
+function normalizeOfficialStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  if (raw === '未归档') return '待开发';
+  return ['待开发', '待验收', '已验收', '已上线', '已废弃', '待治理'].includes(raw)
+    ? raw
+    : '待开发';
 }
 
 function hasApiParamFields(fields: Record<string, unknown>): boolean {

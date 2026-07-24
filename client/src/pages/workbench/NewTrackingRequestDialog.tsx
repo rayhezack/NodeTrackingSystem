@@ -66,6 +66,8 @@ const emptyParam = (): DraftParam => ({
 const WEB_COMMON_PROPS =
   'user_id、anonymous_id、session_id、url、referrer、utm_source、browser、os';
 const APP_COMMON_PROPS = 'user_id、device_id、app_version、platform';
+const APP_HANDLER_OPTIONS = ['客户端', '客户端/服务端'];
+const WEB_HANDLER_OPTIONS = ['前端', '服务端', '前端/服务端'];
 
 const getSourceByPlatform = (platform: string): TrackingSource =>
   platform === 'Web' ? 'web' : 'app';
@@ -138,7 +140,7 @@ export default function NewTrackingRequestDialog({
       ...prev,
       source,
       platform,
-      handler: source === 'web' ? '前端' : prev.handler === '前端' ? '客户端' : prev.handler,
+      handler: normalizeHandlerBySource(prev.handler, source),
       commonProps:
         source === 'web'
           ? WEB_COMMON_PROPS
@@ -374,11 +376,19 @@ export default function NewTrackingRequestDialog({
             />
           </Field>
           <Field label="处理方">
-            <Input
-              className={inputCls}
+            <Select
               value={form.handler}
-              onChange={(event) => updateField('handler', event.target.value)}
-            />
+              onValueChange={(value) => updateField('handler', value)}
+            >
+              <SelectTrigger className={inputCls}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {getHandlerOptions(form.source).map((value) => (
+                  <SelectItem key={value} value={value}>{value}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="版本">
             <Input
@@ -604,4 +614,13 @@ function extractNumericUserId(value: unknown): string {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
+function getHandlerOptions(source: TrackingSource): string[] {
+  return source === 'web' ? WEB_HANDLER_OPTIONS : APP_HANDLER_OPTIONS;
+}
+
+function normalizeHandlerBySource(value: string, source: TrackingSource): string {
+  const options = getHandlerOptions(source);
+  return options.includes(value) ? value : options[0];
 }

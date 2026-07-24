@@ -24,7 +24,6 @@ export const PRIORITY_OPTIONS = [
   { value: 'P0', label: 'P0 - 紧急' },
   { value: 'P1', label: 'P1 - 高' },
   { value: 'P2', label: 'P2 - 中' },
-  { value: 'P3', label: 'P3 - 低' },
 ];
 
 // 平台选项
@@ -48,7 +47,8 @@ export const REVIEW_STATUS_OPTIONS = [
 export const DEV_STATUS_OPTIONS = [
   { value: '未开始', label: '未开始' },
   { value: '开发中', label: '开发中' },
-  { value: '已完成', label: '已完成' },
+  { value: '已开发', label: '已开发' },
+  { value: '阻塞', label: '阻塞' },
 ];
 
 // 验收状态选项
@@ -70,8 +70,39 @@ export const HANDLER_OPTIONS = [
 export const CHANGE_TYPE_OPTIONS = [
   { value: '新增', label: '新增' },
   { value: '修改', label: '修改' },
-  { value: '删除', label: '删除' },
-  { value: '不变', label: '不变' },
+  { value: '废弃', label: '废弃' },
+  { value: '口径调整', label: '口径调整' },
+];
+
+export const QUALITY_GATE_OPTIONS = [
+  { value: '未检查', label: '未检查' },
+  { value: '已通过', label: '已通过' },
+  { value: '阻塞', label: '阻塞' },
+  { value: '豁免', label: '豁免' },
+];
+
+export const MONITOR_STATUS_OPTIONS = [
+  { value: '未开始', label: '未开始' },
+  { value: '监控中', label: '监控中' },
+  { value: '通过', label: '通过' },
+  { value: '异常', label: '异常' },
+  { value: '豁免', label: '豁免' },
+];
+
+export const PUBLISH_STATUS_OPTIONS = [
+  { value: '未发布', label: '未发布' },
+  { value: '发布中', label: '发布中' },
+  { value: '发布成功', label: '发布成功' },
+  { value: '发布失败', label: '发布失败' },
+];
+
+export const OFFICIAL_STATUS_OPTIONS = [
+  { value: '待开发', label: '待开发' },
+  { value: '待验收', label: '待验收' },
+  { value: '已验收', label: '已验收' },
+  { value: '已上线', label: '已上线' },
+  { value: '已废弃', label: '已废弃' },
+  { value: '待治理', label: '待治理' },
 ];
 
 // 6 个 UI 流程节点（用于顶部流程条）
@@ -135,7 +166,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     fields: [
       { key: 'reviewStatus', label: '评审状态', type: 'select', baseField: '评审状态', options: REVIEW_STATUS_OPTIONS },
       { key: 'reviewComment', label: '评审意见', type: 'textarea', baseField: '评审意见', placeholder: '评审意见与建议...' },
-      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'input', baseField: '发布门禁状态', placeholder: '待检查/通过/失败' },
+      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'select', baseField: '发布门禁状态', options: QUALITY_GATE_OPTIONS },
       { key: 'qualityGateReason', label: '门禁失败原因', type: 'textarea', baseField: '发布门禁失败原因', placeholder: '如未通过，请填写失败原因...' },
     ],
   },
@@ -168,9 +199,9 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['上线监控'],
     permissionKey: 'canEditLaunch',
     fields: [
-      { key: 'monitorStatus', label: '上线监控状态', type: 'input', baseField: '上线监控状态', placeholder: '未开始/观察中/正常/异常' },
+      { key: 'monitorStatus', label: '上线监控状态', type: 'select', baseField: '上线监控状态', options: MONITOR_STATUS_OPTIONS },
       { key: 'monitorConclusion', label: '上线监控结论', type: 'textarea', baseField: '上线监控结论', placeholder: '填写上线后的数据监控结论...' },
-      { key: 'publishStatus', label: '发布状态', type: 'input', baseField: '发布状态', placeholder: '未发布/已发布/发布失败' },
+      { key: 'publishStatus', label: '发布状态', type: 'select', baseField: '发布状态', options: PUBLISH_STATUS_OPTIONS },
       { key: 'publishError', label: '发布错误', type: 'textarea', baseField: '发布错误', placeholder: '如发布失败，请填写错误原因...' },
     ],
   },
@@ -181,7 +212,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['稳定归档', '已废弃'],
     permissionKey: 'canEditArchive',
     fields: [
-      { key: 'officialStatus', label: '正式状态', type: 'input', baseField: '正式状态', placeholder: '未归档/已归档/已废弃' },
+      { key: 'officialStatus', label: '正式状态', type: 'select', baseField: '正式状态', options: OFFICIAL_STATUS_OPTIONS },
       { key: 'archiveTime', label: '稳定归档时间', type: 'input', baseField: '稳定归档时间', placeholder: 'YYYY-MM-DD' },
     ],
   },

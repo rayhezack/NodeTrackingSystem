@@ -35,6 +35,17 @@ const DETAIL_FIELD_GROUPS = [
   'archiveFields',
 ] as const;
 
+const APP_HANDLER_OPTIONS = [
+  { value: '客户端', label: '客户端' },
+  { value: '客户端/服务端', label: '客户端/服务端' },
+];
+
+const WEB_HANDLER_OPTIONS = [
+  { value: '前端', label: '前端' },
+  { value: '服务端', label: '服务端' },
+  { value: '前端/服务端', label: '前端/服务端' },
+];
+
 type FormValue = string | unknown[];
 
 // 从 detail 的所有阶段字段分组中获取字段值
@@ -227,6 +238,9 @@ function getOptionsForField(field: StageConfig['fields'][number], detail: Tracki
     return detail.source === 'web'
       ? [{ value: 'Web', label: 'Web' }]
       : (field.options || []).filter((option) => option.value !== 'Web');
+  }
+  if (field.baseField === '处理方') {
+    return detail.source === 'web' ? WEB_HANDLER_OPTIONS : APP_HANDLER_OPTIONS;
   }
   return field.options || [];
 }

@@ -59,6 +59,14 @@ export interface BitableSortItem {
   desc?: boolean;
 }
 
+type BitableFieldConfig = (typeof BITABLE_FIELDS)[BitableInstanceKey][number];
+type BitablePluginConfig = {
+  id: string;
+  formValue: {
+    fields?: BitableFieldConfig[];
+  };
+};
+
 @Injectable()
 export class BitableService {
   private readonly logger = new Logger(BitableService.name);
@@ -101,14 +109,47 @@ export class BitableService {
     },
   ): Promise<BitableSearchResult> {
     const config = this.getInstanceConfig(instanceKey);
+    const safeParams = {
+      ...params,
+      fieldNames: params.fieldNames ? [...params.fieldNames] : undefined,
+    };
+    let missingFieldRetryCount = 0;
+
     try {
-      const result = await this.capabilityService
-        .loadWithConfig(config)
-        .call('searchRecords', params);
-      return result as BitableSearchResult;
+      while (true) {
+        try {
+          const result = await this.capabilityService
+            .loadWithConfig(config)
+            .call('searchRecords', safeParams);
+          return result as BitableSearchResult;
+        } catch (error) {
+          if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
+            return this.localFallback.searchRecords(instanceKey, safeParams);
+          }
+          const missingFieldName = extractMissingFieldName(error);
+          const removedFromParams = removeFieldName(safeParams, missingFieldName);
+          const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
+          if (
+            missingFieldName &&
+            (removedFromParams || removedFromConfig) &&
+            missingFieldRetryCount < 12
+          ) {
+            missingFieldRetryCount += 1;
+            this.logger.warn(
+              JSON.stringify({
+                message: 'Retrying bitable search without missing field',
+                instanceKey,
+                missingFieldName,
+              }),
+            );
+            continue;
+          }
+          this.handleError(config.id, 'searchRecords', error);
+        }
+      }
     } catch (error) {
       if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
-        return this.localFallback.searchRecords(instanceKey, params);
+        return this.localFallback.searchRecords(instanceKey, safeParams);
       }
       this.handleError(config.id, 'searchRecords', error);
     }
@@ -119,15 +160,42 @@ export class BitableService {
     recordId: string,
   ): Promise<BitableRecord | null> {
     const config = this.getInstanceConfig(instanceKey);
+    let missingFieldRetryCount = 0;
+
     try {
-      const result = await this.capabilityService
-        .loadWithConfig(config)
-        .call('getRecord', { recordID: recordId });
-      const typed = result as { id: string; record?: Record<string, unknown> };
-      if (!typed.record) {
-        return null;
+      while (true) {
+        try {
+          const result = await this.capabilityService
+            .loadWithConfig(config)
+            .call('getRecord', { recordID: recordId });
+          const typed = result as { id: string; record?: Record<string, unknown> };
+          if (!typed.record) {
+            return null;
+          }
+          return { id: typed.id, record: typed.record };
+        } catch (error) {
+          if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
+            return this.localFallback.getRecord(instanceKey, recordId);
+          }
+          const missingFieldName = extractMissingFieldName(error);
+          if (
+            missingFieldName &&
+            this.removeFieldFromConfig(config, missingFieldName) &&
+            missingFieldRetryCount < 12
+          ) {
+            missingFieldRetryCount += 1;
+            this.logger.warn(
+              JSON.stringify({
+                message: 'Retrying bitable getRecord without missing field',
+                instanceKey,
+                missingFieldName,
+              }),
+            );
+            continue;
+          }
+          this.handleError(config.id, 'getRecord', error);
+        }
       }
-      return { id: typed.id, record: typed.record };
     } catch (error) {
       if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
         return this.localFallback.getRecord(instanceKey, recordId);
@@ -141,16 +209,48 @@ export class BitableService {
     records: Record<string, unknown>[],
   ): Promise<{ id: string }[]> {
     const config = this.getInstanceConfig(instanceKey);
+    const safeRecords = records.map((record) =>
+      this.normalizeRecordForInstance(instanceKey, record),
+    );
+    let missingFieldRetryCount = 0;
+
     try {
-      const result = await this.capabilityService
-        .loadWithConfig(config)
-        .call('batchAddRecords', {
-          records: records.map((r) => ({ record: r })),
-      });
-      return (result as { records: { id: string }[] }).records;
+      while (true) {
+        try {
+          const result = await this.capabilityService
+            .loadWithConfig(config)
+            .call('batchAddRecords', {
+              records: safeRecords.map((r) => ({ record: r })),
+            });
+          return (result as { records: { id: string }[] }).records;
+        } catch (error) {
+          if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
+            return this.localFallback.batchAddRecords(instanceKey, safeRecords);
+          }
+          const missingFieldName = extractMissingFieldName(error);
+          const removedFromRecords = removeFieldFromRecords(safeRecords, missingFieldName);
+          const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
+          if (
+            missingFieldName &&
+            (removedFromRecords || removedFromConfig) &&
+            missingFieldRetryCount < 12
+          ) {
+            missingFieldRetryCount += 1;
+            this.logger.warn(
+              JSON.stringify({
+                message: 'Retrying bitable add without missing field',
+                instanceKey,
+                missingFieldName,
+              }),
+            );
+            continue;
+          }
+          this.handleError(config.id, 'batchAddRecords', error);
+        }
+      }
     } catch (error) {
       if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
-        return this.localFallback.batchAddRecords(instanceKey, records);
+        return this.localFallback.batchAddRecords(instanceKey, safeRecords);
       }
       this.handleError(config.id, 'batchAddRecords', error);
     }
@@ -161,14 +261,47 @@ export class BitableService {
     updates: { id: string; record: Record<string, unknown> }[],
   ): Promise<{ id: string }[]> {
     const config = this.getInstanceConfig(instanceKey);
+    const safeUpdates = updates.map((update) => ({
+      ...update,
+      record: this.normalizeRecordForInstance(instanceKey, update.record),
+    }));
+    let missingFieldRetryCount = 0;
+
     try {
-      const result = await this.capabilityService
-        .loadWithConfig(config)
-        .call('batchUpdateRecords', { records: updates });
-      return (result as { records: { id: string }[] }).records;
+      while (true) {
+        try {
+          const result = await this.capabilityService
+            .loadWithConfig(config)
+            .call('batchUpdateRecords', { records: safeUpdates });
+          return (result as { records: { id: string }[] }).records;
+        } catch (error) {
+          if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
+            return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
+          }
+          const missingFieldName = extractMissingFieldName(error);
+          const removedFromRecords = removeFieldFromUpdates(safeUpdates, missingFieldName);
+          const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
+          if (
+            missingFieldName &&
+            (removedFromRecords || removedFromConfig) &&
+            missingFieldRetryCount < 12
+          ) {
+            missingFieldRetryCount += 1;
+            this.logger.warn(
+              JSON.stringify({
+                message: 'Retrying bitable update without missing field',
+                instanceKey,
+                missingFieldName,
+              }),
+            );
+            continue;
+          }
+          this.handleError(config.id, 'batchUpdateRecords', error);
+        }
+      }
     } catch (error) {
       if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
-        return this.localFallback.batchUpdateRecords(instanceKey, updates);
+        return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
       }
       this.handleError(config.id, 'batchUpdateRecords', error);
     }
@@ -237,6 +370,33 @@ export class BitableService {
     return true;
   }
 
+  private removeFieldFromConfig(
+    config: BitablePluginConfig,
+    fieldName: string | null,
+  ): boolean {
+    if (!fieldName || !config.formValue.fields?.length) return false;
+    const before = config.formValue.fields.length;
+    config.formValue.fields = config.formValue.fields.filter(
+      (field) => field.name !== fieldName,
+    );
+    return config.formValue.fields.length !== before;
+  }
+
+  private normalizeRecordForInstance(
+    instanceKey: BitableInstanceKey,
+    record: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const fieldMap = new Map(
+      (BITABLE_FIELDS[instanceKey] || []).map((field) => [field.name, field]),
+    );
+    return Object.fromEntries(
+      Object.entries(record).map(([fieldName, value]) => [
+        fieldName,
+        normalizeCellValue(fieldMap.get(fieldName), value),
+      ]),
+    );
+  }
+
   private handleError(
     instanceId: string,
     actionKey: string,
@@ -275,4 +435,192 @@ export class BitableService {
 
     throw new BadRequestException(`Base 操作失败：${errorMessage}`);
   }
+}
+
+function removeFieldName(
+  params: { fieldNames?: string[] },
+  fieldName: string | null,
+): boolean {
+  if (!fieldName || !params.fieldNames?.length) return false;
+  const before = params.fieldNames.length;
+  params.fieldNames = params.fieldNames.filter((item) => item !== fieldName);
+  if (params.fieldNames.length === 0) {
+    delete params.fieldNames;
+  }
+  return params.fieldNames?.length !== before;
+}
+
+function removeFieldFromRecords(
+  records: Record<string, unknown>[],
+  fieldName: string | null,
+): boolean {
+  if (!fieldName) return false;
+  let removed = false;
+  for (const record of records) {
+    if (Object.prototype.hasOwnProperty.call(record, fieldName)) {
+      delete record[fieldName];
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+function removeFieldFromUpdates(
+  updates: { record: Record<string, unknown> }[],
+  fieldName: string | null,
+): boolean {
+  if (!fieldName) return false;
+  return removeFieldFromRecords(
+    updates.map((update) => update.record),
+    fieldName,
+  );
+}
+
+function normalizeCellValue(
+  fieldConfig: BitableFieldConfig | undefined,
+  value: unknown,
+): unknown {
+  if (value == null || !fieldConfig) return value;
+
+  switch (fieldConfig.type) {
+    case 3:
+      return Array.isArray(value) ? cellText(value[0]) : cellText(value);
+    case 4:
+      return toStringArray(value);
+    case 11:
+      return toNumberArray(value);
+    case 18:
+      return toLinkArray(value);
+    default:
+      return value;
+  }
+}
+
+function toStringArray(value: unknown): string[] {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[、,，/]/)
+      : value
+        ? [value]
+        : [];
+  return Array.from(
+    new Set(values.map(cellText).map((item) => item.trim()).filter(Boolean)),
+  );
+}
+
+function toNumberArray(value: unknown): number[] {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[、,，/]/)
+      : value
+        ? [value]
+        : [];
+  return Array.from(
+    new Set(
+      values
+        .map(extractNumericId)
+        .filter((id): id is number => id !== null),
+    ),
+  );
+}
+
+function toLinkArray(value: unknown): unknown {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
+    .map((item) => {
+      if (typeof item === 'string' && item.trim()) return { id: item.trim() };
+      if (item && typeof item === 'object') {
+        const id = (item as Record<string, unknown>).id;
+        if (typeof id === 'string' && id.trim()) return { id: id.trim() };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function extractNumericId(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const id = Number(trimmed);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  if (value && typeof value === 'object') {
+    const user = value as Record<string, unknown>;
+    for (const key of [
+      'user_id',
+      'userId',
+      'userID',
+      'miaoda_user_id',
+      'miaodaUserID',
+      'employee_id',
+      'employeeID',
+      'id',
+    ]) {
+      const id = extractNumericId(user[key]);
+      if (id !== null) return id;
+    }
+  }
+  return null;
+}
+
+function extractMissingFieldName(error: unknown): string | null {
+  const text = errorText(error);
+  const englishMatch = text.match(/field name\s+(.+?)\s+(?:not exist|does not exist)/i);
+  if (englishMatch?.[1]) return cleanFieldName(englishMatch[1]);
+
+  const chineseMatch = text.match(/[「\"]?([^「」\"]+?)[」\"]?字段(?:名)?(?:不存在|不存在于表中)/);
+  if (chineseMatch?.[1]) return cleanFieldName(chineseMatch[1]);
+
+  return null;
+}
+
+function errorText(error: unknown): string {
+  const parts: string[] = [];
+  if (error instanceof Error) {
+    parts.push(error.message, error.name);
+  } else if (error != null) {
+    parts.push(String(error));
+  }
+
+  const maybeException = error as { getResponse?: () => unknown; response?: unknown };
+  try {
+    const response = maybeException?.getResponse?.() ?? maybeException?.response;
+    if (typeof response === 'string') {
+      parts.push(response);
+    } else if (response) {
+      parts.push(JSON.stringify(response));
+    }
+  } catch {
+    // ignore non-serializable exception payloads
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
+function cleanFieldName(value: string): string {
+  return value.trim().replace(/^[「"'“”]+|[」"'“”]+$/g, '');
+}
+
+function cellText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(cellText).filter(Boolean).join('、');
+  }
+  if (typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    if (typeof objectValue.name === 'string') return objectValue.name;
+    if (typeof objectValue.text === 'string') return objectValue.text;
+    if (typeof objectValue.id === 'string' || typeof objectValue.id === 'number') {
+      return String(objectValue.id);
+    }
+  }
+  return '';
 }
