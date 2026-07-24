@@ -218,6 +218,8 @@ const TrackingDetailPage = () => {
                     ?.permissionKey || 'canEditRequirement'
                 ]
               }
+              actorId={actor.id}
+              actorLarkId={actor.larkId}
               onSaved={handleSaved}
             />
           </div>

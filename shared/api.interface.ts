@@ -207,7 +207,10 @@ export interface GetTrackingDetailResponse {
 // 更新主表字段
 export interface UpdateTrackingRecordRequest {
   fields: Record<string, unknown>;
+  stageId?: string;
   targetStage?: string;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
 export interface UpdateTrackingRecordResponse {
@@ -257,6 +260,8 @@ export interface CreateParamRequest {
   status: string;
   version?: string;
   changeType?: string;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
 export interface CreateParamResponse {
@@ -266,6 +271,8 @@ export interface CreateParamResponse {
 
 export interface UpdateParamRequest {
   fields: Record<string, unknown>;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
 export interface UpdateParamResponse {

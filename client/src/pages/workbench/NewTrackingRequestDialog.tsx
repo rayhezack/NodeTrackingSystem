@@ -67,11 +67,11 @@ const defaultParticipants = (
       }]
     : [];
   return {
-    requesterIds: [],
+    requesterIds: currentUser,
     recorderIds: currentUser,
-    dataOwnerIds: currentUser,
+    dataOwnerIds: [],
     devOwnerIds: [],
-    dsAcceptorIds: currentUser,
+    dsAcceptorIds: [],
   };
 };
 
@@ -116,7 +116,7 @@ export default function NewTrackingRequestDialog({
       toast.error('请输入需求名称');
       return;
     }
-    if (!actorId) {
+    if (!actorId && !actorLarkId) {
       toast.error('未识别当前用户，无法创建需求');
       return;
     }

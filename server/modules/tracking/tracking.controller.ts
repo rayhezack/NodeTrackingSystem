@@ -100,7 +100,11 @@ export class TrackingController {
   }
 
   @Delete('params/:paramRecordId')
-  deleteParam(@Param('paramRecordId') paramRecordId: string) {
-    return this.trackingService.deleteParam(paramRecordId);
+  deleteParam(
+    @Param('paramRecordId') paramRecordId: string,
+    @Query('actorId') actorId?: string,
+    @Query('actorLarkId') actorLarkId?: string,
+  ) {
+    return this.trackingService.deleteParam(paramRecordId, actorId, actorLarkId);
   }
 }

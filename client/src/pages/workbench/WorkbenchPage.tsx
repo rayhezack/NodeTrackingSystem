@@ -24,7 +24,7 @@ const WorkbenchPage = () => {
   const userProfile = useCurrentUserProfile();
   const actor = getCurrentActor(userProfile);
   const [createOpen, setCreateOpen] = useState(false);
-  const [canCreate, setCanCreate] = useState(true);
+  const canCreate = Boolean(actor.id || actor.larkId);
 
   // 阶段统计
   const [stats, setStats] = useState<StageStat[]>([]);
@@ -126,27 +126,6 @@ const WorkbenchPage = () => {
   }, [loadStats, loadTodos]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await trackingApi.getPermissionConfig(actor.id);
-        if (cancelled) return;
-        setCanCreate(
-          !res.initialized ||
-            res.config.admins.includes(actor.id || '') ||
-            res.config.dataScientists.includes(actor.id || ''),
-        );
-      } catch (err) {
-        logger.warn('权限配置读取失败，保留新增入口', err);
-        if (!cancelled) setCanCreate(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [actor.id]);
-
-  useEffect(() => {
     loadRecords(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword, stageFilter, priorityFilter, platformFilter]);
@@ -191,7 +170,7 @@ const WorkbenchPage = () => {
             className="h-8 rounded-sm"
             onClick={() => setCreateOpen(true)}
             disabled={!canCreate}
-            title={canCreate ? '新增埋点需求' : '只有管理员或 DS 可以新增需求'}
+            title={canCreate ? '新增埋点需求' : '未识别当前用户，无法新增需求'}
           >
             <Plus className="h-4 w-4" />
             新增需求

@@ -185,10 +185,13 @@ export async function updateParam(
 
 export async function deleteParam(
   paramRecordId: string,
+  actorId?: string,
+  actorLarkId?: string,
 ): Promise<DeleteParamResponse> {
   try {
     const response = await axiosForBackend.delete(
       `/api/tracking/params/${paramRecordId}`,
+      { params: { actorId, actorLarkId } },
     );
     return response.data;
   } catch (error) {

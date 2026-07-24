@@ -16,6 +16,7 @@ describe('埋点参数 Base 回写', () => {
     const service = new TrackingService(bitable as unknown as BitableService);
 
     await service.createParam('app:rec_design', {
+      actorId: '1867390536304713',
       evtId: 'test_event',
       paramName: 'button_name',
       paramType: 'STRING',
@@ -45,6 +46,7 @@ describe('埋点参数 Base 回写', () => {
     const service = new TrackingService(bitable as unknown as BitableService);
 
     await service.createParam('web:rec_design', {
+      actorId: '1867390536304713',
       evtId: 'web_event',
       paramName: 'button_name',
       paramType: 'STRING',
@@ -72,6 +74,7 @@ describe('埋点参数 Base 回写', () => {
     const service = new TrackingService(bitable as unknown as BitableService);
 
     await service.createParam('app:rec_design', {
+      actorId: '1867390536304713',
       evtId: 'test_event',
       paramName: 'entry_source',
       paramType: 'STRING',
@@ -83,5 +86,34 @@ describe('埋点参数 Base 回写', () => {
     expect(bitable.batchAddRecords).toHaveBeenCalledWith('paramDetail', [
       expect.objectContaining({ 必传规则: '条件必传' }),
     ]);
+  });
+
+  it('普通提需人不能越权新增设计参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: {
+          evt_id: 'test_event',
+          流程阶段: '埋点设计',
+          需求提出人: [{ id: '1001', name: '产品同学' }],
+          数据负责人: [{ id: '2001', name: '数据负责人' }],
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.createParam('app:rec_design', {
+        actorId: '1001',
+        evtId: 'test_event',
+        paramName: 'button_name',
+        paramType: 'STRING',
+        required: true,
+        status: '草稿',
+      }),
+    ).rejects.toThrow('无权限维护参数');
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
   });
 });

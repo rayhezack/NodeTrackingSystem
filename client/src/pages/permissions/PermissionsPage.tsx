@@ -15,38 +15,26 @@ import type { PermissionConfig } from '@shared/api.interface';
 
 type RoleKey = keyof Pick<
   PermissionConfig,
-  'admins' | 'dataScientists' | 'developers' | 'acceptors' | 'viewers'
+  'admins' | 'viewers'
 >;
 
 const ROLE_CONFIG: Array<{
   key: RoleKey;
   label: string;
   desc: string;
+  editable: boolean;
 }> = [
   {
     key: 'admins',
     label: '管理员',
-    desc: '管理权限配置，拥有全部需求、设计、开发、验收、上线和归档权限。',
-  },
-  {
-    key: 'dataScientists',
-    label: 'DS / 数据负责人',
-    desc: '可新增需求，编辑需求、埋点设计、参数、评审、验收、上线和归档节点。',
-  },
-  {
-    key: 'developers',
-    label: '研发负责人',
-    desc: '可编辑埋点开发节点；具体需求也会继续兼容 Base 记录内的研发负责人字段。',
-  },
-  {
-    key: 'acceptors',
-    label: '验收人',
-    desc: '可编辑数据验收节点；适合让专项验收同学参与。',
+    desc: '管理权限配置，并拥有所有需求、设计、开发、验收、上线和归档权限。',
+    editable: true,
   },
   {
     key: 'viewers',
-    label: '只读用户',
-    desc: '可查看工作台、需求详情和正式查询库，不授予编辑权限。',
+    label: '普通用户',
+    desc: '由飞书 Workplace 的应用可见范围自动决定：能进入应用且可被识别的内部成员，都可查看并自由提交新需求。',
+    editable: false,
   },
 ];
 
@@ -112,12 +100,18 @@ export default function PermissionsPage() {
         actorId: actor.id,
         actorLarkId: actor.larkId,
         actorName: actor.name,
-        config,
+        config: {
+          ...config,
+          viewers: [],
+          dataScientists: [],
+          developers: [],
+          acceptors: [],
+        },
       });
       setConfig(res.config);
       setCanManage(true);
       setInitialized(true);
-      toast.success('权限配置已保存，并已同步写入 Base');
+      toast.success('权限配置已保存；项目角色权限将跟随具体需求生效');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '保存失败';
       toast.error(msg);
@@ -136,7 +130,7 @@ export default function PermissionsPage() {
               权限配置
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              配置埋点管理平台内的业务角色；仅搜索公司内部员工，飞书 Workplace 只控制入口可见，这里控制新增和编辑权限。
+              全局权限只配置管理员和普通用户；数据负责人、研发负责人、DS 验收人等项目角色在每条需求中指定。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -187,7 +181,7 @@ export default function PermissionsPage() {
         <div className="rounded-sm border border-border bg-card">
           {loading ? (
             <div className="space-y-4 p-4">
-              {Array.from({ length: 5 }).map((_, index) => (
+              {Array.from({ length: 2 }).map((_, index) => (
                 <div key={index} className="space-y-2">
                   <Skeleton className="h-4 w-28 rounded-sm" />
                   <Skeleton className="h-8 w-full rounded-sm" />
@@ -205,25 +199,32 @@ export default function PermissionsPage() {
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-medium text-foreground">{role.label}</h2>
                       <Badge variant="outline" className="h-5 rounded-sm text-[10px]">
-                        {(config[role.key] || []).length} 人
+                        {role.editable ? `${(config[role.key] || []).length} 人` : '自动'}
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       {role.desc}
                     </p>
                   </div>
-                  <UserSelect
-                    multiple
-                    valueType="string"
-                    accountType="apaas"
-                    value={config[role.key] || []}
-                    onChange={(value) => updateRole(role.key, value)}
-                    disabled={!canManage || saving}
-                    placeholder="搜索公司内部成员"
-                    tagClosable={canManage && !saving}
-                    needFullFields
-                    includeExternalContacts={false}
-                  />
+                  {role.editable ? (
+                    <UserSelect
+                      multiple
+                      valueType="string"
+                      accountType="apaas"
+                      value={config[role.key] || []}
+                      onChange={(value) => updateRole(role.key, value)}
+                      disabled={!canManage || saving}
+                      placeholder="搜索公司内部成员"
+                      tagClosable={canManage && !saving}
+                      needFullFields
+                      includeExternalContacts={false}
+                    />
+                  ) : (
+                    <div className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                      普通用户无需逐个添加；如需限制哪些同事能进入应用，请在飞书 Workplace / 妙搭应用发布范围中调整。
+                      被加入某条需求的提需人、录入人、数据负责人、研发负责人或 DS 验收人，会自动获得对应项目节点权限。
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

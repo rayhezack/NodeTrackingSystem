@@ -147,6 +147,7 @@ const TRACKING_SOURCES: TrackingSource[] = ['app', 'web'];
 
 type Cell = unknown;
 type ScopedRecordRef = { source: TrackingSource; rawId: string };
+type PermissionKey = keyof StagePermissions;
 
 const USER_FIELD_NAMES = new Set([
   '需求提出人',
@@ -156,6 +157,88 @@ const USER_FIELD_NAMES = new Set([
   'DS验收人',
 ]);
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
+const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
+  requirement: 'canEditRequirement',
+  design: 'canEditDesign',
+  review: 'canEditReview',
+  dev: 'canEditDev',
+  acceptance: 'canEditAcceptance',
+  launch: 'canEditLaunch',
+  archive: 'canEditArchive',
+};
+const FIELD_PERMISSION_BY_STAGE_ID: Record<string, Record<string, PermissionKey>> = {
+  requirement: {
+    '需求提出人': 'canEditRequirement',
+    '需求录入人': 'canEditRequirement',
+    '需求背景': 'canEditRequirement',
+    '需求链接': 'canEditRequirement',
+    '指标/使用场景': 'canEditRequirement',
+    '优先级': 'canEditRequirement',
+    '端': 'canEditRequirement',
+    '数据负责人': 'canEditRequirement',
+    '研发负责人': 'canEditRequirement',
+    'DS验收人': 'canEditRequirement',
+  },
+  design: {
+    'evt_id': 'canEditDesign',
+    '事件中文名': 'canEditDesign',
+    '优先级': 'canEditDesign',
+    '端': 'canEditDesign',
+    '事件定义': 'canEditDesign',
+    '触发时机': 'canEditDesign',
+    'UI图': 'canEditDesign',
+    '处理方': 'canEditDesign',
+    '公共属性要求': 'canEditDesign',
+    '版本': 'canEditDesign',
+    '最低版本': 'canEditDesign',
+    '变更类型': 'canEditDesign',
+    '评审状态': 'canEditDesign',
+  },
+  review: {
+    '评审状态': 'canEditReview',
+    '评审意见': 'canEditReview',
+  },
+  dev: {
+    '研发负责人': 'canEditDev',
+    '埋点开发状态': 'canEditDev',
+  },
+  acceptance: {
+    'DS验收人': 'canEditAcceptance',
+    'DS验收状态': 'canEditAcceptance',
+    'DS验收证据': 'canEditAcceptance',
+    'DS验收时间': 'canEditAcceptance',
+  },
+  launch: {
+    '发布门禁状态': 'canEditLaunch',
+    '发布门禁失败原因': 'canEditLaunch',
+    '发布状态': 'canEditLaunch',
+    '发布错误': 'canEditLaunch',
+    '上线监控状态': 'canEditLaunch',
+    '上线监控结论': 'canEditLaunch',
+    '发布时间': 'canEditLaunch',
+  },
+  archive: {
+    '正式状态': 'canEditArchive',
+    '稳定归档时间': 'canEditArchive',
+  },
+};
+const FIELD_PERMISSION_BY_NAME: Record<string, PermissionKey> = {
+  ...FIELD_PERMISSION_BY_STAGE_ID.requirement,
+  ...FIELD_PERMISSION_BY_STAGE_ID.design,
+  ...FIELD_PERMISSION_BY_STAGE_ID.review,
+  ...FIELD_PERMISSION_BY_STAGE_ID.dev,
+  ...FIELD_PERMISSION_BY_STAGE_ID.acceptance,
+  ...FIELD_PERMISSION_BY_STAGE_ID.launch,
+  ...FIELD_PERMISSION_BY_STAGE_ID.archive,
+};
+const TARGET_STAGE_PERMISSION_BY_BASE_STAGE: Record<string, PermissionKey> = {
+  '埋点设计': 'canEditRequirement',
+  '评审通过': 'canEditReview',
+  '数据验收': 'canEditDev',
+  '上线监控': 'canEditAcceptance',
+  '稳定归档': 'canEditLaunch',
+  '已废弃': 'canEditArchive',
+};
 
 @Injectable()
 export class TrackingService {
@@ -290,7 +373,6 @@ export class TrackingService {
       : {
           ...config,
           admins: actorId ? [actorId] : [],
-          dataScientists: actorId ? [actorId] : [],
         };
 
     return {
@@ -331,6 +413,10 @@ export class TrackingService {
     const nextConfig = normalizePermissionConfig({
       ...body.config,
       admins: uniqueStrings([...(body.config?.admins || []), actorId]),
+      dataScientists: [],
+      developers: [],
+      acceptors: [],
+      viewers: [],
       updatedAt: Date.now(),
       updatedBy: actorId,
     });
@@ -381,7 +467,9 @@ export class TrackingService {
     }
 
     const actorCellId = body.actorId;
-    const requesterCells = createUserCells(body.requesterIds);
+    const requesterCells = createUserCells(
+      body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : [],
+    );
     const recorderCells = createUserCells(
       body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
     );
@@ -462,6 +550,7 @@ export class TrackingService {
     if (!current) {
       throw new NotFoundException('埋点需求不存在');
     }
+    await this.assertCanUpdateRecord(current, body);
 
     const patch = { ...(body.fields || {}) };
     let currentStage = cellText(current.record['流程阶段']);
@@ -533,6 +622,7 @@ export class TrackingService {
     if (!detail) {
       throw new NotFoundException('埋点需求不存在');
     }
+    await this.assertCanEditParams(detail, body.actorId, body.actorLarkId);
     const evtId = body.evtId || cellText(detail.record['evt_id']);
     const paramName = body.paramName.trim();
     if (!evtId || !paramName) {
@@ -551,6 +641,13 @@ export class TrackingService {
     body: UpdateParamRequest,
   ): Promise<UpdateParamResponse> {
     const ref = parseScopedRecordId(paramRecordId);
+    const paramRecord = await this.bitable.getRecord(paramDetailKey(ref.source), ref.rawId);
+    if (!paramRecord) {
+      throw new NotFoundException('埋点参数不存在');
+    }
+    const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
+    await this.assertCanEditParams(designRecord, body.actorId, body.actorLarkId);
+
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields)
       ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source)
@@ -611,8 +708,19 @@ export class TrackingService {
     await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
   }
 
-  async deleteParam(paramRecordId: string): Promise<DeleteParamResponse> {
+  async deleteParam(
+    paramRecordId: string,
+    actorId?: string,
+    actorLarkId?: string,
+  ): Promise<DeleteParamResponse> {
     const ref = parseScopedRecordId(paramRecordId);
+    const paramRecord = await this.bitable.getRecord(paramDetailKey(ref.source), ref.rawId);
+    if (!paramRecord) {
+      throw new NotFoundException('埋点参数不存在');
+    }
+    const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
+    await this.assertCanEditParams(designRecord, actorId, actorLarkId);
+
     await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [
       { id: ref.rawId, record: { '参数状态': '废弃' } },
     ]);
@@ -620,23 +728,95 @@ export class TrackingService {
   }
 
   private async assertCanCreateRecord(actorId?: string, actorLarkId?: string): Promise<void> {
-    const stored = await this.getPermissionRecord();
-    if (!stored) return;
-
-    const config = parsePermissionConfig(stored.record['需求背景']);
     const actors = uniqueStrings([actorId || '', actorLarkId || '']);
     if (!actors.length) {
       throw new ForbiddenException('无法识别当前用户，不能新增需求');
     }
-    const canCreate = actors.some(
-      (actor) =>
-        config.admins.includes(actor) ||
-        config.dataScientists.includes(actor) ||
-        isBootstrapAdmin(actor),
+  }
+
+  private async assertCanUpdateRecord(
+    record: BitableRecord,
+    body: UpdateTrackingRecordRequest,
+  ): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(
+      record,
+      body.actorId,
+      body.actorLarkId,
+      '更新需求',
     );
-    if (!canCreate) {
-      throw new ForbiddenException('只有管理员或 DS 可以新增埋点需求');
+    const requiredPermissions = getRequiredPermissionsForUpdate(body);
+    const denied = requiredPermissions.filter((permission) => !permissions[permission]);
+    if (denied.length) {
+      throw new ForbiddenException('当前用户无权限更新该节点');
     }
+  }
+
+  private async assertCanEditParams(
+    record: BitableRecord,
+    actorId?: string,
+    actorLarkId?: string,
+  ): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(
+      record,
+      actorId,
+      actorLarkId,
+      '维护参数',
+    );
+    if (!permissions.canEditParams) {
+      throw new ForbiddenException('当前用户无权限维护参数');
+    }
+  }
+
+  private async getActorPermissionsForRecord(
+    record: BitableRecord,
+    actorId: string | undefined,
+    actorLarkId: string | undefined,
+    actionLabel: string,
+  ): Promise<StagePermissions> {
+    const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
+    if (!actorCandidates.length) {
+      throw new ForbiddenException(`无法识别当前用户，不能${actionLabel}`);
+    }
+    if (actorCandidates.some((candidate) => isBootstrapAdmin(candidate))) {
+      return fullStagePermissions();
+    }
+
+    const permissionConfig = await this.getStoredPermissionConfig();
+    return calculateRawRecordPermissions(
+      record.record,
+      actorId,
+      actorLarkId,
+      permissionConfig,
+    );
+  }
+
+  private async findDesignRecordForParam(
+    source: TrackingSource,
+    paramRecord: BitableRecord,
+  ): Promise<BitableRecord> {
+    const sourceRecordId = cellText(paramRecord.record['来源设计记录ID']);
+    const linkedRecordIds = cellIds(paramRecord.record['关联设计']);
+    const candidateIds = uniqueStrings([sourceRecordId, ...linkedRecordIds])
+      .map((id) => normalizeScopedRawId(id, source));
+
+    for (const candidateId of candidateIds) {
+      const designRecord = await this.bitable.getRecord(workbenchKey(source), candidateId);
+      if (designRecord) return designRecord;
+    }
+
+    const evtId = cellText(paramRecord.record['evt_id']).trim().toLowerCase();
+    if (evtId) {
+      const result = await this.bitable.searchRecords(workbenchKey(source), {
+        fieldNames: [...WORKBENCH_FIELDS],
+        pageSize: 200,
+      });
+      const designRecord = result.records.find(
+        (item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId,
+      );
+      if (designRecord) return designRecord;
+    }
+
+    throw new NotFoundException('参数关联的埋点需求不存在');
   }
 
   private async getStoredPermissionConfig(): Promise<PermissionConfig | null> {
@@ -729,6 +909,7 @@ export class TrackingService {
     const dsAcceptor = cellUsers(record.record['DS验收人']);
     const actor = actorId || actorLarkId || '';
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
+    const stage = cellText(record.record['流程阶段']) || '需求录入';
 
     return {
       ...this.toTrackingRecord(record, source),
@@ -795,6 +976,7 @@ export class TrackingService {
             devOwner.ids,
             dsAcceptor.ids,
             permissionConfig,
+            stage,
           )
         : calculatePermissions('', [], [], []),
     };
@@ -1221,6 +1403,83 @@ function parseScopedRecordId(recordId: string): ScopedRecordRef {
   return { source: 'app', rawId: recordId };
 }
 
+function normalizeScopedRawId(recordId: string, source: TrackingSource): string {
+  const trimmed = String(recordId || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('app:') || trimmed.startsWith('web:')) {
+    const parsed = parseScopedRecordId(trimmed);
+    return parsed.source === source ? parsed.rawId : '';
+  }
+  return trimmed;
+}
+
+function calculateRawRecordPermissions(
+  record: Record<string, Cell>,
+  actorId?: string,
+  actorLarkId?: string,
+  permissionConfig?: PermissionConfig | null,
+): StagePermissions {
+  const requester = cellUsers(record['需求提出人']);
+  const recorder = cellUsers(record['需求录入人']);
+  const dataOwner = cellUsers(record['数据负责人']);
+  const devOwner = cellUsers(record['研发负责人']);
+  const dsAcceptor = cellUsers(record['DS验收人']);
+  const actor = actorId || actorLarkId || '';
+  const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
+
+  return calculateRecordPermissions(
+    actor,
+    actorCandidates,
+    requester.ids,
+    recorder.ids,
+    dataOwner.ids,
+    devOwner.ids,
+    dsAcceptor.ids,
+    permissionConfig,
+    cellText(record['流程阶段']) || '需求录入',
+  );
+}
+
+function getRequiredPermissionsForUpdate(
+  body: UpdateTrackingRecordRequest,
+): PermissionKey[] {
+  const required = new Set<PermissionKey>();
+  const stageId = String(body.stageId || '').trim();
+  const stageFieldPermissions = FIELD_PERMISSION_BY_STAGE_ID[stageId] || {};
+
+  for (const fieldName of Object.keys(body.fields || {})) {
+    if (fieldName === '流程阶段') {
+      required.add(STAGE_PERMISSION_BY_STAGE_ID[stageId] || 'canEditDesign');
+      continue;
+    }
+
+    required.add(
+      stageFieldPermissions[fieldName] ||
+        FIELD_PERMISSION_BY_NAME[fieldName] ||
+        'canEditDesign',
+    );
+  }
+
+  const transitionPermission = getTransitionPermission(body.targetStage, stageId);
+  if (transitionPermission) {
+    required.add(transitionPermission);
+  }
+
+  return Array.from(required);
+}
+
+function getTransitionPermission(
+  targetStage?: string,
+  stageId?: string,
+): PermissionKey | null {
+  if (!targetStage) return null;
+  return (
+    TARGET_STAGE_PERMISSION_BY_BASE_STAGE[getBaseStageFromUi(targetStage)] ||
+    (stageId ? STAGE_PERMISSION_BY_STAGE_ID[stageId] : undefined) ||
+    'canEditDesign'
+  );
+}
+
 function mergePermissions(items: StagePermissions[]): StagePermissions {
   return {
     canEditRequirement: items.some((item) => item.canEditRequirement),
@@ -1353,6 +1612,7 @@ function calculateRecordPermissions(
   devOwner: string[],
   dsAcceptor: string[],
   permissionConfig?: PermissionConfig | null,
+  currentStage?: string,
 ) {
   const candidates = uniqueStrings([actorId, ...actorCandidates]);
   const base = mergePermissions(
@@ -1362,29 +1622,25 @@ function calculateRecordPermissions(
   );
   const canEditRequirementByRequester = candidates.some(
     (candidate) => requesters.includes(candidate) || recorders.includes(candidate),
-  );
+  ) && (!currentStage || currentStage === '需求录入');
   if (candidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return fullStagePermissions();
   }
-  if (!permissionConfig) return base;
+  if (!permissionConfig) {
+    return {
+      ...base,
+      canEditRequirement: base.canEditRequirement || canEditRequirementByRequester,
+    };
+  }
 
   const hasRole = (roleIds: string[]) => candidates.some((candidate) => roleIds.includes(candidate));
   const isAdmin = hasRole(permissionConfig.admins);
-  const isDs = hasRole(permissionConfig.dataScientists);
-  const isDeveloper = hasRole(permissionConfig.developers);
-  const isAcceptor = hasRole(permissionConfig.acceptors);
 
   if (isAdmin) return fullStagePermissions();
 
   return {
-    canEditRequirement: base.canEditRequirement || isDs || canEditRequirementByRequester,
-    canEditDesign: base.canEditDesign || isDs,
-    canEditReview: base.canEditReview || isDs,
-    canEditDev: base.canEditDev || isDeveloper,
-    canEditAcceptance: base.canEditAcceptance || isDs || isAcceptor,
-    canEditLaunch: base.canEditLaunch || isDs,
-    canEditArchive: base.canEditArchive || isDs,
-    canEditParams: base.canEditParams || isDs,
+    ...base,
+    canEditRequirement: base.canEditRequirement || canEditRequirementByRequester,
   };
 }
 

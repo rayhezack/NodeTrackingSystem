@@ -1,11 +1,12 @@
 import type { TrackingUserRef, UpdateTrackingRecordRequest } from '@shared/api.interface';
 
 export function buildStageUpdateRequest(
-  _stageId: string,
+  stageId: string,
   fields: Record<string, unknown>,
   dirtyFieldNames: Set<string>,
 ): UpdateTrackingRecordRequest {
   return {
+    stageId,
     fields: pickDirtyFields(fields, dirtyFieldNames),
   };
 }
@@ -21,26 +22,31 @@ export function buildStageCompletionRequest(
   switch (stageId) {
     case 'requirement':
       return {
+        stageId,
         fields: dirtyFields,
         targetStage: '埋点设计',
       };
     case 'design':
       return {
+        stageId,
         fields: { ...dirtyFields, '评审状态': '评审中' },
       };
     case 'review':
       return {
+        stageId,
         fields: { ...dirtyFields, '评审状态': '已通过' },
         targetStage: '评审通过',
       };
     case 'dev':
       return {
+        stageId,
         fields: { ...dirtyFields, '埋点开发状态': '已开发' },
         targetStage: '数据验收',
       };
     case 'acceptance': {
       const acceptanceStatus = fields['DS验收状态'] === '豁免' ? '豁免' : '通过';
       return {
+        stageId,
         fields: {
           ...dirtyFields,
           'DS验收状态': acceptanceStatus,
@@ -52,6 +58,7 @@ export function buildStageCompletionRequest(
     case 'launch': {
       const monitorStatus = fields['上线监控状态'] === '豁免' ? '豁免' : '通过';
       return {
+        stageId,
         fields: {
           ...dirtyFields,
           '发布状态': '发布成功',
@@ -64,6 +71,7 @@ export function buildStageCompletionRequest(
     case 'archive': {
       const officialStatus = fields['正式状态'] === '已废弃' ? '已废弃' : '已上线';
       return {
+        stageId,
         fields: {
           ...dirtyFields,
           '正式状态': officialStatus,
@@ -73,7 +81,7 @@ export function buildStageCompletionRequest(
       };
     }
     default:
-      return { fields: dirtyFields };
+      return { stageId, fields: dirtyFields };
   }
 }
 

@@ -55,6 +55,8 @@ interface StageFormProps {
   stageId: string;
   detail: TrackingDetail;
   canEdit: boolean;
+  actorId?: string;
+  actorLarkId?: string;
   onSaved?: () => void;
 }
 
@@ -110,7 +112,14 @@ function getFieldValue(
   return String(val);
 }
 
-const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
+const StageForm = ({
+  stageId,
+  detail,
+  canEdit,
+  actorId,
+  actorLarkId,
+  onSaved,
+}: StageFormProps) => {
   const stageConfig: StageConfig | undefined = SIDEBAR_STAGES.find((s) => s.id === stageId);
   const [formData, setFormData] = useState<Record<string, FormValue>>({});
   const [dirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
@@ -174,7 +183,11 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
         fields,
         dirtyFieldNames,
       );
-      await updateTrackingRecord(detail.recordId, request);
+      await updateTrackingRecord(detail.recordId, {
+        ...request,
+        actorId,
+        actorLarkId,
+      });
       toast.success('保存成功');
       onSaved?.();
     } catch (error) {
@@ -195,7 +208,11 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
         fields,
         dirtyFieldNames,
       );
-      await updateTrackingRecord(detail.recordId, request);
+      await updateTrackingRecord(detail.recordId, {
+        ...request,
+        actorId,
+        actorLarkId,
+      });
       toast.success(`${stageConfig.label}已标记完成`);
       await onSaved?.();
     } catch (error) {
@@ -338,6 +355,8 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
             source={detail.source}
             evtId={toTextValue(formData.evtId) || detail.evtId}
             canEdit={detail.permissions.canEditParams}
+            actorId={actorId}
+            actorLarkId={actorLarkId}
           />
         </div>
       )}

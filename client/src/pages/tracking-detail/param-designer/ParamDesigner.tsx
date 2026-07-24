@@ -26,9 +26,18 @@ interface ParamDesignerProps {
   source: TrackingSource;
   evtId: string;
   canEdit: boolean;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
-const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps) => {
+const ParamDesigner = ({
+  recordId,
+  source,
+  evtId,
+  canEdit,
+  actorId,
+  actorLarkId,
+}: ParamDesignerProps) => {
   const [items, setItems] = useState<ParamDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,10 +89,16 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
 
   const handleFormSubmit = async (data: CreateParamRequest) => {
     if (formMode === 'create') {
-      await createParam(recordId, data);
+      await createParam(recordId, {
+        ...data,
+        actorId,
+        actorLarkId,
+      });
     } else if (editingParam) {
       await updateParam(editingParam.recordId, {
         fields: data as unknown as Record<string, unknown>,
+        actorId,
+        actorLarkId,
       });
     }
     await loadParams();
@@ -91,7 +106,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
 
   const handleDeleteConfirm = async () => {
     if (!deletingParam) return;
-    await deleteParam(deletingParam.recordId);
+    await deleteParam(deletingParam.recordId, actorId, actorLarkId);
     await loadParams();
   };
 

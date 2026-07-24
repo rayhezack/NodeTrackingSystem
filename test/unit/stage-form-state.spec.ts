@@ -75,6 +75,7 @@ describe('详情阶段表单状态', () => {
     );
 
     expect(request).toEqual({
+      stageId: 'design',
       fields: {
         'evt_id': 'test_event',
         '事件定义': '点击测试按钮时上报',
@@ -93,6 +94,7 @@ describe('详情阶段表单状态', () => {
         new Set(['需求背景']),
       ),
     ).toEqual({
+      stageId: 'requirement',
       fields: { '需求背景': '验证工作流' },
     });
   });
@@ -123,6 +125,7 @@ describe('详情阶段表单状态', () => {
     );
 
     expect(request).toEqual({
+      stageId: 'design',
       fields: {
         '事件定义': '点击时上报',
         '评审状态': '评审中',
