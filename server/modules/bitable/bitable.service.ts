@@ -535,7 +535,7 @@ function toNumberArray(value: unknown): number[] {
   );
 }
 
-function toDateTimeCell(value: unknown): number | unknown | undefined {
+function toDateTimeCell(value: unknown): number | undefined {
   if (value == null || value === '') return undefined;
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : undefined;
@@ -544,7 +544,9 @@ function toDateTimeCell(value: unknown): number | unknown | undefined {
     const timestamp = value.getTime();
     return Number.isFinite(timestamp) ? timestamp : undefined;
   }
-  if (typeof value !== 'string') return value;
+  if (typeof value !== 'string') {
+    throw new BadRequestException('日期字段格式错误，请使用有效日期时间');
+  }
 
   const text = value.trim();
   if (!text) return undefined;
@@ -552,7 +554,10 @@ function toDateTimeCell(value: unknown): number | unknown | undefined {
     ? text.replace(' ', 'T')
     : text;
   const timestamp = Date.parse(localDateTime);
-  return Number.isFinite(timestamp) ? timestamp : value;
+  if (!Number.isFinite(timestamp)) {
+    throw new BadRequestException(`日期格式错误：${text}`);
+  }
+  return timestamp;
 }
 
 function toUrlCell(value: unknown): { text: string; link: string } | undefined {
@@ -562,12 +567,24 @@ function toUrlCell(value: unknown): { text: string; link: string } | undefined {
     const link = cellText(objectValue.link || objectValue.url || objectValue.href).trim();
     const text = cellText(objectValue.text || objectValue.name || link).trim();
     if (!link) return undefined;
+    assertHttpUrl(link);
     return { text: text || link, link };
   }
 
   const link = cellText(value).trim();
   if (!link) return undefined;
+  assertHttpUrl(link);
   return { text: link, link };
+}
+
+function assertHttpUrl(value: string): void {
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return;
+  } catch {
+    // Fall through to the consistent API error below.
+  }
+  throw new BadRequestException(`链接格式错误：${value}`);
 }
 
 function toFileAttachmentArray(value: unknown): unknown[] {
@@ -607,13 +624,16 @@ function toLinkArray(value: unknown): unknown {
 
 function extractNumericId(value: unknown): number | null {
   if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? value : null;
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
   }
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!/^\d+$/.test(trimmed)) return null;
     const id = Number(trimmed);
-    return Number.isFinite(id) && id > 0 ? id : null;
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new BadRequestException(`人员 ID 超出安全范围：${trimmed}`);
+    }
+    return id;
   }
   if (value && typeof value === 'object') {
     const user = value as Record<string, unknown>;

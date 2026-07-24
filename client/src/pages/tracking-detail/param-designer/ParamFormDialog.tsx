@@ -11,7 +11,6 @@ import {
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
 import { Textarea } from '@client/src/components/ui/textarea';
-import { Switch } from '@client/src/components/ui/switch';
 import {
   Select,
   SelectTrigger,
@@ -22,6 +21,7 @@ import {
 import FormField from './FormField';
 import {
   PARAM_TYPE_OPTIONS,
+  REQUIRED_RULE_OPTIONS,
   APP_PLATFORM_OPTIONS,
   WEB_PLATFORM_OPTIONS,
   STATUS_OPTIONS,
@@ -44,11 +44,12 @@ const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest 
   paramName: '',
   paramType: 'STRING',
   required: false,
+  requiredRule: '非必传',
   enumRange: '',
   definition: '',
   defaultValue: '',
   example: '',
-  platform: source === 'web' ? 'Web通用' : 'iOS、Android',
+  platform: source === 'web' ? 'Web通用' : 'App通用',
   status: '草稿',
   version: '',
   changeType: '新增',
@@ -74,6 +75,7 @@ const ParamFormDialog = ({
         paramName: initialData.paramName,
         paramType: initialData.paramType || 'STRING',
         required: initialData.required,
+        requiredRule: initialData.requiredRule || (initialData.required ? '必传' : '非必传'),
         enumRange: initialData.enumRange,
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
@@ -101,6 +103,7 @@ const ParamFormDialog = ({
     try {
       await onSubmit({
         ...form,
+        required: form.requiredRule !== '非必传',
         paramKey: buildParamKey(form.evtId, form.paramName),
       });
       toast.success(mode === 'create' ? '新增参数成功' : '编辑参数成功');
@@ -170,14 +173,24 @@ const ParamFormDialog = ({
             </Select>
           </FormField>
 
-          <FormField label="是否必传">
-            <div className="flex items-center gap-2 h-8">
-              <Switch
-                checked={form.required}
-                onCheckedChange={(v) => updateField('required', v)}
-              />
-              <span className="text-xs text-foreground">{form.required ? '是' : '否'}</span>
-            </div>
+          <FormField label="必传规则">
+            <Select
+              value={form.requiredRule || (form.required ? '必传' : '非必传')}
+              onValueChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  requiredRule: value,
+                  required: value !== '非必传',
+                }))
+              }
+            >
+              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {REQUIRED_RULE_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option} className="text-xs">{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
 
           <FormField label="适用端">
@@ -295,10 +308,9 @@ function normalizePlatformValue(value: string | undefined, source: TrackingSourc
   const alias: Record<string, string> = {
     iOS: '仅iOS',
     Android: '仅Android',
-    'iOS,Android': 'iOS、Android',
-    'iOS, Android': 'iOS、Android',
-    App通用: 'iOS、Android',
-    仅App: 'iOS、Android',
+    'iOS、Android': 'App通用',
+    'iOS,Android': 'App通用',
+    'iOS, Android': 'App通用',
   };
-  return alias[raw] || raw || 'iOS、Android';
+  return alias[raw] || raw || 'App通用';
 }

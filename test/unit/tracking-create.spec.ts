@@ -35,4 +35,22 @@ describe('提需创建记录', () => {
     expect(record['研发负责人']).toEqual([1867390536304713]);
     expect(record['DS验收人']).toEqual([1867390536304713]);
   });
+
+  it('应在调用 Base 前拒绝会被 JavaScript 舍入的人员 ID', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.createRecord({
+        source: 'app',
+        eventName: '人员 ID 校验',
+        actorId: '1867390536304713',
+        requesterIds: ['7648831973842095079'],
+      }),
+    ).rejects.toThrow('人员 ID 超出安全范围');
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
 });

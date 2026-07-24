@@ -139,48 +139,53 @@ export function ParamDetailPanel({ rowData }: ParamDetailPanelProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rowData.items.map((param, idx) => (
-              <TableRow key={`${param.paramKey}-${idx}`}>
-                <TableCell className="font-mono text-xs">
-                  {param.paramKey || "-"}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {param.paramName || "-"}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {param.paramType || "-"}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {param.required ? (
-                    <Badge
-                      variant="outline"
-                      className="rounded-sm border-transparent text-[hsl(0_84%_60%)] bg-[hsl(0_84%_96%)]"
-                    >
-                      必传
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground">可选</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground whitespace-normal break-words max-w-xs">
-                  {param.enumRange || "-"}
-                </TableCell>
-                <TableCell className="text-xs text-foreground/80 whitespace-normal break-words max-w-md">
-                  <SmartCellValue
-                    value={param.definition}
-                    linkLabel={
-                      param.paramType === "LINK" ? "打开正式参数表" : undefined
-                    }
-                  />
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground font-mono whitespace-normal break-words max-w-xs">
-                  <SmartCellValue
-                    value={param.example}
-                    linkLabel={param.paramType === "LINK" ? "打开链接" : undefined}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
+            {rowData.items.map((param, idx) => {
+              const requiredRule =
+                param.requiredRule || (param.required ? '必传' : '非必传');
+
+              return (
+                <TableRow key={`${param.paramKey}-${idx}`}>
+                  <TableCell className="font-mono text-xs">
+                    {param.paramKey || "-"}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {param.paramName || "-"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {param.paramType || "-"}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {requiredRule !== '非必传' ? (
+                      <Badge
+                        variant="outline"
+                        className="rounded-sm border-transparent text-[hsl(0_84%_60%)] bg-[hsl(0_84%_96%)]"
+                      >
+                        {requiredRule}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">可选</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-normal break-words max-w-xs">
+                    {param.enumRange || "-"}
+                  </TableCell>
+                  <TableCell className="text-xs text-foreground/80 whitespace-normal break-words max-w-md">
+                    <SmartCellValue
+                      value={param.definition}
+                      linkLabel={
+                        param.paramType === "LINK" ? "打开正式参数表" : undefined
+                      }
+                    />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-mono whitespace-normal break-words max-w-xs">
+                    <SmartCellValue
+                      value={param.example}
+                      linkLabel={param.paramType === "LINK" ? "打开链接" : undefined}
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

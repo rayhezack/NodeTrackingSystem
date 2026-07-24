@@ -770,6 +770,7 @@ export class TrackingService {
       paramName,
       paramType: cellText(record.record['数据类型']) || 'STRING',
       required: requiredRule === '必传' || requiredRule === '条件必传',
+      requiredRule: normalizeRequiredRule(requiredRule),
       triggerCondition: cellText(record.record['条件说明']),
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
@@ -799,7 +800,7 @@ export class TrackingService {
       evt_id: eventId,
       '参数名': paramName,
       '数据类型': normalizeParamType(body.paramType),
-      '必传规则': body.required ? '必传' : '非必传',
+      '必传规则': normalizeRequiredRule(body.requiredRule, body.required),
       '条件说明': body.triggerCondition || '',
       '枚举/取值范围': body.enumRange || '',
       '参数定义': body.definition || '',
@@ -971,13 +972,16 @@ function createUserCells(value?: unknown): number[] {
 
 function extractNumericUserId(item: unknown): number | null {
   if (typeof item === 'number') {
-    return Number.isFinite(item) && item > 0 ? item : null;
+    return Number.isSafeInteger(item) && item > 0 ? item : null;
   }
   if (typeof item === 'string') {
     const trimmed = item.trim();
     if (!/^\d+$/.test(trimmed)) return null;
     const id = Number(trimmed);
-    return Number.isFinite(id) && id > 0 ? id : null;
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new BadRequestException(`人员 ID 超出安全范围：${trimmed}`);
+    }
+    return id;
   }
   if (item && typeof item === 'object') {
     const user = item as Record<string, unknown>;
@@ -1294,7 +1298,15 @@ function normalizeParamType(value?: string): string {
 function normalizeParamStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (!raw || raw === '正常' || raw === '已评审') return '草稿';
-  return raw;
+  return ['草稿', '评审中', '已通过', '已发布', '待补定义', '废弃'].includes(raw)
+    ? raw
+    : '草稿';
+}
+
+function normalizeRequiredRule(value?: string, required = false): string {
+  const raw = String(value || '').trim();
+  if (['必传', '非必传', '条件必传'].includes(raw)) return raw;
+  return required ? '必传' : '非必传';
 }
 
 function buildParamKey(evtId?: string, paramName?: string): string {
@@ -1315,6 +1327,15 @@ function normalizeWorkbenchPatch(
   }
   if (Object.prototype.hasOwnProperty.call(patch, '埋点开发状态')) {
     patch['埋点开发状态'] = normalizeDevStatus(cellText(patch['埋点开发状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '评审状态')) {
+    patch['评审状态'] = normalizeReviewStatus(cellText(patch['评审状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'DS验收状态')) {
+    patch['DS验收状态'] = normalizeAcceptanceStatus(cellText(patch['DS验收状态']));
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, '上线监控状态')) {
+    patch['上线监控状态'] = normalizeMonitorStatus(cellText(patch['上线监控状态']));
   }
   if (Object.prototype.hasOwnProperty.call(patch, '发布门禁状态')) {
     patch['发布门禁状态'] = normalizeGateStatus(cellText(patch['发布门禁状态']));
@@ -1354,6 +1375,28 @@ function normalizeDevStatus(value?: string): string {
   return ['未开始', '开发中', '已开发', '阻塞'].includes(raw) ? raw : '未开始';
 }
 
+function normalizeReviewStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  const normalized = raw === '需修改' ? '已拒绝' : raw;
+  return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized)
+    ? normalized
+    : '草稿';
+}
+
+function normalizeAcceptanceStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  return ['未开始', '验收中', '通过', '不通过', '豁免'].includes(raw)
+    ? raw
+    : '未开始';
+}
+
+function normalizeMonitorStatus(value?: string): string {
+  const raw = String(value || '').trim();
+  return ['未开始', '监控中', '通过', '异常', '豁免'].includes(raw)
+    ? raw
+    : '未开始';
+}
+
 function normalizeGateStatus(value?: string): string {
   const raw = String(value || '').trim();
   if (raw === '待检查') return '未检查';
@@ -1379,6 +1422,7 @@ function hasApiParamFields(fields: Record<string, unknown>): boolean {
     'paramName',
     'paramType',
     'required',
+    'requiredRule',
     'triggerCondition',
     'enumRange',
     'definition',
@@ -1399,7 +1443,9 @@ function toParamPatch(
   if (fields.evtId !== undefined) patch.evt_id = fields.evtId;
   if (fields.paramName !== undefined) patch['参数名'] = fields.paramName;
   if (fields.paramType !== undefined) patch['数据类型'] = normalizeParamType(fields.paramType);
-  if (fields.required !== undefined) patch['必传规则'] = fields.required ? '必传' : '非必传';
+  if (fields.requiredRule !== undefined || fields.required !== undefined) {
+    patch['必传规则'] = normalizeRequiredRule(fields.requiredRule, fields.required);
+  }
   if (fields.triggerCondition !== undefined) patch['条件说明'] = fields.triggerCondition;
   if (fields.enumRange !== undefined) patch['枚举/取值范围'] = fields.enumRange;
   if (fields.definition !== undefined) patch['参数定义'] = fields.definition;
@@ -1441,19 +1487,19 @@ function normalizeParamApplicability(
   const alias: Record<string, string> = {
     iOS: '仅iOS',
     Android: '仅Android',
-    'iOS,Android': 'iOS、Android',
-    'iOS, Android': 'iOS、Android',
-    App通用: 'iOS、Android',
-    仅App: 'iOS、Android',
+    'iOS、Android': 'App通用',
+    'iOS,Android': 'App通用',
+    'iOS, Android': 'App通用',
   };
-  const normalized = alias[raw] || raw || 'iOS、Android';
+  const normalized = alias[raw] || raw || 'App通用';
   return [
-    'iOS、Android',
+    'App通用',
+    '仅App',
     '仅iOS',
     '仅Android',
     'Web&App历史兼容',
     'App/Web差异待拆',
     '待确认',
     '无特殊参数',
-  ].includes(normalized) ? normalized : 'iOS、Android';
+  ].includes(normalized) ? normalized : 'App通用';
 }

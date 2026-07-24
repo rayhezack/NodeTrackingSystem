@@ -72,6 +72,7 @@ function getFieldValue(
   if (field.type === 'user') return toTrackingUserRefs(val);
   if (field.type === 'attachment') return toAttachmentArray(val);
   if (val == null) return '';
+  if (field.type === 'date') return toDateTimeInputValue(val);
   if (field.baseField === '端') return toPlatformText(val);
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {
@@ -120,6 +121,14 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
       const fields: Record<string, unknown> = {};
       for (const field of stageConfig.fields) {
         const value = formData[field.key];
+        if (
+          field.type === 'url' &&
+          dirtyFieldNames.has(field.baseField) &&
+          toTextValue(value) &&
+          !isHttpUrl(toTextValue(value))
+        ) {
+          throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
+        }
         // 先按字段类型序列化，最终只提交本次实际修改过的字段。
         if (field.type === 'user') {
           fields[field.baseField] = toStringArray(value);
@@ -174,6 +183,29 @@ const StageForm = ({ stageId, detail, canEdit, onSaved }: StageFormProps) => {
                 }
                 disabled={disabled}
                 placeholder={field.placeholder}
+                className="rounded-sm h-8 text-sm"
+              />
+            )}
+            {field.type === 'url' && (
+              <Input
+                type="url"
+                value={toTextValue(formData[field.key])}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleChange(field.key, e.target.value)
+                }
+                disabled={disabled}
+                placeholder={field.placeholder}
+                className="rounded-sm h-8 text-sm"
+              />
+            )}
+            {field.type === 'date' && (
+              <Input
+                type="datetime-local"
+                value={toTextValue(formData[field.key])}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleChange(field.key, e.target.value)
+                }
+                disabled={disabled}
                 className="rounded-sm h-8 text-sm"
               />
             )}
@@ -299,6 +331,25 @@ function toPlatformText(value: unknown): string {
   const hasAndroid = items.some((item) => item === 'Android');
   if (hasIos && hasAndroid) return 'iOS、Android';
   return items.join('、');
+}
+
+function toDateTimeInputValue(value: unknown): string {
+  const raw = textValue(value).trim();
+  if (!raw) return '';
+  const timestamp = /^\d+$/.test(raw) ? Number(raw) : Date.parse(raw.replace(' ', 'T'));
+  if (!Number.isFinite(timestamp)) return '';
+  const date = new Date(timestamp);
+  const localTimestamp = date.getTime() - date.getTimezoneOffset() * 60_000;
+  return new Date(localTimestamp).toISOString().slice(0, 16);
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function toStringArray(value: unknown): string[] {

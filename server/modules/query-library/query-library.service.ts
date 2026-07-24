@@ -150,6 +150,7 @@ export class QueryLibraryService {
       paramName,
       paramType: cellText(record.record['数据类型']) || '-',
       required: requiredRule === '必传' || requiredRule === '条件必传',
+      requiredRule: requiredRule || '非必传',
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
       example: cellText(record.record['默认值/示例']),
@@ -233,10 +234,9 @@ function normalizeParamApplicability(value: string, source: TrackingSource): str
   const alias: Record<string, string> = {
     iOS: '仅iOS',
     Android: '仅Android',
-    'iOS,Android': 'iOS、Android',
-    'iOS, Android': 'iOS、Android',
-    App通用: 'iOS、Android',
-    仅App: 'iOS、Android',
+    'iOS、Android': 'App通用',
+    'iOS,Android': 'App通用',
+    'iOS, Android': 'App通用',
   };
   return alias[raw] || raw || '-';
 }

@@ -190,7 +190,7 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                 <TableHead className="h-9 text-xs font-medium py-0">参数 key</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">参数名</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">参数类型</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">是否必传</TableHead>
+                <TableHead className="h-9 text-xs font-medium py-0">必传规则</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">枚举范围</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">适用端</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">状态</TableHead>
@@ -215,11 +215,12 @@ const ParamDesigner = ({ recordId, source, evtId, canEdit }: ParamDesignerProps)
                     <TableCell className="h-9 py-0 text-xs">{item.paramName}</TableCell>
                     <TableCell className="h-9 py-0 text-xs">{item.paramType}</TableCell>
                     <TableCell className="h-9 py-0 text-xs">
-                      {item.required ? (
-                        <Badge variant="default" className="h-5 rounded-sm text-[10px] px-1.5 font-normal">必传</Badge>
-                      ) : (
-                        <Badge variant="outline" className="h-5 rounded-sm text-[10px] px-1.5 font-normal">可选</Badge>
-                      )}
+                      <Badge
+                        variant={item.requiredRule === '非必传' ? 'outline' : 'default'}
+                        className="h-5 rounded-sm text-[10px] px-1.5 font-normal"
+                      >
+                        {item.requiredRule || (item.required ? '必传' : '非必传')}
+                      </Badge>
                     </TableCell>
                     <TableCell className="h-9 py-0 text-xs max-w-[160px] truncate">
                       {item.enumRange || '-'}
@@ -287,10 +288,9 @@ function normalizePlatformDisplay(value: string | undefined, source: TrackingSou
   const alias: Record<string, string> = {
     iOS: '仅iOS',
     Android: '仅Android',
-    'iOS,Android': 'iOS、Android',
-    'iOS, Android': 'iOS、Android',
-    App通用: 'iOS、Android',
-    仅App: 'iOS、Android',
+    'iOS、Android': 'App通用',
+    'iOS,Android': 'App通用',
+    'iOS, Android': 'App通用',
   };
   return alias[raw] || raw || '-';
 }

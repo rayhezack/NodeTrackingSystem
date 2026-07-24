@@ -140,6 +140,10 @@ export default function NewTrackingRequestDialog({
       toast.error('请填写 DS 验收人');
       return;
     }
+    if (form.requirementLink.trim() && !isHttpUrl(form.requirementLink.trim())) {
+      toast.error('需求链接必须是有效的 http 或 https 链接');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -222,6 +226,7 @@ export default function NewTrackingRequestDialog({
           </Field>
           <Field label="需求链接" className="md:col-span-2">
             <Input
+              type="url"
               className={inputCls}
               value={form.requirementLink}
               onChange={(event) => updateField('requirementLink', event.target.value)}
@@ -311,6 +316,15 @@ export default function NewTrackingRequestDialog({
   );
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function Field({
   label,
   required,
@@ -380,11 +394,11 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
         user.open_id,
         user.openId,
       ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
-      const name = user.name;
+      const name = localizedText(user.name) || localizedText(user.en_name);
       return {
         user_id: id,
         larkUserId,
-        ...(typeof name === 'string' && name !== id ? { name } : {}),
+        ...(name && name !== id ? { name } : {}),
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
@@ -408,6 +422,18 @@ function extractNumericUserId(value: unknown): string {
   ]) {
     const id = extractNumericUserId(user[key]);
     if (id) return id;
+  }
+  return '';
+}
+
+function localizedText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return '';
+  const text = value as Record<string, unknown>;
+  for (const key of ['zh_cn', 'en_us', 'ja_jp']) {
+    if (typeof text[key] === 'string' && text[key].trim()) {
+      return text[key].trim();
+    }
   }
   return '';
 }

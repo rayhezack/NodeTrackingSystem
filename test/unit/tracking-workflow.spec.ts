@@ -124,4 +124,47 @@ describe('工作流 Base 回写', () => {
     ]);
     expect(result.currentStage).toBe('埋点设计');
   });
+
+  it('评审通过时应规范化枚举并推进到开发节点', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: { evt_id: 'test_event', 流程阶段: '埋点设计' },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.updateRecord('app:rec_1', {
+      fields: { 评审状态: '已通过' },
+      targetStage: '评审通过',
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      {
+        id: 'rec_1',
+        record: { 评审状态: '已通过', 流程阶段: '评审通过' },
+      },
+    ]);
+    expect(result.currentStage).toBe('评审通过');
+  });
+
+  it('应把旧客户端的需修改兼容映射为 Base 已拒绝', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: { evt_id: 'test_event', 流程阶段: '埋点设计' },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      fields: { 评审状态: '需修改' },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      { id: 'rec_1', record: { 评审状态: '已拒绝' } },
+    ]);
+  });
 });

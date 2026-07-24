@@ -3,7 +3,7 @@
 export interface StageFieldConfig {
   key: string;
   label: string;
-  type: 'input' | 'textarea' | 'select' | 'date' | 'user' | 'attachment';
+  type: 'input' | 'textarea' | 'select' | 'date' | 'url' | 'user' | 'attachment';
   baseField: string;
   options?: { value: string; label: string }[];
   placeholder?: string;
@@ -39,7 +39,7 @@ export const REVIEW_STATUS_OPTIONS = [
   { value: '草稿', label: '草稿' },
   { value: '评审中', label: '评审中' },
   { value: '已通过', label: '已通过' },
-  { value: '需修改', label: '需修改' },
+  { value: '已拒绝', label: '已拒绝' },
 ];
 
 // 开发状态选项
@@ -56,6 +56,7 @@ export const ACCEPTANCE_STATUS_OPTIONS = [
   { value: '验收中', label: '验收中' },
   { value: '通过', label: '通过' },
   { value: '不通过', label: '不通过' },
+  { value: '豁免', label: '豁免' },
 ];
 
 export const HANDLER_OPTIONS = [
@@ -130,7 +131,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'dataOwnerIds', label: '数据负责人', type: 'user', baseField: '数据负责人', multiple: true },
       { key: 'devOwnerIds', label: '研发负责人', type: 'user', baseField: '研发负责人', multiple: true },
       { key: 'dsAcceptorIds', label: 'DS 验收人', type: 'user', baseField: 'DS验收人', multiple: true },
-      { key: 'requirementLink', label: '需求链接', type: 'input', baseField: '需求链接', placeholder: '可粘贴 PRD、需求文档或飞书链接' },
+      { key: 'requirementLink', label: '需求链接', type: 'url', baseField: '需求链接', placeholder: '可粘贴 PRD、需求文档或飞书链接' },
       { key: 'requirementBackground', label: '需求背景', type: 'textarea', baseField: '需求背景', placeholder: '说明为什么需要这个埋点...' },
       { key: 'metricScenario', label: '指标/使用场景', type: 'textarea', baseField: '指标/使用场景', placeholder: '说明要支撑的指标、看板或分析场景...' },
     ],
@@ -139,7 +140,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     id: 'design',
     label: '埋点设计',
     uiNode: '埋点设计',
-    baseStages: ['埋点设计', '评审通过'],
+    baseStages: ['埋点设计'],
     permissionKey: 'canEditDesign',
     fields: [
       { key: 'evtId', label: '埋点事件ID / evt_id', type: 'input', baseField: 'evt_id', placeholder: '如：video_play_click' },
@@ -160,7 +161,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     id: 'review',
     label: '评审',
     uiNode: '埋点设计',
-    baseStages: ['评审通过'],
+    baseStages: [],
     permissionKey: 'canEditReview',
     fields: [
       { key: 'reviewStatus', label: '评审状态', type: 'select', baseField: '评审状态', options: REVIEW_STATUS_OPTIONS },
@@ -171,7 +172,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     id: 'dev',
     label: '埋点开发',
     uiNode: '埋点开发',
-    baseStages: ['埋点开发'],
+    baseStages: ['评审通过', '埋点开发'],
     permissionKey: 'canEditDev',
     fields: [
       { key: 'devStatus', label: '开发状态', type: 'select', baseField: '埋点开发状态', options: DEV_STATUS_OPTIONS },
@@ -185,8 +186,8 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     permissionKey: 'canEditAcceptance',
     fields: [
       { key: 'acceptanceStatus', label: '验收状态', type: 'select', baseField: 'DS验收状态', options: ACCEPTANCE_STATUS_OPTIONS },
-      { key: 'acceptanceEvidence', label: '验收证据', type: 'textarea', baseField: 'DS验收证据', placeholder: '粘贴验收查询、截图或日志证据...' },
-      { key: 'acceptanceTime', label: '验收时间', type: 'input', baseField: 'DS验收时间', placeholder: 'YYYY-MM-DD' },
+      { key: 'acceptanceEvidence', label: '验收证据链接', type: 'url', baseField: 'DS验收证据', placeholder: '粘贴验收查询、截图或日志链接' },
+      { key: 'acceptanceTime', label: '验收时间', type: 'date', baseField: 'DS验收时间' },
     ],
   },
   {
@@ -212,7 +213,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     permissionKey: 'canEditArchive',
     fields: [
       { key: 'officialStatus', label: '正式状态', type: 'select', baseField: '正式状态', options: OFFICIAL_STATUS_OPTIONS },
-      { key: 'archiveTime', label: '稳定归档时间', type: 'input', baseField: '稳定归档时间', placeholder: 'YYYY-MM-DD' },
+      { key: 'archiveTime', label: '稳定归档时间', type: 'date', baseField: '稳定归档时间' },
     ],
   },
 ];
@@ -221,7 +222,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
 export const STAGE_UI_MAP: Record<string, string> = {
   '需求录入': '埋点提需',
   '埋点设计': '埋点设计',
-  '评审通过': '埋点设计',
+  '评审通过': '埋点开发',
   '埋点开发': '埋点开发',
   '数据验收': '埋点校验',
   '上线监控': '埋点上线',

@@ -9,8 +9,11 @@ export const PARAM_TYPE_OPTIONS = [
   'UNKNOWN',
 ];
 
+export const REQUIRED_RULE_OPTIONS = ['必传', '非必传', '条件必传'];
+
 export const APP_PLATFORM_OPTIONS = [
-  'iOS、Android',
+  'App通用',
+  '仅App',
   '仅iOS',
   '仅Android',
   'Web&App历史兼容',

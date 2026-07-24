@@ -224,6 +224,7 @@ export interface ParamDetail {
   paramName: string;
   paramType: string;
   required: boolean;
+  requiredRule: string;
   triggerCondition: string;
   enumRange: string;
   definition: string;
@@ -246,6 +247,7 @@ export interface CreateParamRequest {
   paramName: string;
   paramType: string;
   required: boolean;
+  requiredRule?: string;
   triggerCondition?: string;
   enumRange?: string;
   definition?: string;
@@ -306,6 +308,7 @@ export interface OfficialParam {
   paramName: string;
   paramType: string;
   required: boolean;
+  requiredRule: string;
   enumRange?: string;
   definition: string;
   example: string;

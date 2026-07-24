@@ -9,10 +9,38 @@ export function buildStageUpdateRequest(
     Object.entries(fields).filter(([fieldName]) => dirtyFieldNames.has(fieldName)),
   );
 
+  const targetStage = getTargetStage(stageId, fields);
   return {
     fields: dirtyFields,
-    ...(stageId === 'requirement' ? { targetStage: '埋点设计' } : {}),
+    ...(targetStage ? { targetStage } : {}),
   };
+}
+
+export function getTargetStage(
+  stageId: string,
+  fields: Record<string, unknown>,
+): string | undefined {
+  switch (stageId) {
+    case 'requirement':
+      return '埋点设计';
+    case 'review':
+      return fields['评审状态'] === '已通过' ? '评审通过' : undefined;
+    case 'dev':
+      return fields['埋点开发状态'] === '已开发' ? '数据验收' : undefined;
+    case 'acceptance':
+      return ['通过', '豁免'].includes(String(fields['DS验收状态'] || ''))
+        ? '上线监控'
+        : undefined;
+    case 'launch':
+      return fields['发布状态'] === '发布成功' &&
+        ['通过', '豁免'].includes(String(fields['上线监控状态'] || ''))
+        ? '稳定归档'
+        : undefined;
+    case 'archive':
+      return fields['正式状态'] === '已废弃' ? '已废弃' : undefined;
+    default:
+      return undefined;
+  }
 }
 
 export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {

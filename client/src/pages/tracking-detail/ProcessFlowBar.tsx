@@ -8,8 +8,8 @@ interface ProcessFlowBarProps {
 
 const ProcessFlowBar = ({ baseStage, onNodeClick }: ProcessFlowBarProps) => {
   return (
-    <div className="border-b border-border bg-card px-6 py-4">
-      <div className="flex items-center justify-between">
+    <div className="overflow-x-auto border-b border-border bg-card px-4 py-4 sm:px-6">
+      <div className="flex min-w-[640px] items-center justify-between">
         {UI_STAGE_NODES.map((node, index) => {
           const completed = isUiNodeCompleted(baseStage, node.key);
           const active = isUiNodeActive(baseStage, node.key);

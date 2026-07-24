@@ -60,4 +60,40 @@ describe('Base 写入值标准化', () => {
       });
     },
   );
+
+  it.each([
+    ['DS验收时间', 'not-a-date'],
+    ['稳定归档时间', '2026-99-99'],
+  ])('应在调用 Base 前拒绝非法日期 %s', async (fieldName, value) => {
+    const call = jest.fn();
+    const capabilityService = {
+      loadWithConfig: jest.fn().mockReturnValue({ call }),
+    };
+    const service = new BitableService(capabilityService as never);
+
+    await expect(
+      service.batchUpdateRecords('workbench', [
+        { id: 'rec_1', record: { [fieldName]: value } },
+      ]),
+    ).rejects.toThrow('日期格式错误');
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it.each(['需求链接', 'DS验收证据'])(
+    '应在调用 Base 前拒绝非法链接 %s',
+    async (fieldName) => {
+      const call = jest.fn();
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await expect(
+        service.batchUpdateRecords('workbench', [
+          { id: 'rec_1', record: { [fieldName]: '不是链接' } },
+        ]),
+      ).rejects.toThrow('链接格式错误');
+      expect(call).not.toHaveBeenCalled();
+    },
+  );
 });

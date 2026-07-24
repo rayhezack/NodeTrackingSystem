@@ -4,6 +4,10 @@ type StageFormUtils = {
     fields: Record<string, unknown>,
     dirtyFieldNames: Set<string>,
   ) => { fields: Record<string, unknown>; targetStage?: string };
+  getTargetStage?: (
+    stageId: string,
+    fields: Record<string, unknown>,
+  ) => string | undefined;
   toTrackingUserRefs?: (value: unknown) => Array<{
     user_id: string;
     larkUserId?: string;
@@ -90,5 +94,32 @@ describe('详情阶段表单状态', () => {
       fields: { '需求背景': '验证工作流' },
       targetStage: '埋点设计',
     });
+  });
+
+  it.each([
+    ['review', { '评审状态': '已通过' }, '评审通过'],
+    ['dev', { '埋点开发状态': '已开发' }, '数据验收'],
+    ['acceptance', { 'DS验收状态': '通过' }, '上线监控'],
+    ['acceptance', { 'DS验收状态': '豁免' }, '上线监控'],
+    [
+      'launch',
+      { '发布状态': '发布成功', '上线监控状态': '通过' },
+      '稳定归档',
+    ],
+    ['archive', { '正式状态': '已废弃' }, '已废弃'],
+  ])('满足完成条件时 %s 应推进到下一阶段', (stageId, fields, expected) => {
+    expect(typeof utils.getTargetStage).toBe('function');
+    expect(utils.getTargetStage?.(stageId as string, fields as Record<string, unknown>))
+      .toBe(expected);
+  });
+
+  it.each([
+    ['review', { '评审状态': '已拒绝' }],
+    ['dev', { '埋点开发状态': '开发中' }],
+    ['acceptance', { 'DS验收状态': '不通过' }],
+    ['launch', { '发布状态': '发布成功', '上线监控状态': '异常' }],
+  ])('未满足完成条件时 %s 不应越级推进', (stageId, fields) => {
+    expect(utils.getTargetStage?.(stageId as string, fields as Record<string, unknown>))
+      .toBeUndefined();
   });
 });

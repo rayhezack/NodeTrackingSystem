@@ -53,14 +53,14 @@ const Layout = () => {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* 顶部导航栏 */}
       <header className="sticky top-0 z-50 border-b border-border bg-card">
-        <div className="mx-auto flex h-12 max-w-[1400px] items-center justify-between px-4">
+        <div className="mx-auto flex h-12 max-w-[1400px] items-center justify-between px-2 sm:px-4">
           {/* 左侧：应用名 + 导航 */}
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4 lg:gap-6">
+            <div className="flex min-w-0 items-center gap-2">
               <div className="flex h-6 w-6 items-center justify-center rounded-sm bg-primary text-primary-foreground text-xs font-bold">
                 P
               </div>
-              <span className="text-sm font-semibold text-foreground">
+              <span className="hidden max-w-[180px] truncate text-sm font-semibold text-foreground md:inline">
                 {appName || "Pollo AI 埋点项目管理"}
               </span>
             </div>
@@ -72,14 +72,16 @@ const Layout = () => {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors ${
+                    aria-label={item.label}
+                    title={item.label}
+                    className={`flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-sm transition-colors sm:px-3 ${
                       active
                         ? "text-primary bg-primary/10"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="hidden sm:inline">{item.label}</span>
                   </NavLink>
                 );
               })}
@@ -87,7 +89,7 @@ const Layout = () => {
           </div>
 
           {/* 右侧：用户信息 */}
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-2 rounded-sm px-2 py-1 hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50">
