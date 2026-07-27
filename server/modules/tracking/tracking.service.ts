@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import type {
   CreateParamRequest,
   CreateParamResponse,
+  CreateSiblingTrackingEventRequest,
+  CreateSiblingTrackingEventResponse,
   CreateTrackingRecordRequest,
   CreateTrackingRecordResponse,
   DeleteParamResponse,
@@ -18,6 +20,7 @@ import type {
   GetTrackingRecordsResponse,
   PermissionConfig,
   ParamDetail,
+  RelatedTrackingEvent,
   TrackingSource,
   TrackingSourceFilter,
   TrackingDetail,
@@ -30,11 +33,12 @@ import type {
   UpdateTrackingRecordRequest,
   UpdateTrackingRecordResponse,
 } from '@shared/api.interface';
-import { UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
+import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import { calculatePermissions, getBaseStageFromUi, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
 
 const WORKBENCH_FIELDS = [
+  '需求ID',
   'evt_id',
   '事件中文名',
   '事件定义',
@@ -359,8 +363,10 @@ export class TrackingService {
       throw new NotFoundException('埋点需求不存在');
     }
     const permissionConfig = await this.getStoredPermissionConfig();
+    const detail = this.toTrackingDetail(record, ref.source, actorId, actorLarkId, permissionConfig);
+    detail.relatedEvents = await this.listRelatedEvents(ref.source, record);
     return {
-      data: this.toTrackingDetail(record, ref.source, actorId, actorLarkId, permissionConfig),
+      data: detail,
     };
   }
 
@@ -443,6 +449,10 @@ export class TrackingService {
         throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
       }
     }
+    const hasRequestIdField = hasWorkbenchField(source, '需求ID');
+    const requestId = hasRequestIdField
+      ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
+      : '';
 
     const actorCellId = body.actorId;
     const requesterCells = createUserCells(body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : []);
@@ -455,6 +465,7 @@ export class TrackingService {
     const requirementLink = (body.requirementLink || '').trim();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
+        ...(requestId ? { 需求ID: requestId } : {}),
         evt_id: evtId,
         事件中文名: eventName,
         事件定义: body.eventDefinition || '',
@@ -505,6 +516,92 @@ export class TrackingService {
       recordId: encodeScopedRecordId(source, created.id),
       currentStage: '需求录入',
       createdParamCount: paramRecords.length,
+    };
+  }
+
+  async createSiblingEvent(recordId: string, body: CreateSiblingTrackingEventRequest): Promise<CreateSiblingTrackingEventResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const source = ref.source;
+    const workbench = workbenchKey(source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
+    if (!current) {
+      throw new NotFoundException('埋点需求不存在');
+    }
+
+    const eventName = (body.eventName || '').trim();
+    if (!eventName) {
+      throw new BadRequestException('事件名不能为空');
+    }
+
+    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '新增同需求埋点事件');
+    if (!permissions.canEditDesign) {
+      throw new ForbiddenException('当前用户无权限新增同需求埋点事件');
+    }
+
+    const evtId = (body.evtId || '').trim();
+    const records = await this.listWorkbenchRecords(source);
+    if (evtId) {
+      const duplicate = records.find((record) => cellText(record.record['evt_id']).trim().toLowerCase() === evtId.toLowerCase());
+      if (duplicate) {
+        throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
+      }
+    }
+
+    const currentRecord = current.record;
+    const hasRequestIdField = hasWorkbenchField(source, '需求ID');
+    const existingRequestId = cellText(currentRecord['需求ID']).trim();
+    const requestId = hasRequestIdField && !existingRequestId
+      ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
+      : existingRequestId;
+    if (requestId && !existingRequestId && hasRequestIdField) {
+      await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: { 需求ID: requestId } }]);
+    }
+    const requirementLink = firstText(currentRecord['需求链接']).trim();
+    const version = body.version || cellText(currentRecord['版本']) || '1.0.0';
+    const platform = body.platform || cellText(currentRecord['端']);
+    const record: Record<string, unknown> = {
+      ...(requestId ? { 需求ID: requestId } : {}),
+      evt_id: evtId,
+      事件中文名: eventName,
+      事件定义: body.eventDefinition || '',
+      触发时机: body.triggerTiming || '',
+      需求背景: cellText(currentRecord['需求背景']),
+      ...(requirementLink ? { 需求链接: requirementLink } : {}),
+      '指标/使用场景': cellText(currentRecord['指标/使用场景']),
+      流程阶段: '埋点设计',
+      记录类型: '埋点设计',
+      优先级: body.priority || cellText(currentRecord['优先级']) || 'P2',
+      端: toPlatformCell(platform, source),
+      需求提出人: createUserCells(cellUsers(currentRecord['需求提出人']).ids),
+      需求录入人: createUserCells(cellUsers(currentRecord['需求录入人']).ids),
+      数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
+      研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
+      DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
+      评审状态: '草稿',
+      评审意见: '',
+      埋点开发状态: '未开始',
+      DS验收状态: '未开始',
+      上线监控状态: '未开始',
+      上线监控结论: '',
+      发布门禁状态: '未检查',
+      发布门禁失败原因: '',
+      发布状态: '未发布',
+      发布错误: '',
+      正式状态: '待开发',
+      版本: version,
+      最低版本: body.minVersion || cellText(currentRecord['最低版本']) || version,
+      变更类型: normalizeChangeType(body.changeType || cellText(currentRecord['变更类型'])),
+      处理方: normalizeHandler(body.handler || cellText(currentRecord['处理方']), source),
+      公共属性要求: body.commonProps || cellText(currentRecord['公共属性要求']),
+      参数明细入口: source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
+      参数拆行状态: '未拆行',
+    };
+
+    const [created] = await this.bitable.batchAddRecords(workbench, [record]);
+    return {
+      success: true,
+      recordId: encodeScopedRecordId(source, created.id),
+      currentStage: '埋点设计',
     };
   }
 
@@ -834,11 +931,50 @@ export class TrackingService {
       fieldNames: [...WORKBENCH_FIELDS],
       pageSize: 200,
     });
-    return result.records.filter((record) => {
-      const evtId = cellText(record.record['evt_id']);
-      const type = cellText(record.record['记录类型']);
-      return evtId !== PERMISSION_RECORD_EVT_ID && type !== '模板' && type !== PERMISSION_RECORD_TYPE && (type === '埋点设计' || Boolean(evtId) || Boolean(cellText(record.record['事件中文名'])));
-    });
+    return result.records.filter((record) => isBusinessWorkbenchRecord(record));
+  }
+
+  private async listRelatedEvents(source: TrackingSource, current: BitableRecord): Promise<RelatedTrackingEvent[]> {
+    const requestId = cellText(current.record['需求ID']).trim();
+    let records = [current];
+    if (requestId) {
+      if (hasWorkbenchField(source, '需求ID')) {
+        const result = await this.bitable.searchRecords(workbenchKey(source), {
+          fieldNames: [...WORKBENCH_FIELDS],
+          filter: {
+            conjunction: 'and',
+            conditions: [{ fieldName: '需求ID', operator: 'is', value: [requestId] }],
+          },
+          pageSize: 200,
+        });
+        records = result.records.filter((record) => isBusinessWorkbenchRecord(record));
+      } else {
+        records = (await this.listWorkbenchRecords(source)).filter((record) => cellText(record.record['需求ID']).trim() === requestId);
+      }
+    }
+    const uniqueByRecordId = new Map<string, BitableRecord>();
+    uniqueByRecordId.set(current.id, current);
+    for (const record of records) {
+      uniqueByRecordId.set(record.id, record);
+    }
+    return Array.from(uniqueByRecordId.values())
+      .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))
+      .map((record) => this.toRelatedEvent(record, source, record.id === current.id));
+  }
+
+  private toRelatedEvent(record: BitableRecord, source: TrackingSource, isCurrent: boolean): RelatedTrackingEvent {
+    const stage = cellText(record.record['流程阶段']) || '需求录入';
+    return {
+      recordId: encodeScopedRecordId(source, record.id),
+      source,
+      evtId: cellText(record.record['evt_id']),
+      eventName: cellText(record.record['事件中文名']) || '未命名事件',
+      stage,
+      uiStage: getUiStageFromBase(stage, cellText(record.record['评审状态'])),
+      priority: cellText(record.record['优先级']) || 'P2',
+      platform: cellText(record.record['端']) || '-',
+      isCurrent,
+    };
   }
 
   private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
@@ -896,6 +1032,7 @@ export class TrackingService {
       acceptanceFields: pickFields(record.record, ['DS验收人', 'DS验收状态', 'DS验收证据', 'DS验收时间']),
       launchFields: pickFields(record.record, ['发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间']),
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
+      relatedEvents: [],
       permissions: actor
         ? calculateRecordPermissions(actor, actorCandidates, requester.ids, recorder.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, stage)
         : calculatePermissions('', [], [], []),
@@ -1163,6 +1300,12 @@ function isBootstrapAdmin(actorId?: string): boolean {
   return Boolean(actorId && BOOTSTRAP_ADMIN_USER_IDS.has(actorId));
 }
 
+function isBusinessWorkbenchRecord(record: BitableRecord): boolean {
+  const evtId = cellText(record.record['evt_id']);
+  const type = cellText(record.record['记录类型']);
+  return evtId !== PERMISSION_RECORD_EVT_ID && type !== '模板' && type !== PERMISSION_RECORD_TYPE && (type === '埋点设计' || Boolean(evtId) || Boolean(cellText(record.record['事件中文名'])));
+}
+
 function isAdminActor(actorCandidates: string[], permissionConfig?: PermissionConfig | null): boolean {
   if (actorCandidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return true;
@@ -1194,8 +1337,24 @@ function normalizeSourceFilter(value?: string): TrackingSourceFilter {
   return value === 'app' || value === 'web' ? value : 'all';
 }
 
+function createUniqueRequestId(source: TrackingSource, existingIds: string[] = []): string {
+  const prefix = source === 'web' ? 'WEB_REQ' : 'APP_REQ';
+  const existing = new Set(existingIds.map((id) => String(id || '').trim()).filter(Boolean));
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const id = `${prefix}_${timestamp}_${random}`;
+    if (!existing.has(id)) return id;
+  }
+  return `${prefix}_${Date.now().toString(36).toUpperCase()}_${process.hrtime.bigint().toString(36).toUpperCase()}`;
+}
+
 function workbenchKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webWorkbench' : 'workbench';
+}
+
+function hasWorkbenchField(source: TrackingSource, fieldName: string): boolean {
+  return (BITABLE_FIELDS[workbenchKey(source)] || []).some((field) => field.name === fieldName);
 }
 
 function paramDetailKey(source: TrackingSource): BitableInstanceKey {

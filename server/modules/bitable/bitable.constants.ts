@@ -57,6 +57,14 @@ interface BitableFieldConfig {
 export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = {
   workbench: [
     {
+      id: 'fldg05KBjv',
+      name: '需求ID',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldsrxaEFF',
       name: 'evt_id',
       type: 1,

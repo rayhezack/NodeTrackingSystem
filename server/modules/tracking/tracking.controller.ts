@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateParamRequest,
+  CreateSiblingTrackingEventRequest,
   CreateTrackingRecordRequest,
   TrackingSourceFilter,
   UpdatePermissionConfigRequest,
@@ -67,6 +68,14 @@ export class TrackingController {
   @Post('records')
   createRecord(@Body() body: CreateTrackingRecordRequest) {
     return this.trackingService.createRecord(body);
+  }
+
+  @Post('records/:recordId/events')
+  createSiblingEvent(
+    @Param('recordId') recordId: string,
+    @Body() body: CreateSiblingTrackingEventRequest,
+  ) {
+    return this.trackingService.createSiblingEvent(recordId, body);
   }
 
   @Get('records/:recordId')

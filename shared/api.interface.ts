@@ -75,6 +75,18 @@ export interface TrackingRecord {
   updatedAt: number;
 }
 
+export interface RelatedTrackingEvent {
+  recordId: string;
+  source: TrackingSource;
+  evtId: string;
+  eventName: string;
+  stage: string;
+  uiStage: string;
+  priority: string;
+  platform: string;
+  isCurrent: boolean;
+}
+
 export interface GetTrackingRecordsParams {
   source?: TrackingSourceFilter;
   keyword?: string;
@@ -136,6 +148,28 @@ export interface CreateTrackingRecordResponse {
   recordId: string;
   currentStage: string;
   createdParamCount: number;
+}
+
+export interface CreateSiblingTrackingEventRequest {
+  evtId?: string;
+  eventName: string;
+  priority?: string;
+  platform?: string;
+  eventDefinition?: string;
+  triggerTiming?: string;
+  handler?: string;
+  commonProps?: string;
+  version?: string;
+  minVersion?: string;
+  changeType?: string;
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface CreateSiblingTrackingEventResponse {
+  success: boolean;
+  recordId: string;
+  currentStage: string;
 }
 
 export interface PermissionConfig {
@@ -207,6 +241,7 @@ export interface TrackingDetail {
   acceptanceFields: Record<string, unknown>;
   launchFields: Record<string, unknown>;
   archiveFields: Record<string, unknown>;
+  relatedEvents: RelatedTrackingEvent[];
   permissions: TrackingDetailPermissions;
   updatedAt: number;
 }

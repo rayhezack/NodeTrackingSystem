@@ -128,6 +128,7 @@ export class LocalBitableFallback {
       [
         'recvqasv6kXTJ1',
         {
+          需求ID: 'APP_REQ_LOCAL_LAUNCH',
           evt_id: 'app_launch',
           事件中文名: 'App 启动',
           事件定义: '用户打开 App 并完成初始化时上报，用于衡量启动活跃、渠道质量与首屏性能。',
@@ -168,6 +169,7 @@ export class LocalBitableFallback {
       [
         'rec_local_checkout_click',
         {
+          需求ID: 'APP_REQ_LOCAL_CHECKOUT',
           evt_id: 'checkout_click',
           事件中文名: '支付按钮点击',
           事件定义: '用户在订单确认页点击支付按钮时上报。',
@@ -431,6 +433,7 @@ export class LocalBitableFallback {
       [
         'rec_web_homepage_view',
         {
+          需求ID: 'WEB_REQ_LOCAL_HOMEPAGE',
           evt_id: 'web_homepage_view',
           事件中文名: 'Web 首页访问',
           事件定义: '用户进入 Web 首页并完成首屏渲染时上报，用于衡量站点访问规模、来源质量与首屏转化。',

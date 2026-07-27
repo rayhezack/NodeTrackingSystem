@@ -10,6 +10,8 @@ import type {
   GetTrackingRecordsResponse,
   CreateTrackingRecordRequest,
   CreateTrackingRecordResponse,
+  CreateSiblingTrackingEventRequest,
+  CreateSiblingTrackingEventResponse,
   GetPermissionConfigResponse,
   GetTrackingDetailResponse,
   UpdatePermissionConfigRequest,
@@ -152,6 +154,22 @@ export async function updateTrackingRecord(
   } catch (error) {
     logger.error('更新需求失败', error);
     throw toReadableError(error, '更新需求失败，请检查 Base 权限或字段类型');
+  }
+}
+
+export async function createSiblingTrackingEvent(
+  recordId: string,
+  data: CreateSiblingTrackingEventRequest,
+): Promise<CreateSiblingTrackingEventResponse> {
+  try {
+    const response = await axiosForBackend.post(
+      `/api/tracking/records/${recordId}/events`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('新增同需求埋点事件失败', error);
+    throw toReadableError(error, '新增同需求埋点事件失败，请检查 evt_id 是否重复或 Base 权限');
   }
 }
 

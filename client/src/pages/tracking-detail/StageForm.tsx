@@ -45,6 +45,7 @@ import type {
   TrackingDetail,
 } from '@shared/api.interface';
 import ParamDesigner from './param-designer/ParamDesigner';
+import RelatedEventsPanel from './RelatedEventsPanel';
 import {
   buildStageUpdateRequest,
   buildStageCompletionRequest,
@@ -248,6 +249,15 @@ const StageForm = ({
           {canEdit ? '编辑以下字段，完成后点击保存' : '当前用户无编辑权限，字段为只读状态'}
         </p>
       </div>
+
+      {stageId === 'design' && (
+        <RelatedEventsPanel
+          detail={detail}
+          canEdit={canEdit}
+          actorId={actorId}
+          actorLarkId={actorLarkId}
+        />
+      )}
 
       <div className="grid gap-5 md:grid-cols-2">
         {stageConfig.fields.map((field) => (

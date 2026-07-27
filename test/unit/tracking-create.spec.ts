@@ -29,6 +29,7 @@ describe('提需创建记录', () => {
     expect(record).not.toHaveProperty('DS验收证据');
     expect(record).not.toHaveProperty('DS验收时间');
     expect(record).not.toHaveProperty('稳定归档时间');
+    expect(record['需求ID']).toMatch(/^APP_REQ_/);
     expect(record['需求提出人']).toEqual([1867390536304713]);
     expect(record['需求录入人']).toEqual([1867390536304713]);
     expect(record['数据负责人']).toEqual([1867390536304713]);
@@ -78,6 +79,7 @@ describe('提需创建记录', () => {
     expect(record['数据负责人']).toEqual([2001]);
     expect(record['研发负责人']).toEqual([3001]);
     expect(record['DS验收人']).toEqual([4001]);
+    expect(record['需求ID']).toMatch(/^APP_REQ_/);
   });
 
   it('未显式传需求提出人时，应默认使用当前用户作为提需人', async () => {
@@ -100,6 +102,7 @@ describe('提需创建记录', () => {
     const record = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
     expect(record['需求提出人']).toEqual([1001]);
     expect(record['需求录入人']).toEqual([1001]);
+    expect(record['需求ID']).toMatch(/^APP_REQ_/);
   });
 
   it('无法识别当前用户时仍不允许创建需求', async () => {
@@ -121,6 +124,69 @@ describe('提需创建记录', () => {
       }),
     ).rejects.toThrow('无法识别当前用户');
     expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
+
+  it('新增同需求埋点事件时，应补齐当前需求ID并继承需求上下文', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'event_1',
+          事件中文名: '主事件',
+          需求背景: '业务需要补齐核心漏斗',
+          需求链接: 'https://example.com/prd',
+          '指标/使用场景': '转化率分析',
+          流程阶段: '埋点设计',
+          记录类型: '埋点设计',
+          优先级: 'P1',
+          端: ['iOS', 'Android'],
+          需求提出人: [{ id: '1001', name: '产品同学' }],
+          需求录入人: [{ id: '1002', name: '录入同学' }],
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+          研发负责人: [{ id: '3001', name: '研发同学' }],
+          DS验收人: [{ id: '4001', name: '验收同学' }],
+          版本: '2.0.0',
+          最低版本: '2.0.0',
+          变更类型: '新增',
+          处理方: '客户端',
+          公共属性要求: 'user_id',
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_new' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.createSiblingEvent('app:rec_1', {
+      eventName: '补充事件',
+      evtId: 'event_2',
+      actorId: '1867390536304713',
+    });
+
+    const demandId = bitable.batchUpdateRecords.mock.calls[0][1][0].record['需求ID'];
+    const created = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
+    expect(result).toEqual({
+      success: true,
+      recordId: 'app:rec_new',
+      currentStage: '埋点设计',
+    });
+    expect(demandId).toMatch(/^APP_REQ_/);
+    expect(created['需求ID']).toBe(demandId);
+    expect(created['evt_id']).toBe('event_2');
+    expect(created['事件中文名']).toBe('补充事件');
+    expect(created['需求背景']).toBe('业务需要补齐核心漏斗');
+    expect(created['需求链接']).toBe('https://example.com/prd');
+    expect(created['指标/使用场景']).toBe('转化率分析');
+    expect(created['流程阶段']).toBe('埋点设计');
+    expect(created['评审状态']).toBe('草稿');
+    expect(created['埋点开发状态']).toBe('未开始');
+    expect(created['正式状态']).toBe('待开发');
+    expect(created['需求提出人']).toEqual([1001]);
+    expect(created['需求录入人']).toEqual([1002]);
+    expect(created['数据负责人']).toEqual([1867390536304713]);
+    expect(created['研发负责人']).toEqual([3001]);
+    expect(created['DS验收人']).toEqual([4001]);
   });
 
   it('应在调用 Base 前拒绝会被 JavaScript 舍入的人员 ID', async () => {
