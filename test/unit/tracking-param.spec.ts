@@ -31,6 +31,7 @@ describe('埋点参数 Base 回写', () => {
         来源设计记录ID: 'rec_design',
         关联设计: ['rec_design'],
         App适用性: 'App通用',
+        版本: '1.0.0',
       }),
     ]);
     expect(result.item).toMatchObject({
@@ -40,6 +41,72 @@ describe('埋点参数 Base 回写', () => {
       paramName: 'button_name',
       platform: 'App通用',
     });
+  });
+
+  it('新增参数应继承埋点事件版本，忽略参数级版本输入', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: {
+          evt_id: 'test_event',
+          版本: '2.0.0',
+        },
+      }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_param' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.createParam('app:rec_design', {
+      actorId: '1867390536304713',
+      evtId: 'test_event',
+      paramName: 'button_name',
+      paramType: 'STRING',
+      required: true,
+      status: '草稿',
+      version: '9.9.9',
+    });
+
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('paramDetail', [
+      expect.objectContaining({
+        参数名: 'button_name',
+        版本: '2.0.0',
+      }),
+    ]);
+  });
+
+  it('编辑参数时应忽略参数级版本更新', async () => {
+    const bitable = {
+      getRecord: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'rec_param',
+          record: {
+            evt_id: 'test_event',
+            参数名: 'button_name',
+            数据类型: 'STRING',
+            版本: '1.0.0',
+            来源设计记录ID: 'rec_design',
+            关联设计: ['rec_design'],
+          },
+        })
+        .mockResolvedValueOnce({
+          id: 'rec_design',
+          record: {
+            evt_id: 'test_event',
+            流程阶段: '埋点设计',
+          },
+        }),
+      batchUpdateRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.updateParam('app:rec_param', {
+      actorId: '1867390536304713',
+      fields: { version: '9.9.9' },
+    });
+
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+    expect(result.item.version).toBe('1.0.0');
   });
 
   it('加载参数列表应优先按设计记录和 evt_id 下推过滤，减少全表扫描', async () => {

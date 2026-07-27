@@ -49,7 +49,6 @@ const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest 
   example: '',
   platform: source === 'web' ? 'Web通用' : 'App通用',
   status: '草稿',
-  version: '',
   changeType: '新增',
 });
 
@@ -80,7 +79,6 @@ const ParamFormDialog = ({
         example: initialData.example,
         platform: normalizePlatformValue(initialData.platform, source),
         status: initialData.status || '草稿',
-        version: initialData.version,
         changeType: initialData.changeType || '修改',
       });
     } else {
@@ -100,7 +98,7 @@ const ParamFormDialog = ({
     setSavingAction(action);
     try {
       await onSubmit({
-        ...form,
+        ...omitParamVersion(form),
         required: form.requiredRule !== '非必传',
         paramKey: buildParamKey(form.evtId, form.paramName),
       });
@@ -205,15 +203,6 @@ const ParamFormDialog = ({
                 ))}
               </SelectContent>
             </Select>
-          </FormField>
-
-          <FormField label="版本">
-            <Input
-              className={inputCls}
-              value={form.version || ''}
-              onChange={(e) => updateField('version', e.target.value)}
-              placeholder="如：v1.0.0"
-            />
           </FormField>
 
           <FormField label="默认值">
@@ -321,4 +310,9 @@ function normalizePlatformValue(value: string | undefined, source: TrackingSourc
     'iOS, Android': 'App通用',
   };
   return alias[raw] || raw || 'App通用';
+}
+
+function omitParamVersion(form: CreateParamRequest): CreateParamRequest {
+  const { version: _version, ...rest } = form;
+  return rest;
 }

@@ -694,7 +694,9 @@ export class TrackingService {
 
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields) ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source) : fields;
-    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: patch }]);
+    if (Object.keys(patch).length) {
+      await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: patch }]);
+    }
     return {
       success: true,
       recordId: paramRecordId,
@@ -1172,7 +1174,7 @@ export class TrackingService {
       '默认值/示例': body.example || body.defaultValue || '',
       [platformField]: normalizeParamApplicability(body.platform, source),
       参数状态: normalizeParamStatus(body.status),
-      版本: body.version || version || '1.0.0',
+      版本: version || '1.0.0',
       变更类型: normalizeChangeType(body.changeType),
       来源设计记录ID: recordId,
       关联设计: [recordId],
@@ -1595,7 +1597,7 @@ function toOfficialParamRecord(source: TrackingSource, designRecord: Record<stri
     条件说明: cellText(designParam['条件说明']),
     '枚举/取值范围': cellText(designParam['枚举/取值范围']),
     参数定义: cellText(designParam['参数定义']),
-    版本: firstText(designParam['版本'], designRecord['版本'], designRecord['最低版本']) || '1.0.0',
+    版本: firstText(designRecord['版本'], designRecord['最低版本'], designParam['版本']) || '1.0.0',
     参数状态: normalizeOfficialParamStatus(cellText(designParam['参数状态']), cellText(designParam['变更类型'])),
     事件状态: getOfficialQueryStatus(designRecord),
     来源表: '埋点设计库',
@@ -2047,7 +2049,6 @@ function toParamPatch(fields: Partial<CreateParamRequest>, source: TrackingSourc
     patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeParamApplicability(fields.platform, source);
   }
   if (fields.status !== undefined) patch['参数状态'] = normalizeParamStatus(fields.status);
-  if (fields.version !== undefined) patch['版本'] = fields.version;
   if (fields.changeType !== undefined) patch['变更类型'] = normalizeChangeType(fields.changeType);
   return patch;
 }
