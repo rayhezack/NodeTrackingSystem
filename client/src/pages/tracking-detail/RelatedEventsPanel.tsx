@@ -21,13 +21,19 @@ import {
   SelectValue,
 } from '@client/src/components/ui/select';
 import { createSiblingTrackingEvent } from '@client/src/api/tracking';
-import type { CreateSiblingTrackingEventRequest, TrackingDetail } from '@shared/api.interface';
+import type {
+  CreateSiblingTrackingEventRequest,
+  ReuseOfficialEventResponse,
+  TrackingDetail,
+} from '@shared/api.interface';
+import ReuseOfficialEventDialog from './ReuseOfficialEventDialog';
 
 interface RelatedEventsPanelProps {
   detail: TrackingDetail;
   canEdit: boolean;
   actorId?: string;
   actorLarkId?: string;
+  onChanged?: () => void | Promise<void>;
 }
 
 type EventForm = {
@@ -46,9 +52,11 @@ export default function RelatedEventsPanel({
   canEdit,
   actorId,
   actorLarkId,
+  onChanged,
 }: RelatedEventsPanelProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EventForm>(() => defaultForm(detail));
   const events = detail.relatedEvents?.length
@@ -106,6 +114,14 @@ export default function RelatedEventsPanel({
     }
   };
 
+  const handleReuseSuccess = async (result: ReuseOfficialEventResponse) => {
+    if (result.recordId === detail.recordId) {
+      await onChanged?.();
+      return;
+    }
+    navigate(`/tracking/${result.recordId}?stage=design`);
+  };
+
   return (
     <div className="rounded-sm border border-border bg-muted/20 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -122,15 +138,26 @@ export default function RelatedEventsPanel({
           </p>
         </div>
         {canEdit && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-sm"
-            onClick={() => setOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            新增事件
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-sm"
+              onClick={() => setReuseOpen(true)}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              复用已有事件
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-sm"
+              onClick={() => setOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新增事件
+            </Button>
+          </div>
         )}
       </div>
 
@@ -269,6 +296,15 @@ export default function RelatedEventsPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReuseOfficialEventDialog
+        open={reuseOpen}
+        detail={detail}
+        actorId={actorId}
+        actorLarkId={actorLarkId}
+        onClose={() => setReuseOpen(false)}
+        onReused={handleReuseSuccess}
+      />
     </div>
   );
 }

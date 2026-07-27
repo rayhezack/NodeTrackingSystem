@@ -21,6 +21,8 @@ import type {
   PermissionConfig,
   ParamDetail,
   RelatedTrackingEvent,
+  ReuseOfficialEventRequest,
+  ReuseOfficialEventResponse,
   TrackingSource,
   TrackingSourceFilter,
   TrackingDetail,
@@ -595,6 +597,122 @@ export class TrackingService {
     };
   }
 
+  async reuseOfficialEvent(recordId: string, body: ReuseOfficialEventRequest): Promise<ReuseOfficialEventResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const source = ref.source;
+    const workbench = workbenchKey(source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
+    if (!current) {
+      throw new NotFoundException('埋点需求不存在');
+    }
+
+    const officialRecordId = (body.officialRecordId || '').trim();
+    if (!officialRecordId) {
+      throw new BadRequestException('请选择要复用的正式事件');
+    }
+    const officialRef = parseScopedRecordId(officialRecordId);
+    if (officialRef.source !== source) {
+      throw new BadRequestException('正式事件分库与当前需求分库不一致');
+    }
+
+    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '复用已有事件');
+    if (!permissions.canEditDesign) {
+      throw new ForbiddenException('当前用户无权限复用已有事件');
+    }
+
+    const officialEvent = await this.bitable.getRecord(queryLibraryKey(source), officialRef.rawId);
+    if (!officialEvent) {
+      throw new NotFoundException('正式事件不存在');
+    }
+    const evtId = cellText(officialEvent.record['evt_id']).trim();
+    const eventName = cellText(officialEvent.record['事件中文名']).trim();
+    if (!evtId || !eventName) {
+      throw new BadRequestException('正式事件缺少 evt_id 或事件名，无法复用');
+    }
+
+    const records = await this.listWorkbenchRecords(source);
+    const currentEvtId = cellText(current.record['evt_id']).trim();
+    const shouldReuseCurrent = !currentEvtId || currentEvtId.toLowerCase() === evtId.toLowerCase();
+    const duplicate = records.find((record) =>
+      record.id !== (shouldReuseCurrent ? ref.rawId : '') &&
+      cellText(record.record['evt_id']).trim().toLowerCase() === evtId.toLowerCase(),
+    );
+    if (duplicate) {
+      throw new BadRequestException(`工作台已有进行中的同名 evt_id：${evtId}`);
+    }
+
+    const officialParams = await this.listOfficialParamsForEvent(source, officialRef.rawId, evtId);
+    const currentRecord = current.record;
+    const version = firstText(officialEvent.record['上线版本'], currentRecord['版本']) || '1.0.0';
+    const minVersion = firstText(currentRecord['最低版本'], version) || version;
+    const officialMetricScenario = cellText(officialEvent.record['指标/使用场景']).trim();
+    const designPatch: Record<string, unknown> = {
+      evt_id: evtId,
+      事件中文名: eventName,
+      事件定义: cellText(officialEvent.record['事件定义']),
+      触发时机: cellText(officialEvent.record['触发时机']),
+      ...(officialMetricScenario ? { '指标/使用场景': officialMetricScenario } : {}),
+      流程阶段: '埋点设计',
+      记录类型: '埋点设计',
+      优先级: cellText(currentRecord['优先级']) || 'P2',
+      端: toPlatformCell(firstText(officialEvent.record['端'], currentRecord['端']), source),
+      评审状态: '草稿',
+      评审意见: '',
+      埋点开发状态: '未开始',
+      DS验收状态: '未开始',
+      上线监控状态: '未开始',
+      上线监控结论: '',
+      发布门禁状态: '未检查',
+      发布门禁失败原因: '',
+      发布状态: '未发布',
+      发布错误: '',
+      正式状态: '待开发',
+      版本: version,
+      最低版本: minVersion,
+      变更类型: '修改',
+      处理方: normalizeHandler(cellText(currentRecord['处理方']), source),
+      公共属性要求: cellText(currentRecord['公共属性要求']),
+      参数明细入口: source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
+      参数拆行状态: officialParams.length ? '已拆行' : '未拆行',
+    };
+
+    let targetRawId = ref.rawId;
+    if (shouldReuseCurrent) {
+      await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: designPatch }]);
+    } else {
+      const hasRequestIdField = hasWorkbenchField(source, '需求ID');
+      const existingRequestId = cellText(currentRecord['需求ID']).trim();
+      const requestId = hasRequestIdField && !existingRequestId
+        ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
+        : existingRequestId;
+      if (requestId && !existingRequestId && hasRequestIdField) {
+        await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: { 需求ID: requestId } }]);
+      }
+      const requirementLink = firstText(currentRecord['需求链接']).trim();
+      const [created] = await this.bitable.batchAddRecords(workbench, [{
+        ...(requestId ? { 需求ID: requestId } : {}),
+        ...designPatch,
+        需求背景: cellText(currentRecord['需求背景']),
+        ...(requirementLink ? { 需求链接: requirementLink } : {}),
+        需求提出人: createUserCells(cellUsers(currentRecord['需求提出人']).ids),
+        需求录入人: createUserCells(cellUsers(currentRecord['需求录入人']).ids),
+        数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
+        研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
+        DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
+      }]);
+      targetRawId = created.id;
+    }
+
+    const imported = await this.importOfficialParamsToDesign(source, targetRawId, evtId, version, officialParams);
+    return {
+      success: true,
+      recordId: encodeScopedRecordId(source, targetRawId),
+      currentStage: '埋点设计',
+      importedParamCount: imported.importedParamCount,
+      skippedParamCount: imported.skippedParamCount,
+    };
+  }
+
   async updateRecord(recordId: string, body: UpdateTrackingRecordRequest): Promise<UpdateTrackingRecordResponse> {
     const ref = parseScopedRecordId(recordId);
     const workbench = workbenchKey(ref.source);
@@ -740,6 +858,57 @@ export class TrackingService {
     return fallback.records.filter((record) =>
       this.isParamForDesign(record, designRecordId, eventId),
     );
+  }
+
+  private async listOfficialParamsForEvent(source: TrackingSource, officialEventRecordId: string, evtId: string): Promise<BitableRecord[]> {
+    const records = await this.searchAllRecords(officialParamDetailKey(source), officialParamFields(source));
+    return records
+      .filter((record) => isOfficialParamForEvent(record, officialEventRecordId, evtId))
+      .filter((record) => !isRemovedOfficialParam(record.record));
+  }
+
+  private async importOfficialParamsToDesign(
+    source: TrackingSource,
+    designRecordId: string,
+    evtId: string,
+    version: string,
+    officialParams: BitableRecord[],
+  ): Promise<{ importedParamCount: number; skippedParamCount: number }> {
+    if (!officialParams.length) {
+      return { importedParamCount: 0, skippedParamCount: 0 };
+    }
+
+    const existingParams = await this.listParamsForDesign(source, designRecordId, evtId);
+    const existingKeys = new Set(
+      existingParams
+        .map((record) => getDesignParamKey(record.record))
+        .map((key) => key.toLowerCase())
+        .filter(Boolean),
+    );
+    const recordsToCreate: Record<string, unknown>[] = [];
+    let skippedParamCount = 0;
+
+    for (const officialParam of officialParams) {
+      const paramName = cellText(officialParam.record['参数名']).trim();
+      const paramKey = getOfficialParamKey(officialParam.record) || buildParamKey(evtId, paramName);
+      if (!paramName || !paramKey) continue;
+      const normalizedKey = paramKey.toLowerCase();
+      if (existingKeys.has(normalizedKey)) {
+        skippedParamCount += 1;
+        continue;
+      }
+      existingKeys.add(normalizedKey);
+      recordsToCreate.push(toDesignParamRecordFromOfficial(source, designRecordId, evtId, version, officialParam.record));
+    }
+
+    for (let index = 0; index < recordsToCreate.length; index += 200) {
+      await this.bitable.batchAddRecords(paramDetailKey(source), recordsToCreate.slice(index, index + 200));
+    }
+
+    return {
+      importedParamCount: recordsToCreate.length,
+      skippedParamCount,
+    };
   }
 
   private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[]): Promise<BitableRecord[]> {
@@ -1618,6 +1787,15 @@ function isRemovedDesignParam(record: Record<string, unknown>): boolean {
   return ['废弃', '已废弃'].includes(paramStatus) || ['删除', '废弃'].includes(changeType);
 }
 
+function isRemovedOfficialParam(record: Record<string, unknown>): boolean {
+  const paramStatus = cellText(record['参数状态']).trim();
+  return ['废弃', '已废弃'].includes(paramStatus);
+}
+
+function getDesignParamKey(record: Record<string, unknown>): string {
+  return cellText(record['设计参数主键']) || buildParamKey(cellText(record.evt_id), cellText(record['参数名']));
+}
+
 function isOfficialParamForEvent(record: BitableRecord, officialEventRecordId: string, evtId: string): boolean {
   const linkedEventIds = cellIds(record.record['关联事件']);
   if (linkedEventIds.includes(officialEventRecordId)) return true;
@@ -1626,6 +1804,40 @@ function isOfficialParamForEvent(record: BitableRecord, officialEventRecordId: s
 
 function getOfficialParamKey(record: Record<string, unknown>): string {
   return cellText(record['参数主键']) || buildParamKey(cellText(record.evt_id), cellText(record['参数名']));
+}
+
+function toDesignParamRecordFromOfficial(
+  source: TrackingSource,
+  designRecordId: string,
+  evtId: string,
+  version: string,
+  officialParam: Record<string, unknown>,
+): Record<string, unknown> {
+  const platformField = source === 'web' ? 'Web适用性' : 'App适用性';
+  const paramName = cellText(officialParam['参数名']).trim();
+  return {
+    设计参数主键: buildParamKey(evtId, paramName),
+    evt_id: evtId,
+    参数名: paramName,
+    数据类型: normalizeParamType(cellText(officialParam['数据类型'])),
+    必传规则: normalizeRequiredRule(cellText(officialParam['必传规则'])),
+    条件说明: cellText(officialParam['条件说明']),
+    '枚举/取值范围': cellText(officialParam['枚举/取值范围']),
+    参数定义: cellText(officialParam['参数定义']),
+    '默认值/示例': extractOfficialParamExample(officialParam),
+    [platformField]: normalizeParamApplicability(cellText(officialParam[platformField]), source),
+    参数状态: '草稿',
+    版本: version || '1.0.0',
+    变更类型: '修改',
+    来源设计记录ID: designRecordId,
+    关联设计: [designRecordId],
+  };
+}
+
+function extractOfficialParamExample(record: Record<string, unknown>): string {
+  const remark = cellText(record['备注']).trim();
+  if (!remark) return '';
+  return remark.replace(/^默认值\/示例[:：]\s*/, '').trim();
 }
 
 function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean {

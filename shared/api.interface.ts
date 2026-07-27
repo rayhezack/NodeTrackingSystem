@@ -180,6 +180,20 @@ export interface CreateSiblingTrackingEventResponse {
   currentStage: string;
 }
 
+export interface ReuseOfficialEventRequest {
+  officialRecordId: string;
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface ReuseOfficialEventResponse {
+  success: boolean;
+  recordId: string;
+  currentStage: string;
+  importedParamCount: number;
+  skippedParamCount: number;
+}
+
 export interface PermissionConfig {
   admins: string[];
   dataScientists: string[];

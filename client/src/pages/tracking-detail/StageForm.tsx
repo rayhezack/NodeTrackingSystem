@@ -261,6 +261,7 @@ const StageForm = ({
           canEdit={canEdit}
           actorId={actorId}
           actorLarkId={actorLarkId}
+          onChanged={onSaved}
         />
       )}
 

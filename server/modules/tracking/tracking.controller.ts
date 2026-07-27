@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateParamRequest,
+  ReuseOfficialEventRequest,
   CreateSiblingTrackingEventRequest,
   CreateTrackingRecordRequest,
   TrackingSourceFilter,
@@ -76,6 +77,14 @@ export class TrackingController {
     @Body() body: CreateSiblingTrackingEventRequest,
   ) {
     return this.trackingService.createSiblingEvent(recordId, body);
+  }
+
+  @Post('records/:recordId/reuse-official-event')
+  reuseOfficialEvent(
+    @Param('recordId') recordId: string,
+    @Body() body: ReuseOfficialEventRequest,
+  ) {
+    return this.trackingService.reuseOfficialEvent(recordId, body);
   }
 
   @Get('records/:recordId')

@@ -12,6 +12,8 @@ import type {
   CreateTrackingRecordResponse,
   CreateSiblingTrackingEventRequest,
   CreateSiblingTrackingEventResponse,
+  ReuseOfficialEventRequest,
+  ReuseOfficialEventResponse,
   GetPermissionConfigResponse,
   GetTrackingDetailResponse,
   UpdatePermissionConfigRequest,
@@ -170,6 +172,22 @@ export async function createSiblingTrackingEvent(
   } catch (error) {
     logger.error('新增同需求埋点事件失败', error);
     throw toReadableError(error, '新增同需求埋点事件失败，请检查 evt_id 是否重复或 Base 权限');
+  }
+}
+
+export async function reuseOfficialTrackingEvent(
+  recordId: string,
+  data: ReuseOfficialEventRequest,
+): Promise<ReuseOfficialEventResponse> {
+  try {
+    const response = await axiosForBackend.post(
+      `/api/tracking/records/${recordId}/reuse-official-event`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('复用已有正式事件失败', error);
+    throw toReadableError(error, '复用已有正式事件失败，请检查 Base 权限或是否已有进行中的同名 evt_id');
   }
 }
 
