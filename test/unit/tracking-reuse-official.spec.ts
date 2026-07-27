@@ -82,6 +82,7 @@ describe('复用正式埋点事件', () => {
 
     const result = await service.reuseOfficialEvent('app:rec_design', {
       officialRecordId: 'app:rec_official',
+      officialParamKeys: ['app_launch.launch_type'],
       actorId: '1867390536304713',
     });
 
@@ -125,7 +126,7 @@ describe('复用正式埋点事件', () => {
     ]);
   });
 
-  it('当前设计记录已有 evt_id 时，应在同一需求下创建复用事件并跳过已存在设计参数', async () => {
+  it('当前设计记录已有 evt_id 且未选择参数时，应仅复用事件不复制正式参数', async () => {
     const currentDesignRecord = {
       id: 'rec_design',
       record: {
@@ -156,29 +157,6 @@ describe('复用正式埋点事件', () => {
         触发时机: '首个页面可交互后触发',
       },
     };
-    const officialParamRecord = {
-      id: 'rec_official_param',
-      record: {
-        参数主键: 'app_launch.launch_type',
-        evt_id: 'app_launch',
-        参数名: 'launch_type',
-        数据类型: 'STRING',
-        必传规则: '必传',
-        参数状态: '正式',
-        App适用性: 'App通用',
-        关联事件: [{ id: 'rec_official' }],
-      },
-    };
-    const existingDesignParam = {
-      id: 'rec_existing_design_param',
-      record: {
-        设计参数主键: 'app_launch.launch_type',
-        evt_id: 'app_launch',
-        参数名: 'launch_type',
-        来源设计记录ID: 'rec_reused',
-        关联设计: ['rec_reused'],
-      },
-    };
     const bitable = {
       getRecord: jest.fn().mockImplementation(async (instanceKey: string, recordId: string) => {
         if (instanceKey === 'workbench' && recordId === 'rec_design') return currentDesignRecord;
@@ -189,19 +167,10 @@ describe('复用正式埋点事件', () => {
         if (instanceKey === 'workbench') {
           return { records: [currentDesignRecord], hasMore: false };
         }
-        if (instanceKey === 'officialParamDetail') {
-          return { records: [officialParamRecord], hasMore: false };
-        }
-        if (instanceKey === 'paramDetail') {
-          return { records: [existingDesignParam], hasMore: false };
-        }
         return { records: [], hasMore: false };
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_design' }]),
-      batchAddRecords: jest
-        .fn()
-        .mockResolvedValueOnce([{ id: 'rec_reused' }])
-        .mockResolvedValueOnce([{ id: 'rec_should_not_create' }]),
+      batchAddRecords: jest.fn().mockResolvedValueOnce([{ id: 'rec_reused' }]),
     };
     const service = new TrackingService(bitable as unknown as BitableService);
 
@@ -212,7 +181,7 @@ describe('复用正式埋点事件', () => {
 
     expect(result.recordId).toBe('app:rec_reused');
     expect(result.importedParamCount).toBe(0);
-    expect(result.skippedParamCount).toBe(1);
+    expect(result.skippedParamCount).toBe(0);
     expect(bitable.batchAddRecords).toHaveBeenCalledTimes(1);
     expect(bitable.batchAddRecords).toHaveBeenCalledWith('workbench', [
       expect.objectContaining({
@@ -225,4 +194,3 @@ describe('复用正式埋点事件', () => {
     ]);
   });
 });
-

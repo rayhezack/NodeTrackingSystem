@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { Database, Loader2, Search, GitBranch } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
@@ -49,11 +50,12 @@ export default function ReuseOfficialEventDialog({
   const [events, setEvents] = useState<OfficialEvent[]>([]);
   const [selected, setSelected] = useState<OfficialEvent | null>(null);
   const [params, setParams] = useState<OfficialParam[]>([]);
+  const [selectedParamKeys, setSelectedParamKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingParams, setLoadingParams] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const fetchEvents = useCallback(async (kw = keyword) => {
+  const fetchEvents = useCallback(async (kw = '') => {
     setLoading(true);
     try {
       const res = await getOfficialEvents({
@@ -68,21 +70,24 @@ export default function ReuseOfficialEventDialog({
     } finally {
       setLoading(false);
     }
-  }, [detail.source, keyword]);
+  }, [detail.source]);
 
   useEffect(() => {
     if (!open) return;
     setKeyword('');
     setSelected(null);
     setParams([]);
+    setSelectedParamKeys([]);
     fetchEvents('');
   }, [open, fetchEvents]);
 
   useEffect(() => {
     if (!selected) {
       setParams([]);
+      setSelectedParamKeys([]);
       return;
     }
+    setSelectedParamKeys([]);
     let cancelled = false;
     const loadParams = async () => {
       setLoadingParams(true);
@@ -114,10 +119,13 @@ export default function ReuseOfficialEventDialog({
     try {
       const result = await reuseOfficialTrackingEvent(detail.recordId, {
         officialRecordId: selected.recordId,
+        officialParamKeys: selectedParamKeys,
         actorId,
         actorLarkId,
       });
-      toast.success(`已复用正式事件，并导入 ${result.importedParamCount} 个参数`);
+      toast.success(result.importedParamCount
+        ? `已复用正式事件，并导入 ${result.importedParamCount} 个参数`
+        : '已复用正式事件，未导入旧参数');
       await onReused(result);
       onClose();
     } catch (error) {
@@ -143,7 +151,7 @@ export default function ReuseOfficialEventDialog({
         </DialogHeader>
 
         <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
-          从{detail.source === 'web' ? ' Web ' : ' App '}正式查询库选择已有事件，系统会回填事件定义、触发时机和版本，并将正式参数复制为本次需求的设计参数草稿。{reuseTargetCopy}
+          从{detail.source === 'web' ? ' Web ' : ' App '}正式查询库选择已有事件，系统会回填事件定义、触发时机和版本；只有勾选的正式参数会复制为本次需求的设计参数草稿。{reuseTargetCopy}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
@@ -237,7 +245,31 @@ export default function ReuseOfficialEventDialog({
                 </div>
                 <div className="rounded-sm border border-border bg-card">
                   <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-                    正式参数预览 {loadingParams ? '' : `(${params.length})`}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        可选正式参数 {loadingParams ? '' : `(${params.length})`} · 已选择 {selectedParamKeys.length} 个
+                      </span>
+                      {params.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => setSelectedParamKeys(params.map(paramKeyOf).filter(Boolean))}
+                            disabled={saving}
+                          >
+                            全选
+                          </button>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => setSelectedParamKeys([])}
+                            disabled={saving}
+                          >
+                            清空
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
                     {loadingParams ? (
@@ -247,20 +279,24 @@ export default function ReuseOfficialEventDialog({
                       </div>
                     ) : params.length ? (
                       <div className="divide-y divide-border">
-                        {params.slice(0, 12).map((param) => (
-                          <div key={param.paramKey || param.paramName} className="px-3 py-2 text-xs">
-                            <div className="break-all font-mono text-foreground">{param.paramKey || param.paramName}</div>
-                            <div className="mt-1 text-muted-foreground">
-                              {param.paramType || '-'} · {param.requiredRule || '非必传'}
-                              {param.enumRange ? ` · 枚举：${param.enumRange}` : ''}
+                        {params.map((param) => (
+                          <label key={param.paramKey || param.paramName} className="flex cursor-pointer gap-2 px-3 py-2 text-xs hover:bg-accent/60">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                              checked={selectedParamKeys.includes(paramKeyOf(param))}
+                              onChange={(event) => toggleParamKey(paramKeyOf(param), event.target.checked, setSelectedParamKeys)}
+                              disabled={saving}
+                            />
+                            <div className="min-w-0">
+                              <div className="break-all font-mono text-foreground">{param.paramKey || param.paramName}</div>
+                              <div className="mt-1 text-muted-foreground">
+                                {param.paramType || '-'} · {param.requiredRule || '非必传'}
+                                {param.enumRange ? ` · 枚举：${param.enumRange}` : ''}
+                              </div>
                             </div>
-                          </div>
+                          </label>
                         ))}
-                        {params.length > 12 && (
-                          <div className="px-3 py-2 text-xs text-muted-foreground">
-                            还有 {params.length - 12} 个参数，将一并导入。
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div className="py-8 text-center text-xs text-muted-foreground">
@@ -295,12 +331,28 @@ export default function ReuseOfficialEventDialog({
             disabled={!selected || saving}
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-            {saving ? '复用中...' : '确认复用'}
+            {saving ? '复用中...' : `确认复用${selectedParamKeys.length ? `（导入 ${selectedParamKeys.length} 个参数）` : ''}`}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function paramKeyOf(param: OfficialParam): string {
+  return (param.paramKey || param.paramName || '').trim();
+}
+
+function toggleParamKey(
+  key: string,
+  checked: boolean,
+  setSelectedParamKeys: Dispatch<SetStateAction<string[]>>,
+) {
+  if (!key) return;
+  setSelectedParamKeys((prev) => {
+    if (checked) return Array.from(new Set([...prev, key]));
+    return prev.filter((item) => item !== key);
+  });
 }
 
 function PreviewLine({

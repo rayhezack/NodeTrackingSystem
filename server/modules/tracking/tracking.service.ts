@@ -641,7 +641,15 @@ export class TrackingService {
       throw new BadRequestException(`工作台已有进行中的同名 evt_id：${evtId}`);
     }
 
-    const officialParams = await this.listOfficialParamsForEvent(source, officialRef.rawId, evtId);
+    const selectedParamKeys = new Set(
+      uniqueStrings(body.officialParamKeys || [])
+        .map((key) => key.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const officialParams = selectedParamKeys.size
+      ? (await this.listOfficialParamsForEvent(source, officialRef.rawId, evtId))
+          .filter((record) => selectedParamKeys.has(getOfficialParamKey(record.record).toLowerCase()))
+      : [];
     const currentRecord = current.record;
     const version = firstText(officialEvent.record['上线版本'], currentRecord['版本']) || '1.0.0';
     const minVersion = firstText(currentRecord['最低版本'], version) || version;

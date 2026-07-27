@@ -182,6 +182,7 @@ export interface CreateSiblingTrackingEventResponse {
 
 export interface ReuseOfficialEventRequest {
   officialRecordId: string;
+  officialParamKeys?: string[];
   actorId?: string;
   actorLarkId?: string;
 }
