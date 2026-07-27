@@ -1,16 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { logger } from '@lark-apaas/client-toolkit/logger';
-import { Plus, Edit, Trash2, AlertCircle, Wrench, Loader2 } from 'lucide-react';
+import { Plus, AlertCircle, Wrench, Loader2, Copy } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
-import { Badge } from '@client/src/components/ui/badge';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from '@client/src/components/ui/table';
+import { toast } from 'sonner';
 import {
   getParams,
   createParam,
@@ -24,6 +16,8 @@ import type {
 } from '@shared/api.interface';
 import ParamFormDialog from './ParamFormDialog';
 import DeleteParamDialog from './DeleteParamDialog';
+import ParamSpecTable from './ParamSpecTable';
+import { buildParamClipboardText } from './param-display.utils';
 
 interface ParamDesignerProps {
   recordId: string;
@@ -116,6 +110,15 @@ const ParamDesigner = ({
     setDeletingParam(null);
   };
 
+  const handleCopyParams = async () => {
+    try {
+      await copyText(buildParamClipboardText(items, source, `${evtId || '当前事件'} 参数说明`));
+      toast.success('参数说明已复制');
+    } catch {
+      toast.error('复制失败，请手动选择复制');
+    }
+  };
+
   // Loading skeleton
   if (loading) {
     return (
@@ -184,15 +187,28 @@ const ParamDesigner = ({
             </span>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
+            配置该事件的参数明细；研发可直接查看参数含义、枚举值和示例
           </p>
         </div>
-        {canEdit && (
-          <Button size="sm" className="rounded-sm h-8" onClick={handleCreate}>
-            <Plus className="h-3.5 w-3.5" />
-            新增参数
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isEmpty && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-sm"
+              onClick={handleCopyParams}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              复制参数说明
+            </Button>
+          )}
+          {canEdit && (
+            <Button size="sm" className="h-8 rounded-sm" onClick={handleCreate}>
+              <Plus className="h-3.5 w-3.5" />
+              新增参数
+            </Button>
+          )}
+        </div>
       </div>
 
       {isEmpty ? (
@@ -204,60 +220,13 @@ const ParamDesigner = ({
           </p>
         </div>
       ) : (
-        <div className="rounded-sm border border-border bg-card overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="h-9 bg-muted/30 hover:bg-muted/30">
-                <TableHead className="h-9 text-xs font-medium py-0">参数 key</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">参数名</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">参数类型</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">必传规则</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">枚举范围</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">适用端</TableHead>
-                {canEdit && (
-                  <TableHead className="h-9 text-xs font-medium py-0 w-[120px]">操作</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.recordId} className="h-9 transition-colors">
-                  <TableCell className="h-9 py-0 text-xs font-mono">{item.paramKey}</TableCell>
-                  <TableCell className="h-9 py-0 text-xs">{item.paramName}</TableCell>
-                  <TableCell className="h-9 py-0 text-xs">{item.paramType}</TableCell>
-                    <TableCell className="h-9 py-0 text-xs">
-                      <Badge
-                        variant={item.requiredRule === '非必传' ? 'outline' : 'default'}
-                        className="h-5 rounded-sm text-[10px] px-1.5 font-normal"
-                      >
-                        {item.requiredRule || (item.required ? '必传' : '非必传')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="h-9 py-0 text-xs max-w-[160px] truncate">
-                      {item.enumRange || '-'}
-                    </TableCell>
-                    <TableCell className="h-9 py-0 text-xs">
-                      {normalizePlatformDisplay(item.platform, source)}
-                    </TableCell>
-                    {canEdit && (
-                      <TableCell className="h-9 py-0 text-xs w-[120px]">
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-foreground" onClick={() => handleEdit(item)}>
-                            <Edit className="h-3.5 w-3.5" />
-                            编辑
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-destructive" onClick={() => handleDelete(item)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <ParamSpecTable
+          items={items}
+          source={source}
+          canEdit={canEdit}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
       )}
 
       <ParamFormDialog
@@ -282,28 +251,26 @@ const ParamDesigner = ({
 
 export default ParamDesigner;
 
-function normalizePlatformDisplay(value: string | undefined, source: TrackingSource): string {
-  const raw = (value || '').trim();
-  if (source === 'web') {
-    if (raw === 'Web' || raw === '仅Web') return 'Web通用';
-    return raw || '-';
-  }
-  const alias: Record<string, string> = {
-    App: 'App通用',
-    仅App: 'App通用',
-    iOS: '仅iOS',
-    Android: '仅Android',
-    'iOS、Android': 'App通用',
-    'iOS,Android': 'App通用',
-    'iOS, Android': 'App通用',
-  };
-  return alias[raw] || raw || '-';
-}
-
 function upsertParam(items: ParamDetail[], next: ParamDetail): ParamDetail[] {
   const existed = items.some((item) => item.recordId === next.recordId);
   const merged = existed
     ? items.map((item) => (item.recordId === next.recordId ? next : item))
     : [...items, next];
   return [...merged].sort((a, b) => a.paramKey.localeCompare(b.paramKey));
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
 }

@@ -46,6 +46,7 @@ import type {
 } from '@shared/api.interface';
 import ParamDesigner from './param-designer/ParamDesigner';
 import RelatedEventsPanel from './RelatedEventsPanel';
+import DesignHandoffPanel from './DesignHandoffPanel';
 import {
   buildStageUpdateRequest,
   buildStageCompletionRequest,
@@ -261,6 +262,10 @@ const StageForm = ({
           actorId={actorId}
           actorLarkId={actorLarkId}
         />
+      )}
+
+      {stageId === 'dev' && (
+        <DesignHandoffPanel detail={detail} />
       )}
 
       <div className="grid gap-5 md:grid-cols-2">
