@@ -17,7 +17,11 @@ import {
   updateParam,
   deleteParam,
 } from '@client/src/api/tracking';
-import type { ParamDetail, CreateParamRequest, TrackingSource } from '@shared/api.interface';
+import type {
+  ParamDetail,
+  CreateParamRequest,
+  TrackingSource,
+} from '@shared/api.interface';
 import ParamFormDialog from './ParamFormDialog';
 import DeleteParamDialog from './DeleteParamDialog';
 
@@ -89,25 +93,27 @@ const ParamDesigner = ({
 
   const handleFormSubmit = async (data: CreateParamRequest) => {
     if (formMode === 'create') {
-      await createParam(recordId, {
+      const res = await createParam(recordId, {
         ...data,
         actorId,
         actorLarkId,
       });
+      setItems((prev) => upsertParam(prev, res.item));
     } else if (editingParam) {
-      await updateParam(editingParam.recordId, {
+      const res = await updateParam(editingParam.recordId, {
         fields: data as unknown as Record<string, unknown>,
         actorId,
         actorLarkId,
       });
+      setItems((prev) => upsertParam(prev, res.item));
     }
-    await loadParams();
   };
 
   const handleDeleteConfirm = async () => {
     if (!deletingParam) return;
     await deleteParam(deletingParam.recordId, actorId, actorLarkId);
-    await loadParams();
+    setItems((prev) => prev.filter((item) => item.recordId !== deletingParam.recordId));
+    setDeletingParam(null);
   };
 
   // Loading skeleton
@@ -292,4 +298,12 @@ function normalizePlatformDisplay(value: string | undefined, source: TrackingSou
     'iOS, Android': 'App通用',
   };
   return alias[raw] || raw || '-';
+}
+
+function upsertParam(items: ParamDetail[], next: ParamDetail): ParamDetail[] {
+  const existed = items.some((item) => item.recordId === next.recordId);
+  const merged = existed
+    ? items.map((item) => (item.recordId === next.recordId ? next : item))
+    : [...items, next];
+  return [...merged].sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 }

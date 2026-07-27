@@ -175,6 +175,10 @@ const StageForm = ({
 
   const handleSave = async () => {
     if (!canEdit) return;
+    if (dirtyFieldNames.size === 0) {
+      toast.info('没有需要保存的修改');
+      return;
+    }
     setSaving(true);
     try {
       const fields = serializeFields();
@@ -190,7 +194,7 @@ const StageForm = ({
         actorLarkId,
       });
       toast.success('保存成功');
-      onSaved?.();
+      setDirtyFieldNames(new Set());
     } catch (error) {
       const msg = error instanceof Error ? error.message : '保存失败';
       toast.error(msg);

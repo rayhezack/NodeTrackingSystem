@@ -321,6 +321,7 @@ export interface CreateParamRequest {
 export interface CreateParamResponse {
   success: boolean;
   recordId: string;
+  item: ParamDetail;
 }
 
 export interface UpdateParamRequest {
@@ -332,6 +333,7 @@ export interface UpdateParamRequest {
 export interface UpdateParamResponse {
   success: boolean;
   recordId: string;
+  item: ParamDetail;
 }
 
 export interface DeleteParamResponse {

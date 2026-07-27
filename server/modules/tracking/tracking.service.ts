@@ -651,12 +651,8 @@ export class TrackingService {
     }
 
     const evtId = cellText(detail.record['evt_id']);
-    const result = await this.bitable.searchRecords(paramDetailKey(ref.source), {
-      fieldNames: [...paramFields(ref.source)],
-      pageSize: 200,
-    });
-    const items = result.records
-      .filter((record) => this.isParamForDesign(record, ref.rawId, evtId))
+    const paramRecords = await this.listParamsForDesign(ref.source, ref.rawId, evtId);
+    const items = paramRecords
       .filter((record) => !isRemovedDesignParam(record.record))
       .map((record) => this.toParamDetail(record, ref.source))
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
@@ -677,11 +673,13 @@ export class TrackingService {
       throw new BadRequestException('evt_id 和参数名不能为空');
     }
 
-    const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body)]);
+    const paramRecord = this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body);
+    const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [paramRecord]);
 
     return {
       success: true,
       recordId: encodeScopedRecordId(ref.source, created.id),
+      item: this.toParamDetail({ id: created.id, record: paramRecord }, ref.source),
     };
   }
 
@@ -697,7 +695,49 @@ export class TrackingService {
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields) ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source) : fields;
     await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: patch }]);
-    return { success: true, recordId: paramRecordId };
+    return {
+      success: true,
+      recordId: paramRecordId,
+      item: this.toParamDetail({
+        id: ref.rawId,
+        record: { ...paramRecord.record, ...patch },
+      }, ref.source),
+    };
+  }
+
+  private async listParamsForDesign(source: TrackingSource, designRecordId: string, evtId: string): Promise<BitableRecord[]> {
+    const instanceKey = paramDetailKey(source);
+    const fields = [...paramFields(source)];
+    const eventId = evtId.trim();
+    const conditions = [
+      { fieldName: '来源设计记录ID', operator: 'is', value: [designRecordId] },
+      ...(eventId ? [{ fieldName: 'evt_id', operator: 'is', value: [eventId] }] : []),
+    ];
+
+    try {
+      const result = await this.bitable.searchRecords(instanceKey, {
+        fieldNames: fields,
+        filter: {
+          conjunction: 'or',
+          conditions,
+        },
+        pageSize: 200,
+      });
+      const matched = result.records.filter((record) =>
+        this.isParamForDesign(record, designRecordId, eventId),
+      );
+      if (matched.length || !eventId) return matched;
+    } catch {
+      // 兼容历史表结构或 Base 过滤能力异常：回退到旧的宽表扫描逻辑，避免线上数据不可见。
+    }
+
+    const fallback = await this.bitable.searchRecords(instanceKey, {
+      fieldNames: fields,
+      pageSize: 200,
+    });
+    return fallback.records.filter((record) =>
+      this.isParamForDesign(record, designRecordId, eventId),
+    );
   }
 
   private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[]): Promise<BitableRecord[]> {
@@ -718,12 +758,8 @@ export class TrackingService {
   }
 
   private async syncParamEvtId(source: TrackingSource, designRecordId: string, previousEvtId: string, nextEvtId: string): Promise<void> {
-    const result = await this.bitable.searchRecords(paramDetailKey(source), {
-      fieldNames: [...paramFields(source)],
-      pageSize: 200,
-    });
-    const updates = result.records
-      .filter((record) => this.isParamForDesign(record, designRecordId, previousEvtId))
+    const records = await this.listParamsForDesign(source, designRecordId, previousEvtId);
+    const updates = records
       .map((record) => ({
         id: record.id,
         record: { evt_id: nextEvtId },

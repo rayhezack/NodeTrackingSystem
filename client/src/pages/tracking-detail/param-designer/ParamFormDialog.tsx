@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Save } from 'lucide-react';
+import { Loader2, Plus, Save } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -63,7 +63,7 @@ const ParamFormDialog = ({
   onSubmit,
 }: ParamFormDialogProps) => {
   const [form, setForm] = useState<CreateParamRequest>(defaultForm(defaultEvtId, source));
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<'close' | 'continue' | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -88,7 +88,7 @@ const ParamFormDialog = ({
     }
   }, [open, mode, initialData, defaultEvtId, source]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (action: 'close' | 'continue' = 'close') => {
     if (!form.evtId.trim()) {
       toast.error('请先填写 evt_id');
       return;
@@ -97,7 +97,7 @@ const ParamFormDialog = ({
       toast.error('请输入参数名');
       return;
     }
-    setSaving(true);
+    setSavingAction(action);
     try {
       await onSubmit({
         ...form,
@@ -105,12 +105,16 @@ const ParamFormDialog = ({
         paramKey: buildParamKey(form.evtId, form.paramName),
       });
       toast.success(mode === 'create' ? '新增参数成功' : '编辑参数成功');
-      onClose();
+      if (mode === 'create' && action === 'continue') {
+        setForm(defaultForm(defaultEvtId, source));
+      } else {
+        onClose();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '操作失败';
       toast.error(msg);
     } finally {
-      setSaving(false);
+      setSavingAction(null);
     }
   };
 
@@ -126,6 +130,7 @@ const ParamFormDialog = ({
   const textareaCls = 'rounded-sm text-xs min-h-[60px]';
   const platformOptions = source === 'web' ? WEB_PLATFORM_OPTIONS : APP_PLATFORM_OPTIONS;
   const autoParamKey = buildParamKey(form.evtId, form.paramName);
+  const saving = savingAction !== null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
@@ -257,9 +262,34 @@ const ParamFormDialog = ({
           >
             取消
           </Button>
-          <Button size="sm" className="rounded-sm h-8" onClick={handleSubmit} disabled={saving}>
-            <Save className="h-3.5 w-3.5" />
-            {saving ? '保存中...' : '确定'}
+          {mode === 'create' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-sm h-8"
+              onClick={() => handleSubmit('continue')}
+              disabled={saving}
+            >
+              {savingAction === 'continue' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
+              保存并继续新增
+            </Button>
+          )}
+          <Button
+            size="sm"
+            className="rounded-sm h-8"
+            onClick={() => handleSubmit('close')}
+            disabled={saving}
+          >
+            {savingAction === 'close' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            {savingAction === 'close' ? '保存中...' : '确定'}
           </Button>
         </DialogFooter>
       </DialogContent>

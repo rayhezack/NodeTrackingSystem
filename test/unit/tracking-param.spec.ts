@@ -15,7 +15,7 @@ describe('埋点参数 Base 回写', () => {
     };
     const service = new TrackingService(bitable as unknown as BitableService);
 
-    await service.createParam('app:rec_design', {
+    const result = await service.createParam('app:rec_design', {
       actorId: '1867390536304713',
       evtId: 'test_event',
       paramName: 'button_name',
@@ -33,6 +33,53 @@ describe('埋点参数 Base 回写', () => {
         App适用性: 'App通用',
       }),
     ]);
+    expect(result.item).toMatchObject({
+      recordId: 'app:rec_param',
+      paramKey: 'test_event.button_name',
+      evtId: 'test_event',
+      paramName: 'button_name',
+      platform: 'App通用',
+    });
+  });
+
+  it('加载参数列表应优先按设计记录和 evt_id 下推过滤，减少全表扫描', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: { evt_id: 'test_event' },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_active_param',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'active_param',
+              数据类型: 'STRING',
+              参数状态: '草稿',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getParams('app:rec_design');
+
+    expect(result.items).toHaveLength(1);
+    expect(bitable.searchRecords).toHaveBeenCalledTimes(1);
+    expect(bitable.searchRecords).toHaveBeenCalledWith('paramDetail', expect.objectContaining({
+      filter: {
+        conjunction: 'or',
+        conditions: [
+          { fieldName: '来源设计记录ID', operator: 'is', value: ['rec_design'] },
+          { fieldName: 'evt_id', operator: 'is', value: ['test_event'] },
+        ],
+      },
+    }));
   });
 
   it('App 参数适用端不应继续写入与 App通用 重复的仅App', async () => {
