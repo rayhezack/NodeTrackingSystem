@@ -212,10 +212,15 @@ function cellIds(value: unknown): string[] {
 function normalizeParamApplicability(value: string, source: TrackingSource): string {
   const raw = String(value || '').trim();
   if (source === 'web') {
-    const alias: Record<string, string> = { Web: '仅Web' };
+    const alias: Record<string, string> = {
+      Web: 'Web通用',
+      仅Web: 'Web通用',
+    };
     return alias[raw] || raw || '-';
   }
   const alias: Record<string, string> = {
+    App: 'App通用',
+    仅App: 'App通用',
     iOS: '仅iOS',
     Android: '仅Android',
     'iOS、Android': 'App通用',

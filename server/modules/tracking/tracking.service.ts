@@ -1715,13 +1715,16 @@ function normalizeParamApplicability(value: unknown, source: TrackingSource): st
   const raw = String(value || '').trim();
   if (source === 'web') {
     const alias: Record<string, string> = {
-      Web: '仅Web',
+      Web: 'Web通用',
+      仅Web: 'Web通用',
     };
     const normalized = alias[raw] || raw || 'Web通用';
-    return ['Web通用', '仅Web', 'Web&App历史兼容', 'Web/App差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'Web通用';
+    return ['Web通用', 'Web&App历史兼容', 'Web/App差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'Web通用';
   }
 
   const alias: Record<string, string> = {
+    App: 'App通用',
+    仅App: 'App通用',
     iOS: '仅iOS',
     Android: '仅Android',
     'iOS、Android': 'App通用',
@@ -1729,5 +1732,5 @@ function normalizeParamApplicability(value: unknown, source: TrackingSource): st
     'iOS, Android': 'App通用',
   };
   const normalized = alias[raw] || raw || 'App通用';
-  return ['App通用', '仅App', '仅iOS', '仅Android', 'Web&App历史兼容', 'App/Web差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'App通用';
+  return ['App通用', '仅iOS', '仅Android', 'Web&App历史兼容', 'App/Web差异待拆', '待确认', '无特殊参数'].includes(normalized) ? normalized : 'App通用';
 }

@@ -13,7 +13,6 @@ export const REQUIRED_RULE_OPTIONS = ['必传', '非必传', '条件必传'];
 
 export const APP_PLATFORM_OPTIONS = [
   'App通用',
-  '仅App',
   '仅iOS',
   '仅Android',
   'Web&App历史兼容',
@@ -23,7 +22,6 @@ export const APP_PLATFORM_OPTIONS = [
 ];
 export const WEB_PLATFORM_OPTIONS = [
   'Web通用',
-  '仅Web',
   'Web&App历史兼容',
   'Web/App差异待拆',
   '待确认',

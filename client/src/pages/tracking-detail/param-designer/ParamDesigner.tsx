@@ -297,10 +297,12 @@ export default ParamDesigner;
 function normalizePlatformDisplay(value: string | undefined, source: TrackingSource): string {
   const raw = (value || '').trim();
   if (source === 'web') {
-    if (raw === 'Web') return '仅Web';
+    if (raw === 'Web' || raw === '仅Web') return 'Web通用';
     return raw || '-';
   }
   const alias: Record<string, string> = {
+    App: 'App通用',
+    仅App: 'App通用',
     iOS: '仅iOS',
     Android: '仅Android',
     'iOS、Android': 'App通用',
