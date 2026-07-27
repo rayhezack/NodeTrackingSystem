@@ -247,11 +247,11 @@ const RecordsTable = ({
           </Empty>
         ) : (
           <>
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="h-9 w-32 px-3 text-xs font-medium text-muted-foreground">
-                    evt_id
+                  <TableHead className="h-9 w-56 px-3 text-xs font-medium text-muted-foreground">
+                    埋点事件
                   </TableHead>
                   <TableHead className="h-9 w-16 px-3 text-xs font-medium text-muted-foreground">
                     库
@@ -265,7 +265,7 @@ const RecordsTable = ({
                   <TableHead className="h-9 w-16 px-3 text-xs font-medium text-muted-foreground">
                     优先级
                   </TableHead>
-                  <TableHead className="h-9 w-20 px-3 text-xs font-medium text-muted-foreground">
+                  <TableHead className="h-9 w-28 px-3 text-xs font-medium text-muted-foreground">
                     平台
                   </TableHead>
                   <TableHead className="h-9 w-28 px-3 text-xs font-medium text-muted-foreground">
@@ -288,18 +288,37 @@ const RecordsTable = ({
                       className="h-9 cursor-pointer hover:bg-accent/50"
                       onClick={() => onRowClick(rec.recordId)}
                     >
-                      <TableCell className="px-3 py-0 font-mono text-xs text-primary">
-                        {rec.evtId || '待填写'}
+                      <TableCell className="px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className="min-w-0 flex-1 truncate font-mono text-xs text-primary"
+                              title={eventTitle(rec.eventIds)}
+                            >
+                              {rec.evtId || '待填写'}
+                            </span>
+                            {rec.eventCount > 1 && (
+                              <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
+                                {rec.eventCount} 个事件
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
                           {rec.source === 'web' ? 'Web' : 'App'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="px-3 py-0 text-xs text-foreground">
-                        <span className="block max-w-[320px] truncate">
+                      <TableCell className="px-3 py-2 text-xs text-foreground">
+                        <span className="block min-w-0 truncate">
                           {rec.eventName || '未命名需求'}
                         </span>
+                        {rec.eventCount > 1 && (
+                          <span className="mt-0.5 block min-w-0 truncate text-[11px] text-muted-foreground" title={eventTitle(rec.eventNames)}>
+                            {rec.eventNames.slice(0, 4).join('、')}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge
@@ -316,7 +335,9 @@ const RecordsTable = ({
                         </Badge>
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-foreground">
-                        {rec.platform || '-'}
+                        <span className="block truncate" title={rec.platform || '-'}>
+                          {rec.platform || '-'}
+                        </span>
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         <OwnerDisplay
@@ -387,4 +408,8 @@ function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
   }
 
   return readableNames.length ? readableNames.join('、') : '-';
+}
+
+function eventTitle(values: string[]): string {
+  return values.filter(Boolean).join('\n');
 }

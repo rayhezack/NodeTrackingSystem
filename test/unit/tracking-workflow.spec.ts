@@ -561,4 +561,90 @@ describe('工作流 Base 回写', () => {
     expect(secondPage.items.map((item) => item.evtId)).toEqual(['event_3']);
     expect(secondPage.hasMore).toBe(false);
   });
+
+  it('工作台待办和需求列表应按需求ID聚合多个埋点事件', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_expose',
+            record: {
+              需求ID: 'APP_REQ_BG_REMOVE',
+              evt_id: 'bg_remove_entry_expose',
+              事件中文名: '背景移除入口曝光',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['iOS', 'Android'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              研发负责人: [{ id: '3001', name: '曾家其' }],
+              创建时间: 200,
+            },
+          },
+          {
+            id: 'rec_click',
+            record: {
+              需求ID: 'APP_REQ_BG_REMOVE',
+              evt_id: 'bg_remove_entry_click',
+              事件中文名: '背景移除入口点击',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['iOS', 'Android'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              研发负责人: [{ id: '3001', name: '曾家其' }],
+              创建时间: 300,
+            },
+          },
+          {
+            id: 'rec_other',
+            record: {
+              需求ID: 'APP_REQ_OTHER',
+              evt_id: 'app_launch',
+              事件中文名: 'App 激活',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P1',
+              端: ['iOS', 'Android'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 100,
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const dashboard = await service.getWorkbenchDashboard({
+      source: 'app',
+      actorId: '1867390536304713',
+      pageSize: 20,
+      todoLimit: 10,
+    });
+    const groupedDemand = dashboard.items.find((item) => item.requestId === 'APP_REQ_BG_REMOVE');
+
+    expect(dashboard.total).toBe(2);
+    expect(dashboard.items).toHaveLength(2);
+    expect(dashboard.todos).toHaveLength(2);
+    expect(dashboard.stats.find((item) => item.stage === '埋点设计')?.count).toBe(2);
+    expect(groupedDemand).toMatchObject({
+      recordId: 'app:rec_click',
+      eventCount: 2,
+      eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
+      eventNames: ['背景移除入口点击', '背景移除入口曝光'],
+    });
+    expect(dashboard.todos.find((item) => item.requestId === 'APP_REQ_BG_REMOVE')).toMatchObject({
+      eventCount: 2,
+      eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
+    });
+
+    const searchResult = await service.getRecords({
+      source: 'app',
+      keyword: 'expose',
+      pageSize: 20,
+    });
+    expect(searchResult.items).toHaveLength(1);
+    expect(searchResult.items[0].requestId).toBe('APP_REQ_BG_REMOVE');
+  });
 });

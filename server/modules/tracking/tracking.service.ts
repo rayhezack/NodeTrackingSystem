@@ -143,6 +143,8 @@ type Cell = unknown;
 type ScopedRecordRef = { source: TrackingSource; rawId: string };
 type PermissionKey = keyof StagePermissions;
 type SourcedWorkbenchRecord = { source: TrackingSource; record: BitableRecord };
+type WorkbenchRecordGroup = { source: TrackingSource; requestId: string; records: BitableRecord[] };
+type TodoCandidate = TrackingRecord & { targetStage: string; todoRole: string };
 
 const USER_FIELD_NAMES = new Set(['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
@@ -253,8 +255,9 @@ export class TrackingService {
 
   private buildStageStats(records: SourcedWorkbenchRecord[]): GetStageStatsResponse {
     const countMap = new Map(UI_STAGE_NODES.map((stage) => [stage, 0]));
-    for (const { record } of records) {
-      const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
+    for (const group of groupWorkbenchRecords(records)) {
+      const trackingRecord = this.toTrackingRecordGroup(group);
+      const uiStage = trackingRecord.uiStage;
       if (countMap.has(uiStage)) {
         countMap.set(uiStage, (countMap.get(uiStage) || 0) + 1);
       }
@@ -280,33 +283,20 @@ export class TrackingService {
   private buildTodoItems(records: SourcedWorkbenchRecord[], limit: number, actorCandidates: string[], permissionConfig?: PermissionConfig | null): GetMyTodosResponse {
     const isAdmin = isAdminActor(actorCandidates, permissionConfig);
 
-    const items = records
-      .map(({ record, source }) => {
-        const action = isAdmin ? getAdminTodoAction(record) : getTodoAction(record, actorCandidates);
-        if (!action) return null;
-        const trackingRecord = this.toTrackingRecord(record, source);
-        return {
-          ...trackingRecord,
-          stage: action.stage,
-          targetStage: action.targetStage,
-          todoRole: action.todoRole,
-        };
-      })
-      .filter(
-        (
-          record,
-        ): record is TrackingRecord & {
-          targetStage: string;
-          todoRole: string;
-        } => Boolean(record),
-      )
+    const items = groupWorkbenchRecords(records)
+      .map((group) => this.toTodoCandidate(group, isAdmin, actorCandidates))
+      .filter((record): record is TodoCandidate => Boolean(record))
       .sort(compareTrackingRecord)
       .slice(0, limit)
       .map((record) => ({
         recordId: record.recordId,
         source: record.source,
+        requestId: record.requestId,
         evtId: record.evtId,
+        eventIds: record.eventIds,
         eventName: record.eventName,
+        eventNames: record.eventNames,
+        eventCount: record.eventCount,
         stage: record.stage,
         targetStage: record.targetStage,
         todoRole: record.todoRole,
@@ -327,11 +317,11 @@ export class TrackingService {
     const offset = Number(params.pageToken || 0);
     const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0;
     const keyword = (params.keyword || '').trim().toLowerCase();
-    const filtered = records
-      .map(({ record, source }) => this.toTrackingRecord(record, source))
+    const filtered = groupWorkbenchRecords(records)
+      .map((group) => this.toTrackingRecordGroup(group))
       .filter((record) => {
         if (keyword) {
-          const haystack = `${record.evtId} ${record.eventName}`.toLowerCase();
+          const haystack = `${record.requestId || ''} ${record.evtId} ${record.eventName} ${record.eventIds.join(' ')} ${record.eventNames.join(' ')}`.toLowerCase();
           if (!haystack.includes(keyword)) return false;
         }
         if (params.stage && record.uiStage !== params.stage && record.stage !== params.stage) {
@@ -977,6 +967,62 @@ export class TrackingService {
     };
   }
 
+  private toTodoCandidate(group: WorkbenchRecordGroup, isAdmin: boolean, actorCandidates: string[]): TodoCandidate | null {
+    const candidates = group.records
+      .map((record) => {
+        const action = isAdmin ? getAdminTodoAction(record) : getTodoAction(record, actorCandidates);
+        if (!action) return null;
+        return {
+          record,
+          action,
+        };
+      })
+      .filter((item): item is { record: BitableRecord; action: { stage: string; targetStage: string; todoRole: string } } => Boolean(item))
+      .sort((a, b) => compareTodoCandidate(a.record, b.record));
+
+    const selected = candidates[0];
+    if (!selected) return null;
+
+    return {
+      ...this.toTrackingRecordGroup(group, selected.record),
+      stage: selected.action.stage,
+      uiStage: selected.action.stage,
+      targetStage: selected.action.targetStage,
+      todoRole: selected.action.todoRole,
+    };
+  }
+
+  private toTrackingRecordGroup(group: WorkbenchRecordGroup, preferredRecord?: BitableRecord): TrackingRecord {
+    const records = group.records;
+    const representative = preferredRecord || selectGroupRepresentative(records);
+    const stageRecord = selectGroupStageRecord(records);
+    const stage = cellText(stageRecord.record['流程阶段']) || '需求录入';
+    const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
+    const eventNames = uniqueStrings(records.map((record) => cellText(record.record['事件中文名']) || '未命名事件'));
+    const dataUsers = mergeRecordUsers(records, '数据负责人');
+    const devUsers = mergeRecordUsers(records, '研发负责人');
+
+    return {
+      recordId: encodeScopedRecordId(group.source, representative.id),
+      source: group.source,
+      requestId: group.requestId || undefined,
+      evtId: cellText(representative.record['evt_id']),
+      eventIds,
+      eventName: cellText(representative.record['事件中文名']) || eventNames[0] || '未命名需求',
+      eventNames,
+      eventCount: records.length,
+      stage,
+      uiStage: getUiStageFromBase(stage, cellText(stageRecord.record['评审状态'])),
+      priority: getHighestPriority(records),
+      platform: mergePlatforms(records),
+      dataOwner: dataUsers.names,
+      dataOwnerIds: dataUsers.ids,
+      devOwner: devUsers.names,
+      devOwnerIds: devUsers.ids,
+      updatedAt: Math.max(...records.map((record) => cellTimestamp(record.record['创建时间']))),
+    };
+  }
+
   private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
     const users = {
       data: cellUsers(record.record['数据负责人']),
@@ -986,8 +1032,12 @@ export class TrackingService {
     return {
       recordId: encodeScopedRecordId(source, record.id),
       source,
+      requestId: cellText(record.record['需求ID']) || undefined,
       evtId: cellText(record.record['evt_id']),
+      eventIds: uniqueStrings([cellText(record.record['evt_id'])]),
       eventName: cellText(record.record['事件中文名']) || '未命名需求',
+      eventNames: uniqueStrings([cellText(record.record['事件中文名']) || '未命名需求']),
+      eventCount: 1,
       stage,
       uiStage: getUiStageFromBase(stage, cellText(record.record['评审状态'])),
       priority: cellText(record.record['优先级']) || 'P2',
@@ -1098,6 +1148,93 @@ function compareTrackingRecord(a: TrackingRecord, b: TrackingRecord): number {
   const priorityDiff = (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
   if (priorityDiff !== 0) return priorityDiff;
   return b.updatedAt - a.updatedAt;
+}
+
+function groupWorkbenchRecords(records: SourcedWorkbenchRecord[]): WorkbenchRecordGroup[] {
+  const groups = new Map<string, WorkbenchRecordGroup>();
+
+  for (const { source, record } of records) {
+    const requestId = cellText(record.record['需求ID']).trim();
+    const groupKey = `${source}:${requestId || record.id}`;
+    const group = groups.get(groupKey);
+    if (group) {
+      group.records.push(record);
+    } else {
+      groups.set(groupKey, {
+        source,
+        requestId,
+        records: [record],
+      });
+    }
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    records: [...group.records].sort(compareRecordForGroup),
+  }));
+}
+
+function selectGroupRepresentative(records: BitableRecord[]): BitableRecord {
+  return [...records].sort(compareRecordForGroup)[0];
+}
+
+function selectGroupStageRecord(records: BitableRecord[]): BitableRecord {
+  return [...records].sort(compareRecordForGroup)[0];
+}
+
+function compareTodoCandidate(a: BitableRecord, b: BitableRecord): number {
+  return compareRecordForGroup(a, b);
+}
+
+function compareRecordForGroup(a: BitableRecord, b: BitableRecord): number {
+  const stageDiff = getRecordUiStageIndex(a) - getRecordUiStageIndex(b);
+  if (stageDiff !== 0) return stageDiff;
+  const priorityDiff = (PRIORITY_WEIGHT[cellText(a.record['优先级'])] ?? 9) - (PRIORITY_WEIGHT[cellText(b.record['优先级'])] ?? 9);
+  if (priorityDiff !== 0) return priorityDiff;
+  return cellTimestamp(b.record['创建时间']) - cellTimestamp(a.record['创建时间']);
+}
+
+function getRecordUiStageIndex(record: BitableRecord): number {
+  const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
+  const index = UI_STAGE_NODES.indexOf(uiStage);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function getHighestPriority(records: BitableRecord[]): string {
+  return records
+    .map((record) => cellText(record.record['优先级']) || 'P2')
+    .sort((a, b) => (PRIORITY_WEIGHT[a] ?? 9) - (PRIORITY_WEIGHT[b] ?? 9))[0] || 'P2';
+}
+
+function mergePlatforms(records: BitableRecord[]): string {
+  const values = records.flatMap((record) =>
+    cellText(record.record['端'])
+      .split(/[、,，/]/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+  const unique = uniqueStrings(values);
+  return unique.length ? unique.join('、') : '-';
+}
+
+function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
+  const idToName = new Map<string, string>();
+  for (const record of records) {
+    for (const user of cellUsers(record.record[fieldName]).items) {
+      if (!user.user_id) continue;
+      const currentName = idToName.get(user.user_id);
+      if (!currentName && user.name) {
+        idToName.set(user.user_id, user.name);
+      } else if (!idToName.has(user.user_id)) {
+        idToName.set(user.user_id, '');
+      }
+    }
+  }
+  const ids = Array.from(idToName.keys());
+  return {
+    ids,
+    names: ids.map((id) => idToName.get(id) || '').filter(Boolean),
+  };
 }
 
 function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, unknown> {

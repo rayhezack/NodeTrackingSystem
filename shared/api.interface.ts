@@ -39,8 +39,12 @@ export interface GetStageStatsResponse {
 export interface TodoItem {
   recordId: string;
   source: TrackingSource;
+  requestId?: string;
   evtId: string;
+  eventIds: string[];
   eventName: string;
+  eventNames: string[];
+  eventCount: number;
   stage: string;
   targetStage?: string;
   todoRole?: string;
@@ -62,8 +66,12 @@ export interface GetMyTodosResponse {
 export interface TrackingRecord {
   recordId: string;
   source: TrackingSource;
+  requestId?: string;
   evtId: string;
+  eventIds: string[];
   eventName: string;
+  eventNames: string[];
+  eventCount: number;
   stage: string;
   uiStage: string;
   priority: string;
