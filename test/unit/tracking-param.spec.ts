@@ -142,6 +142,77 @@ describe('埋点参数 Base 回写', () => {
     ]);
   });
 
+  it('参数列表应隐藏旧逻辑写入的废弃设计参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: { evt_id: 'test_event' },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_active_param',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'active_param',
+              数据类型: 'STRING',
+              参数状态: '草稿',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+            },
+          },
+          {
+            id: 'rec_removed_param',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'removed_param',
+              数据类型: 'STRING',
+              参数状态: '废弃',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getParams('app:rec_design');
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].paramName).toBe('active_param');
+  });
+
+  it('删除参数时应真正删除设计参数记录，而不是写入废弃状态', async () => {
+    const bitable = {
+      getRecord: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'rec_param',
+          record: {
+            evt_id: 'test_event',
+            参数名: 'button_name',
+            来源设计记录ID: 'rec_design',
+            关联设计: ['rec_design'],
+          },
+        })
+        .mockResolvedValueOnce({
+          id: 'rec_design',
+          record: {
+            evt_id: 'test_event',
+            流程阶段: '埋点设计',
+          },
+        }),
+      deleteRecords: jest.fn().mockResolvedValue(true),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.deleteParam('app:rec_param', '1867390536304713');
+
+    expect(bitable.deleteRecords).toHaveBeenCalledWith('paramDetail', ['rec_param']);
+  });
+
   it('普通提需人不能越权新增设计参数', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({

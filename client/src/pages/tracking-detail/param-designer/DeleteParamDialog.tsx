@@ -30,7 +30,7 @@ const DeleteParamDialog = ({
     setDeleting(true);
     try {
       await onConfirm();
-      toast.success('参数已废弃');
+      toast.success('参数已删除');
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : '操作失败';
@@ -46,12 +46,12 @@ const DeleteParamDialog = ({
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            确认废弃参数
+            确认删除参数
           </DialogTitle>
           <DialogDescription className="text-xs">
-            确定要废弃参数 <span className="font-medium text-foreground">{paramKey}</span> 吗？
+            确定要删除参数 <span className="font-medium text-foreground">{paramKey}</span> 吗？
             <br />
-            软删除操作，不会真正删除 Base 记录，仅将状态更新为「废弃」。
+            该操作会从当前埋点设计中移除该参数；埋点整体上线后，仅保留仍存在的参数进入正式查询库。
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -72,7 +72,7 @@ const DeleteParamDialog = ({
             disabled={deleting}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            {deleting ? '处理中...' : '确认废弃'}
+            {deleting ? '处理中...' : '确认删除'}
           </Button>
         </DialogFooter>
       </DialogContent>

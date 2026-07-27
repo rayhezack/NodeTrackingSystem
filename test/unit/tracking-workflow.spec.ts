@@ -175,7 +175,7 @@ describe('工作流 Base 回写', () => {
     expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [{ id: 'rec_1', record: { 评审状态: '已拒绝' } }]);
   });
 
-  it('完成上线后应自动新增正式查询库事件并同步正式参数', async () => {
+  it('完成上线后应自动新增正式查询库事件，并将设计参数同步为正式参数', async () => {
     const searchRecords = jest
       .fn()
       .mockResolvedValueOnce({ records: [], hasMore: false })
@@ -193,8 +193,20 @@ describe('工作流 Base 回写', () => {
               参数定义: '按钮名称',
               '默认值/示例': 'submit',
               App适用性: 'App通用',
-              参数状态: '已发布',
+              参数状态: '草稿',
               版本: '2.0.0',
+              变更类型: '新增',
+              来源设计记录ID: 'rec_1',
+              关联设计: [{ id: 'rec_1' }],
+            },
+          },
+          {
+            id: 'rec_removed_param',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'removed_param',
+              数据类型: 'STRING',
+              参数状态: '废弃',
               变更类型: '新增',
               来源设计记录ID: 'rec_1',
               关联设计: [{ id: 'rec_1' }],

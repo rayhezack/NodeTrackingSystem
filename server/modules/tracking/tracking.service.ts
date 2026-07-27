@@ -570,6 +570,7 @@ export class TrackingService {
     });
     const items = result.records
       .filter((record) => this.isParamForDesign(record, ref.rawId, evtId))
+      .filter((record) => !isRemovedDesignParam(record.record))
       .map((record) => this.toParamDetail(record, ref.source))
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 
@@ -673,7 +674,9 @@ export class TrackingService {
     const evtId = cellText(designRecord['evt_id']).trim();
     if (!evtId) return;
 
-    const designParams = (await this.searchAllRecords(paramDetailKey(source), paramFields(source))).filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId));
+    const designParams = (await this.searchAllRecords(paramDetailKey(source), paramFields(source)))
+      .filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId))
+      .filter((paramRecord) => !isRemovedDesignParam(paramRecord.record));
     const officialParamKey = officialParamDetailKey(source);
     const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
     const existingByParamKey = new Map<string, BitableRecord>();
@@ -738,7 +741,7 @@ export class TrackingService {
     const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
     await this.assertCanEditParams(designRecord, actorId, actorLarkId);
 
-    await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: { 参数状态: '废弃' } }]);
+    await this.bitable.deleteRecords(paramDetailKey(ref.source), [ref.rawId]);
     return { success: true };
   }
 
@@ -1273,6 +1276,12 @@ function toOfficialParamRecord(source: TrackingSource, designRecord: Record<stri
 function normalizeOfficialParamStatus(paramStatus: string, changeType: string): string {
   if (paramStatus === '废弃' || changeType === '废弃') return '已废弃';
   return '正式';
+}
+
+function isRemovedDesignParam(record: Record<string, unknown>): boolean {
+  const paramStatus = cellText(record['参数状态']).trim();
+  const changeType = cellText(record['变更类型']).trim();
+  return ['废弃', '已废弃'].includes(paramStatus) || ['删除', '废弃'].includes(changeType);
 }
 
 function isOfficialParamForEvent(record: BitableRecord, officialEventRecordId: string, evtId: string): boolean {

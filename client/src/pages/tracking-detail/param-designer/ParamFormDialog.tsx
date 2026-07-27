@@ -24,8 +24,6 @@ import {
   REQUIRED_RULE_OPTIONS,
   APP_PLATFORM_OPTIONS,
   WEB_PLATFORM_OPTIONS,
-  STATUS_OPTIONS,
-  CHANGE_TYPE_OPTIONS,
 } from './param-constants';
 import type { ParamDetail, CreateParamRequest, TrackingSource } from '@shared/api.interface';
 
@@ -204,17 +202,6 @@ const ParamFormDialog = ({
             </Select>
           </FormField>
 
-          <FormField label="状态">
-            <Select value={form.status || ''} onValueChange={(v) => updateField('status', v)}>
-              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-
           <FormField label="版本">
             <Input
               className={inputCls}
@@ -222,17 +209,6 @@ const ParamFormDialog = ({
               onChange={(e) => updateField('version', e.target.value)}
               placeholder="如：v1.0.0"
             />
-          </FormField>
-
-          <FormField label="变更类型">
-            <Select value={form.changeType || ''} onValueChange={(v) => updateField('changeType', v)}>
-              <SelectTrigger className={selectCls}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CHANGE_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </FormField>
 
           <FormField label="默认值">

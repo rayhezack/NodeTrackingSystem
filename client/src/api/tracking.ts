@@ -212,6 +212,6 @@ export async function deleteParam(
     return response.data;
   } catch (error) {
     logger.error('删除参数失败', error);
-    throw toReadableError(error, '参数废弃失败，请稍后重试');
+    throw toReadableError(error, '删除参数失败，请稍后重试');
   }
 }

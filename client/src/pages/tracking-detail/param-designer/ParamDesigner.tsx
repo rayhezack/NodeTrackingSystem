@@ -208,27 +208,17 @@ const ParamDesigner = ({
                 <TableHead className="h-9 text-xs font-medium py-0">必传规则</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">枚举范围</TableHead>
                 <TableHead className="h-9 text-xs font-medium py-0">适用端</TableHead>
-                <TableHead className="h-9 text-xs font-medium py-0">状态</TableHead>
                 {canEdit && (
-                  <TableHead className="h-9 text-xs font-medium py-0 w-[100px]">操作</TableHead>
+                  <TableHead className="h-9 text-xs font-medium py-0 w-[120px]">操作</TableHead>
                 )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => {
-                const isDeprecated = item.status === '废弃';
-                return (
-                  <TableRow
-                    key={item.recordId}
-                    className={`h-9 transition-colors ${
-                      isDeprecated
-                        ? 'text-muted-foreground/60 line-through decoration-muted-foreground/40'
-                        : ''
-                    }`}
-                  >
-                    <TableCell className="h-9 py-0 text-xs font-mono">{item.paramKey}</TableCell>
-                    <TableCell className="h-9 py-0 text-xs">{item.paramName}</TableCell>
-                    <TableCell className="h-9 py-0 text-xs">{item.paramType}</TableCell>
+              {items.map((item) => (
+                <TableRow key={item.recordId} className="h-9 transition-colors">
+                  <TableCell className="h-9 py-0 text-xs font-mono">{item.paramKey}</TableCell>
+                  <TableCell className="h-9 py-0 text-xs">{item.paramName}</TableCell>
+                  <TableCell className="h-9 py-0 text-xs">{item.paramType}</TableCell>
                     <TableCell className="h-9 py-0 text-xs">
                       <Badge
                         variant={item.requiredRule === '非必传' ? 'outline' : 'default'}
@@ -243,30 +233,22 @@ const ParamDesigner = ({
                     <TableCell className="h-9 py-0 text-xs">
                       {normalizePlatformDisplay(item.platform, source)}
                     </TableCell>
-                    <TableCell className="h-9 py-0 text-xs">
-                      {isDeprecated ? (
-                        <Badge variant="destructive" className="h-5 rounded-sm text-[10px] px-1.5 font-normal">废弃</Badge>
-                      ) : (
-                        <Badge variant="default" className="h-5 rounded-sm text-[10px] px-1.5 font-normal bg-[hsl(160_84%_39%)] hover:bg-[hsl(160_84%_39%)]">正常</Badge>
-                      )}
-                    </TableCell>
                     {canEdit && (
-                      <TableCell className="h-9 py-0 text-xs w-[100px]">
+                      <TableCell className="h-9 py-0 text-xs w-[120px]">
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-foreground" onClick={() => handleEdit(item)}>
                             <Edit className="h-3.5 w-3.5" />
                             编辑
                           </Button>
-                          <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-destructive" onClick={() => handleDelete(item)} disabled={isDeprecated}>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 rounded-sm text-xs text-muted-foreground hover:text-destructive" onClick={() => handleDelete(item)}>
                             <Trash2 className="h-3.5 w-3.5" />
-                            废弃
+                            删除
                           </Button>
                         </div>
                       </TableCell>
                     )}
-                  </TableRow>
-                );
-              })}
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
