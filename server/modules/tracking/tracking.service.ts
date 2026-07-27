@@ -11,6 +11,8 @@ import type {
   GetPermissionConfigResponse,
   GetStageStatsParams,
   GetStageStatsResponse,
+  GetWorkbenchDashboardParams,
+  GetWorkbenchDashboardResponse,
   GetTrackingDetailResponse,
   GetTrackingRecordsParams,
   GetTrackingRecordsResponse,
@@ -136,6 +138,7 @@ const TRACKING_SOURCES: TrackingSource[] = ['app', 'web'];
 type Cell = unknown;
 type ScopedRecordRef = { source: TrackingSource; rawId: string };
 type PermissionKey = keyof StagePermissions;
+type SourcedWorkbenchRecord = { source: TrackingSource; record: BitableRecord };
 
 const USER_FIELD_NAMES = new Set(['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
@@ -228,6 +231,23 @@ export class TrackingService {
 
   async getStageStats(params: GetStageStatsParams = {}): Promise<GetStageStatsResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
+    return this.buildStageStats(records);
+  }
+
+  async getWorkbenchDashboard(params: GetWorkbenchDashboardParams = {}): Promise<GetWorkbenchDashboardResponse> {
+    const records = await this.listWorkbenchRecordsBySource(params.source);
+    const actorCandidates = uniqueStrings([params.actorId || '', params.actorLarkId || '']);
+    const permissionConfig = actorCandidates.length && !actorCandidates.some((candidate) => isBootstrapAdmin(candidate)) ? await this.getStoredPermissionConfig() : null;
+    const recordList = this.buildTrackingRecordList(records, params);
+
+    return {
+      ...recordList,
+      stats: this.buildStageStats(records).items,
+      todos: actorCandidates.length ? this.buildTodoItems(records, Number(params.todoLimit || 10), actorCandidates, permissionConfig).items : [],
+    };
+  }
+
+  private buildStageStats(records: SourcedWorkbenchRecord[]): GetStageStatsResponse {
     const countMap = new Map(UI_STAGE_NODES.map((stage) => [stage, 0]));
     for (const { record } of records) {
       const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
@@ -244,12 +264,16 @@ export class TrackingService {
   }
 
   async getMyTodos(limit = 10, params: GetMyTodosParams = {}): Promise<GetMyTodosResponse> {
-    const records = await this.listWorkbenchRecordsBySource(params.source);
     const actorCandidates = uniqueStrings([params.actorId || '', params.actorLarkId || '']);
     if (!actorCandidates.length) {
       return { items: [] };
     }
-    const permissionConfig = await this.getStoredPermissionConfig();
+    const records = await this.listWorkbenchRecordsBySource(params.source);
+    const permissionConfig = actorCandidates.some((candidate) => isBootstrapAdmin(candidate)) ? null : await this.getStoredPermissionConfig();
+    return this.buildTodoItems(records, limit, actorCandidates, permissionConfig);
+  }
+
+  private buildTodoItems(records: SourcedWorkbenchRecord[], limit: number, actorCandidates: string[], permissionConfig?: PermissionConfig | null): GetMyTodosResponse {
     const isAdmin = isAdminActor(actorCandidates, permissionConfig);
 
     const items = records
@@ -290,8 +314,14 @@ export class TrackingService {
   }
 
   async getRecords(params: GetTrackingRecordsParams): Promise<GetTrackingRecordsResponse> {
-    const pageSize = Number(params.pageSize || 50);
     const records = await this.listWorkbenchRecordsBySource(params.source);
+    return this.buildTrackingRecordList(records, params);
+  }
+
+  private buildTrackingRecordList(records: SourcedWorkbenchRecord[], params: GetTrackingRecordsParams): GetTrackingRecordsResponse {
+    const pageSize = Number(params.pageSize || 50);
+    const offset = Number(params.pageToken || 0);
+    const safeOffset = Number.isFinite(offset) && offset > 0 ? offset : 0;
     const keyword = (params.keyword || '').trim().toLowerCase();
     const filtered = records
       .map(({ record, source }) => this.toTrackingRecord(record, source))
@@ -312,10 +342,12 @@ export class TrackingService {
         return true;
       })
       .sort(compareTrackingRecord);
+    const nextOffset = safeOffset + pageSize;
 
     return {
-      items: filtered.slice(0, pageSize),
-      hasMore: filtered.length > pageSize,
+      items: filtered.slice(safeOffset, nextOffset),
+      hasMore: nextOffset < filtered.length,
+      pageToken: nextOffset < filtered.length ? String(nextOffset) : undefined,
       total: filtered.length,
     };
   }

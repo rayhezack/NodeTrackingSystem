@@ -59,6 +59,14 @@ export interface BitableSortItem {
   desc?: boolean;
 }
 
+type BitableSearchParams = {
+  fieldNames?: string[];
+  filter?: BitableFilter;
+  sort?: BitableSortItem[];
+  pageToken?: string;
+  pageSize?: number;
+};
+
 type BitableFieldConfig = (typeof BITABLE_FIELDS)[BitableInstanceKey][number];
 type BitablePluginConfig = {
   id: string;
@@ -71,6 +79,10 @@ type BitablePluginConfig = {
 export class BitableService {
   private readonly logger = new Logger(BitableService.name);
   private readonly localFallback = new LocalBitableFallback();
+  private readonly searchCacheTtlMs = 10_000;
+  private readonly searchCache = new Map<string, { expiresAt: number; result: BitableSearchResult }>();
+  private readonly pendingSearches = new Map<string, Promise<BitableSearchResult>>();
+  private searchCacheVersion = 0;
 
   constructor(
     @Inject(CapabilityService)
@@ -100,19 +112,43 @@ export class BitableService {
 
   async searchRecords(
     instanceKey: BitableInstanceKey,
-    params: {
-      fieldNames?: string[];
-      filter?: BitableFilter;
-      sort?: BitableSortItem[];
-      pageToken?: string;
-      pageSize?: number;
-    },
+    params: BitableSearchParams,
   ): Promise<BitableSearchResult> {
-    const config = this.getInstanceConfig(instanceKey);
     const safeParams = {
       ...params,
       fieldNames: params.fieldNames ? [...params.fieldNames] : undefined,
     };
+    const cacheKey = getSearchCacheKey(instanceKey, safeParams);
+    const cached = this.getCachedSearchResult(cacheKey);
+    if (cached) return cached;
+
+    const pendingSearch = this.pendingSearches.get(cacheKey);
+    if (pendingSearch) {
+      return cloneSearchResult(await pendingSearch);
+    }
+
+    const cacheVersion = this.searchCacheVersion;
+    const searchPromise = this.searchRecordsUncached(instanceKey, safeParams);
+    this.pendingSearches.set(cacheKey, searchPromise);
+
+    try {
+      const result = await searchPromise;
+      if (this.searchCacheVersion === cacheVersion) {
+        this.setCachedSearchResult(cacheKey, result);
+      }
+      return cloneSearchResult(result);
+    } finally {
+      if (this.pendingSearches.get(cacheKey) === searchPromise) {
+        this.pendingSearches.delete(cacheKey);
+      }
+    }
+  }
+
+  private async searchRecordsUncached(
+    instanceKey: BitableInstanceKey,
+    safeParams: BitableSearchParams,
+  ): Promise<BitableSearchResult> {
+    const config = this.getInstanceConfig(instanceKey);
     let missingFieldRetryCount = 0;
 
     try {
@@ -209,6 +245,7 @@ export class BitableService {
     records: Record<string, unknown>[],
   ): Promise<{ id: string }[]> {
     const config = this.getInstanceConfig(instanceKey);
+    this.invalidateSearchCache(instanceKey);
     const safeRecords = records.map((record) =>
       this.normalizeRecordForInstance(instanceKey, record),
     );
@@ -261,6 +298,7 @@ export class BitableService {
     updates: { id: string; record: Record<string, unknown> }[],
   ): Promise<{ id: string }[]> {
     const config = this.getInstanceConfig(instanceKey);
+    this.invalidateSearchCache(instanceKey);
     const safeUpdates = updates.map((update) => ({
       ...update,
       record: this.normalizeRecordForInstance(instanceKey, update.record),
@@ -312,6 +350,7 @@ export class BitableService {
     recordIds: string[],
   ): Promise<boolean> {
     const config = this.getInstanceConfig(instanceKey);
+    this.invalidateSearchCache(instanceKey);
     try {
       const result = await this.capabilityService
         .loadWithConfig(config)
@@ -322,6 +361,43 @@ export class BitableService {
         return this.localFallback.deleteRecords(instanceKey, recordIds);
       }
       this.handleError(config.id, 'deleteRecords', error);
+    }
+  }
+
+  private getCachedSearchResult(cacheKey: string): BitableSearchResult | null {
+    const cached = this.searchCache.get(cacheKey);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+      this.searchCache.delete(cacheKey);
+      return null;
+    }
+    return cloneSearchResult(cached.result);
+  }
+
+  private setCachedSearchResult(cacheKey: string, result: BitableSearchResult): void {
+    this.searchCache.set(cacheKey, {
+      expiresAt: Date.now() + this.searchCacheTtlMs,
+      result: cloneSearchResult(result),
+    });
+  }
+
+  private invalidateSearchCache(instanceKey?: BitableInstanceKey): void {
+    this.searchCacheVersion += 1;
+    if (!instanceKey) {
+      this.searchCache.clear();
+      this.pendingSearches.clear();
+      return;
+    }
+    const prefix = `${instanceKey}:`;
+    for (const cacheKey of this.searchCache.keys()) {
+      if (cacheKey.startsWith(prefix)) {
+        this.searchCache.delete(cacheKey);
+      }
+    }
+    for (const cacheKey of this.pendingSearches.keys()) {
+      if (cacheKey.startsWith(prefix)) {
+        this.pendingSearches.delete(cacheKey);
+      }
     }
   }
 
@@ -438,6 +514,17 @@ export class BitableService {
 
     throw new BadRequestException(`Base 操作失败：${errorMessage}`);
   }
+}
+
+function getSearchCacheKey(
+  instanceKey: BitableInstanceKey,
+  params: BitableSearchParams,
+): string {
+  return `${instanceKey}:${JSON.stringify(params)}`;
+}
+
+function cloneSearchResult(result: BitableSearchResult): BitableSearchResult {
+  return JSON.parse(JSON.stringify(result)) as BitableSearchResult;
 }
 
 function removeFieldName(

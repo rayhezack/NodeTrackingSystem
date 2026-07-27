@@ -23,6 +23,11 @@ import { TrackingService } from './tracking.service';
 export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}
 
+  @Get('dashboard')
+  getDashboard(@Query() query: Record<string, string>) {
+    return this.trackingService.getWorkbenchDashboard(query);
+  }
+
   @Get('stats')
   getStats(@Query('source') source?: string) {
     return this.trackingService.getStageStats({

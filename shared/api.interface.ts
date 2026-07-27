@@ -93,6 +93,17 @@ export interface GetTrackingRecordsResponse {
   total: number;
 }
 
+export interface GetWorkbenchDashboardParams extends GetTrackingRecordsParams {
+  actorId?: string;
+  actorLarkId?: string;
+  todoLimit?: number;
+}
+
+export interface GetWorkbenchDashboardResponse extends GetTrackingRecordsResponse {
+  stats: StageStat[];
+  todos: TodoItem[];
+}
+
 export interface CreateTrackingRecordRequest {
   source: TrackingSource;
   evtId?: string;

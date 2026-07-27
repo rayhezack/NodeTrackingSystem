@@ -1,6 +1,6 @@
-import { createTailwindPresetOfSimple } from '@lark-apaas/fullstack-presets';
+const { createTailwindPresetOfSimple } = require('@lark-apaas/fullstack-presets');
 
-export default {
+module.exports = {
   presets: [createTailwindPresetOfSimple()],
   content: [
     './client/src/**/*.{ts,tsx,css}',

@@ -4,6 +4,8 @@ import { toReadableError } from './error';
 import type {
   GetStageStatsResponse,
   GetMyTodosResponse,
+  GetWorkbenchDashboardParams,
+  GetWorkbenchDashboardResponse,
   GetTrackingRecordsParams,
   GetTrackingRecordsResponse,
   CreateTrackingRecordRequest,
@@ -22,6 +24,20 @@ import type {
   DeleteParamResponse,
   TrackingSourceFilter,
 } from '@shared/api.interface';
+
+export async function getWorkbenchDashboard(
+  params: GetWorkbenchDashboardParams = {},
+): Promise<GetWorkbenchDashboardResponse> {
+  try {
+    const response = await axiosForBackend.get('/api/tracking/dashboard', {
+      params,
+    });
+    return response.data;
+  } catch (error) {
+    logger.error('获取工作台数据失败', error);
+    throw toReadableError(error, '获取工作台数据失败，请检查 Base 权限');
+  }
+}
 
 export async function getStageStats(
   source?: TrackingSourceFilter,

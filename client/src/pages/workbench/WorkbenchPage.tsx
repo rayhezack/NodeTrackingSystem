@@ -51,44 +51,50 @@ const WorkbenchPage = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('');
   const [platformFilter, setPlatformFilter] = useState<string>('');
 
-  // 加载阶段统计
-  const loadStats = useCallback(async () => {
+  // 首屏聚合加载：统计、待办、列表共用一次后端 Base 读取，避免重复扫表。
+  const loadDashboard = useCallback(async () => {
     setStatsLoading(true);
+    setTodosLoading(true);
+    setRecordsLoading(true);
     setStatsError(null);
+    setTodosError(null);
+    setRecordsError(null);
     try {
-      const res = await trackingApi.getStageStats('all');
-      setStats(res.items);
+      const res = await trackingApi.getWorkbenchDashboard({
+        source: 'all',
+        keyword: keyword || undefined,
+        stage: stageFilter || undefined,
+        priority: priorityFilter || undefined,
+        platform: platformFilter || undefined,
+        pageSize: 20,
+        todoLimit: 10,
+        actorId: actor.id,
+        actorLarkId: actor.larkId,
+      });
+      setStats(res.stats);
+      setTodos(res.todos);
+      setRecords(res.items);
+      setHasMore(res.hasMore);
+      setPageToken(res.pageToken);
+      setTotal(res.total);
     } catch (err) {
-      logger.error('加载阶段统计失败', err);
-      setStatsError(err instanceof Error ? err.message : '加载失败');
+      logger.error('加载工作台数据失败', err);
+      const message = err instanceof Error ? err.message : '加载失败';
+      setStatsError(message);
+      setTodosError(message);
+      setRecordsError(message);
     } finally {
       setStatsLoading(false);
-    }
-  }, []);
-
-  // 加载我的待办
-  const loadTodos = useCallback(async () => {
-    setTodosLoading(true);
-    setTodosError(null);
-    try {
-      const res = await trackingApi.getMyTodos(10, 'all', actor.id, actor.larkId);
-      setTodos(res.items);
-    } catch (err) {
-      logger.error('加载我的待办失败', err);
-      setTodosError(err instanceof Error ? err.message : '加载失败');
-    } finally {
       setTodosLoading(false);
+      setRecordsLoading(false);
+      setLoadingMore(false);
     }
-  }, [actor.id, actor.larkId]);
+  }, [actor.id, actor.larkId, keyword, stageFilter, priorityFilter, platformFilter]);
 
-  // 加载需求列表
-  const loadRecords = useCallback(
-    async (isLoadMore = false) => {
-      if (isLoadMore) {
-        setLoadingMore(true);
-      } else {
-        setRecordsLoading(true);
-      }
+  // 加载更多只追加列表，避免刷新统计/待办。
+  const loadMoreRecords = useCallback(
+    async () => {
+      setLoadingMore(true);
       setRecordsError(null);
       try {
         const res = await trackingApi.getTrackingRecords({
@@ -98,21 +104,16 @@ const WorkbenchPage = () => {
           priority: priorityFilter || undefined,
           platform: platformFilter || undefined,
           pageSize: 20,
-          pageToken: isLoadMore ? pageToken : undefined,
+          pageToken,
         });
-        if (isLoadMore) {
-          setRecords((prev) => [...prev, ...res.items]);
-        } else {
-          setRecords(res.items);
-        }
+        setRecords((prev) => [...prev, ...res.items]);
         setHasMore(res.hasMore);
         setPageToken(res.pageToken);
         setTotal(res.total);
       } catch (err) {
-        logger.error('加载需求列表失败', err);
+        logger.error('加载更多需求失败', err);
         setRecordsError(err instanceof Error ? err.message : '加载失败');
       } finally {
-        setRecordsLoading(false);
         setLoadingMore(false);
       }
     },
@@ -121,14 +122,8 @@ const WorkbenchPage = () => {
 
   // 初始加载
   useEffect(() => {
-    loadStats();
-    loadTodos();
-  }, [loadStats, loadTodos]);
-
-  useEffect(() => {
-    loadRecords(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword, stageFilter, priorityFilter, platformFilter]);
+    loadDashboard();
+  }, [loadDashboard]);
 
   // 点击阶段卡片筛选
   const handleStageClick = (stage: string) => {
@@ -142,7 +137,7 @@ const WorkbenchPage = () => {
 
   const handleCreate = async (data: CreateTrackingRecordRequest) => {
     const res = await trackingApi.createTrackingRecord(data);
-    await Promise.all([loadStats(), loadTodos(), loadRecords(false)]);
+    await loadDashboard();
     navigate(`/tracking/${res.recordId}`);
   };
 
@@ -183,7 +178,7 @@ const WorkbenchPage = () => {
           loading={statsLoading}
           error={statsError}
           activeStage={stageFilter}
-          onRefresh={loadStats}
+          onRefresh={loadDashboard}
           onStageClick={handleStageClick}
         />
 
@@ -192,7 +187,7 @@ const WorkbenchPage = () => {
           todos={todos}
           loading={todosLoading}
           error={todosError}
-          onRefresh={loadTodos}
+          onRefresh={loadDashboard}
           onItemClick={goToDetail}
         />
 
@@ -213,8 +208,8 @@ const WorkbenchPage = () => {
           onPriorityChange={setPriorityFilter}
           onPlatformChange={setPlatformFilter}
           onReset={handleReset}
-          onRetry={() => loadRecords(false)}
-          onLoadMore={() => loadRecords(true)}
+          onRetry={loadDashboard}
+          onLoadMore={loadMoreRecords}
           onRowClick={goToDetail}
         />
 
