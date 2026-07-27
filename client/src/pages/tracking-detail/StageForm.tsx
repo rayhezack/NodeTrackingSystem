@@ -164,7 +164,7 @@ const StageForm = ({
       if (field.type === 'user') {
         fields[field.baseField] = toStringArray(value);
       } else if (field.type === 'attachment') {
-        fields[field.baseField] = toAttachmentArray(value);
+        fields[field.baseField] = toAttachmentTextArray(value);
       } else {
         fields[field.baseField] = toTextValue(value);
       }
@@ -556,6 +556,15 @@ function toAttachmentArray(value: unknown): TrackingAttachment[] {
   const values = Array.isArray(value) ? value : [value];
   return values
     .map<TrackingAttachment | null>((item) => {
+      if (typeof item === 'string') {
+        const text = item.trim();
+        if (!text) return null;
+        return {
+          url: isHttpUrl(text) ? text : '',
+          file_path: isHttpUrl(text) ? '' : text,
+          name: text.split('/').pop() || text,
+        };
+      }
       if (!item || typeof item !== 'object') return null;
       const file = item as TrackingAttachment;
       return {
@@ -567,6 +576,21 @@ function toAttachmentArray(value: unknown): TrackingAttachment[] {
       };
     })
     .filter((item): item is TrackingAttachment => Boolean(item));
+}
+
+function toAttachmentTextArray(value: unknown): string[] {
+  return Array.from(
+    new Set(
+      toAttachmentArray(value)
+        .map((file) =>
+          textValue(file.url || file.download_url) ||
+          textValue(file.file_path || file.filePath) ||
+          textValue(file.name || file.fileName),
+        )
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function AttachmentUploadField({

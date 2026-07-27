@@ -674,25 +674,29 @@ function assertHttpUrl(value: string): void {
   throw new BadRequestException(`链接格式错误：${value}`);
 }
 
-function toFileAttachmentArray(value: unknown): unknown[] {
+function toFileAttachmentArray(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : value
       ? [value]
       : [];
 
-  return values
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null;
-      const file = item as Record<string, unknown>;
-      const bucketId = cellText(file.bucket_id || file.bucketId).trim();
-      const filePath = cellText(file.file_path || file.filePath).trim();
-      if (bucketId && filePath) {
-        return { bucket_id: bucketId, file_path: filePath };
-      }
-      return file;
-    })
-    .filter(Boolean);
+  return Array.from(
+    new Set(
+      values
+        .map((item) => {
+          if (typeof item === 'string') return item.trim();
+          if (!item || typeof item !== 'object') return '';
+          const file = item as Record<string, unknown>;
+          return (
+            cellText(file.url || file.download_url || file.downloadUrl || file.link).trim() ||
+            cellText(file.file_path || file.filePath).trim() ||
+            cellText(file.name || file.fileName || file.id).trim()
+          );
+        })
+        .filter(Boolean),
+    ),
+  );
 }
 
 function toLinkArray(value: unknown): unknown {

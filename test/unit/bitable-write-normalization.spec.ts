@@ -86,6 +86,44 @@ describe('Base 写入值标准化', () => {
     });
   });
 
+  it.each(['workbench', 'webWorkbench'] as const)(
+    '%s UI图应按文本数组写入，避免附件对象触发 Base 插件校验失败',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchUpdateRecords(instanceKey, [
+        {
+          id: 'rec_1',
+          record: {
+            UI图: [
+              {
+                bucket_id: 'bucket_1',
+                file_path: 'images/ui.png',
+                url: 'https://example.com/ui.png',
+                name: 'ui.png',
+              },
+            ],
+          },
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchUpdateRecords', {
+        records: [
+          {
+            id: 'rec_1',
+            record: {
+              UI图: ['https://example.com/ui.png'],
+            },
+          },
+        ],
+      });
+    },
+  );
+
   it.each([
     ['DS验收时间', 'not-a-date'],
     ['发布时间', 'not-a-date'],
