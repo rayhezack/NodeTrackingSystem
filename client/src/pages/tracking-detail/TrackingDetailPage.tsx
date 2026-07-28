@@ -1,17 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { getTrackingDetail } from '@client/src/api/tracking';
-import type { TrackingDetail } from '@shared/api.interface';
+import type { RelatedTrackingEvent, TrackingDetail, TrackingDetailSnapshot, TrackingUserRef } from '@shared/api.interface';
 import DetailHeader from './DetailHeader';
 import ProcessFlowBar from './ProcessFlowBar';
 import StageSidebar from './StageSidebar';
 import StageForm from './StageForm';
 import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
 import { getCurrentActor } from '@client/src/utils/current-user';
+import { toTrackingUserRefs } from './stage-form.utils';
 
 const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
@@ -25,6 +26,29 @@ const TrackingDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<string>('requirement');
+  const detailCacheRef = useRef<Record<string, TrackingDetail>>({});
+
+  const cacheKey = useCallback(
+    (id: string) => `${actor.id || ''}|${actor.larkId || ''}|${id}`,
+    [actor.id, actor.larkId],
+  );
+
+  const rememberDetailTree = useCallback((nextDetail: TrackingDetail): TrackingDetail => {
+    const normalized = normalizeDetailForSelection(nextDetail, nextDetail.recordId);
+    const relatedEvents = normalized.relatedEvents;
+    const nextCache = { ...detailCacheRef.current };
+
+    nextCache[cacheKey(normalized.recordId)] = normalized;
+    for (const event of relatedEvents) {
+      const eventDetail = detailFromRelatedEvent(event, relatedEvents);
+      if (eventDetail) {
+        nextCache[cacheKey(event.recordId)] = eventDetail;
+      }
+    }
+
+    detailCacheRef.current = nextCache;
+    return normalized;
+  }, [cacheKey]);
 
   // 加载详情
   useEffect(() => {
@@ -32,17 +56,34 @@ const TrackingDetailPage = () => {
 
     let cancelled = false;
     const loadDetail = async () => {
+      const cached = detailCacheRef.current[cacheKey(recordId)];
+      if (cached) {
+        setLoading(false);
+        setError(null);
+        const normalized = normalizeDetailForSelection(cached, recordId);
+        setDetail(normalized);
+        const normalizedRequestedStage = requestedStage === 'params' ? 'design' : requestedStage;
+        const matchedStage =
+          SIDEBAR_STAGES.find((s) => s.id === normalizedRequestedStage) ||
+            getActiveSidebarStage(normalized);
+        if (matchedStage?.id) {
+          setActiveStage(matchedStage.id);
+        }
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
         const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
         if (cancelled) return;
-        setDetail(res.data);
+        const normalized = rememberDetailTree(res.data);
+        setDetail(normalized);
 
         const normalizedRequestedStage = requestedStage === 'params' ? 'design' : requestedStage;
         const matchedStage =
           SIDEBAR_STAGES.find((s) => s.id === normalizedRequestedStage) ||
-            getActiveSidebarStage(res.data);
+            getActiveSidebarStage(normalized);
         if (matchedStage?.id) {
           setActiveStage(matchedStage.id);
         }
@@ -63,7 +104,7 @@ const TrackingDetailPage = () => {
     // requestedStage 仅用于首次从「新增需求」跳转到参数设计；
     // 后续侧边栏切换不应触发详情重载并覆盖用户当前选择。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, actor.id, actor.larkId]);
+  }, [recordId, actor.id, actor.larkId, cacheKey, rememberDetailTree]);
 
   // 流程节点点击 → 跳转到对应侧边栏阶段
   const handleNodeClick = (nodeKey: string) => {
@@ -74,19 +115,44 @@ const TrackingDetailPage = () => {
     }
   };
 
-  // 保存后刷新
-  const handleSaved = async () => {
-    if (!recordId) return;
+  // 完成节点 / 新增事件 / 删除事件后刷新
+  const handleSaved = async (nextRecordId?: string) => {
+    const targetRecordId = nextRecordId || detail?.recordId || recordId;
+    if (!targetRecordId) return;
     try {
-      const res = await getTrackingDetail(recordId, actor.id, actor.larkId);
-      setDetail(res.data);
-      const matchedStage = getActiveSidebarStage(res.data);
+      const res = await getTrackingDetail(targetRecordId, actor.id, actor.larkId);
+      const normalized = rememberDetailTree(res.data);
+      setDetail(normalized);
+      const matchedStage = getActiveSidebarStage(normalized);
       if (matchedStage) {
         setActiveStage(matchedStage.id);
+      }
+      if (targetRecordId !== recordId) {
+        navigate(`/tracking/${targetRecordId}?stage=design`, { replace: true });
       }
     } catch (err) {
       logger.error('刷新详情失败', err);
     }
+  };
+
+  const handleLocalSavedPatch = (fields: Record<string, unknown>, currentStage: string) => {
+    setDetail((prev) => {
+      if (!prev) return prev;
+      const patched = patchTrackingDetail(prev, activeStage, fields, currentStage);
+      return rememberDetailTree(patched);
+    });
+  };
+
+  const handleRelatedEventSelect = (nextRecordId: string) => {
+    const cached = detailCacheRef.current[cacheKey(nextRecordId)];
+    if (cached) {
+      const normalized = normalizeDetailForSelection(cached, nextRecordId);
+      setDetail(normalized);
+      setActiveStage('design');
+      navigate(`/tracking/${nextRecordId}?stage=design`, { replace: true });
+      return;
+    }
+    navigate(`/tracking/${nextRecordId}?stage=design`);
   };
 
   const handleBack = () => {
@@ -221,6 +287,9 @@ const TrackingDetailPage = () => {
               actorId={actor.id}
               actorLarkId={actor.larkId}
               onSaved={handleSaved}
+              onSavedPatch={handleLocalSavedPatch}
+              onSelectEvent={handleRelatedEventSelect}
+              onRelatedEventsChanged={handleSaved}
             />
           </div>
         </div>
@@ -243,6 +312,233 @@ function getActiveSidebarStage(detail: TrackingDetail) {
     fieldText(detail.archiveFields['正式状态']),
   );
   return SIDEBAR_STAGES.find((stage) => stage.uiNode === uiNode);
+}
+
+function normalizeDetailForSelection(detail: TrackingDetail, currentRecordId: string): TrackingDetail {
+  const existingEvents = detail.relatedEvents?.length
+    ? detail.relatedEvents
+    : [eventSummaryFromDetail(detail)];
+  const relatedEvents = existingEvents.map((event) => {
+    const snapshot = event.recordId === detail.recordId
+      ? toDetailSnapshot(detail)
+      : event.detail;
+    return {
+      ...event,
+      isCurrent: event.recordId === currentRecordId,
+      ...(snapshot ? { detail: snapshot } : {}),
+    };
+  });
+
+  return {
+    ...detail,
+    relatedEvents,
+  };
+}
+
+function detailFromRelatedEvent(
+  event: RelatedTrackingEvent,
+  relatedEvents: RelatedTrackingEvent[],
+): TrackingDetail | null {
+  if (!event.detail) return null;
+  return normalizeDetailForSelection(
+    {
+      ...event.detail,
+      relatedEvents,
+    },
+    event.recordId,
+  );
+}
+
+function eventSummaryFromDetail(detail: TrackingDetail): RelatedTrackingEvent {
+  return {
+    recordId: detail.recordId,
+    source: detail.source,
+    evtId: detail.evtId,
+    eventName: detail.eventName,
+    stage: detail.stage,
+    uiStage: detail.uiStage,
+    priority: detail.priority,
+    platform: detail.platform,
+    isCurrent: true,
+    detail: toDetailSnapshot(detail),
+  };
+}
+
+function toDetailSnapshot(detail: TrackingDetail): TrackingDetailSnapshot {
+  const { relatedEvents: _relatedEvents, ...snapshot } = detail;
+  return snapshot;
+}
+
+function patchTrackingDetail(
+  detail: TrackingDetail,
+  activeStage: string,
+  fields: Record<string, unknown>,
+  currentStage: string,
+): TrackingDetail {
+  const groupKey = fieldGroupForStage(activeStage);
+  const next: TrackingDetail = {
+    ...detail,
+    stage: currentStage || detail.stage,
+    requirementFields: { ...detail.requirementFields },
+    designFields: { ...detail.designFields },
+    reviewFields: { ...detail.reviewFields },
+    devFields: { ...detail.devFields },
+    acceptanceFields: { ...detail.acceptanceFields },
+    launchFields: { ...detail.launchFields },
+    archiveFields: { ...detail.archiveFields },
+  };
+
+  for (const [fieldName, value] of Object.entries(fields)) {
+    for (const fieldGroup of DETAIL_FIELD_GROUPS) {
+      if (
+        fieldGroup === groupKey ||
+        Object.prototype.hasOwnProperty.call(next[fieldGroup], fieldName)
+      ) {
+        next[fieldGroup] = {
+          ...next[fieldGroup],
+          [fieldName]: value,
+        };
+      }
+    }
+    applyTopLevelField(next, fieldName, value);
+  }
+
+  next.uiStage = getCurrentUiNode(
+    next.stage,
+    next.reviewStatus,
+    fieldText(next.archiveFields['正式状态']),
+  );
+
+  const patchedSnapshot = toDetailSnapshot(next);
+  const shouldSyncRequestName = Object.prototype.hasOwnProperty.call(fields, '需求名称');
+  next.relatedEvents = (next.relatedEvents?.length ? next.relatedEvents : [eventSummaryFromDetail(next)])
+    .map((event) => {
+      if (event.recordId === next.recordId) {
+        return {
+          ...event,
+          evtId: next.evtId,
+          eventName: next.eventName,
+          stage: next.stage,
+          uiStage: next.uiStage,
+          priority: next.priority,
+          platform: next.platform,
+          isCurrent: true,
+          detail: patchedSnapshot,
+        };
+      }
+      if (shouldSyncRequestName && event.detail) {
+        return {
+          ...event,
+          detail: {
+            ...event.detail,
+            requestName: next.requestName,
+            requirementFields: {
+              ...event.detail.requirementFields,
+              需求名称: next.requestName || '',
+            },
+          },
+        };
+      }
+      return {
+        ...event,
+        isCurrent: false,
+      };
+    });
+
+  return next;
+}
+
+const DETAIL_FIELD_GROUPS = [
+  'requirementFields',
+  'designFields',
+  'reviewFields',
+  'devFields',
+  'acceptanceFields',
+  'launchFields',
+  'archiveFields',
+] as const;
+
+function fieldGroupForStage(stageId: string): typeof DETAIL_FIELD_GROUPS[number] | null {
+  const map: Record<string, typeof DETAIL_FIELD_GROUPS[number]> = {
+    requirement: 'requirementFields',
+    design: 'designFields',
+    review: 'reviewFields',
+    dev: 'devFields',
+    acceptance: 'acceptanceFields',
+    launch: 'launchFields',
+    archive: 'archiveFields',
+  };
+  return map[stageId] || null;
+}
+
+function applyTopLevelField(detail: TrackingDetail, fieldName: string, value: unknown) {
+  switch (fieldName) {
+    case '需求名称':
+      detail.requestName = displayText(value);
+      break;
+    case 'evt_id':
+      detail.evtId = displayText(value);
+      break;
+    case '事件中文名':
+      detail.eventName = displayText(value);
+      break;
+    case '优先级':
+      detail.priority = displayText(value) || detail.priority;
+      break;
+    case '端':
+      detail.platform = displayText(value) || detail.platform;
+      break;
+    case '评审状态':
+      detail.reviewStatus = displayText(value);
+      break;
+    case '埋点开发状态':
+      detail.devStatus = displayText(value);
+      break;
+    case 'DS验收状态':
+      detail.acceptanceStatus = displayText(value);
+      break;
+    case '需求提出人':
+      applyUserRefs(detail, 'requester', 'requesterIds', value);
+      break;
+    case '需求录入人':
+      applyUserRefs(detail, 'recorder', 'recorderIds', value);
+      break;
+    case '数据负责人':
+      applyUserRefs(detail, 'dataOwner', 'dataOwnerIds', value);
+      break;
+    case '研发负责人':
+      applyUserRefs(detail, 'devOwner', 'devOwnerIds', value);
+      break;
+    case 'DS验收人':
+      applyUserRefs(detail, 'dsAcceptor', 'dsAcceptorIds', value);
+      break;
+    default:
+      break;
+  }
+}
+
+function applyUserRefs(
+  detail: TrackingDetail,
+  userKey: 'requester' | 'recorder' | 'dataOwner' | 'devOwner' | 'dsAcceptor',
+  idsKey: 'requesterIds' | 'recorderIds' | 'dataOwnerIds' | 'devOwnerIds' | 'dsAcceptorIds',
+  value: unknown,
+) {
+  const users = toTrackingUserRefs(value);
+  detail[userKey] = users;
+  detail[idsKey] = users.map((user) => user.user_id);
+}
+
+function displayText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value.map(displayText).filter(Boolean).join('、');
+  }
+  if (value && typeof value === 'object') {
+    const user = value as Partial<TrackingUserRef> & { text?: unknown; name?: unknown };
+    return displayText(user.name || user.text || user.user_id || '');
+  }
+  return '';
 }
 
 function fieldText(value: unknown): string {

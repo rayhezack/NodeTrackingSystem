@@ -72,6 +72,9 @@ interface StageFormProps {
   actorId?: string;
   actorLarkId?: string;
   onSaved?: () => void;
+  onSavedPatch?: (fields: Record<string, FormValue>, currentStage: string) => void;
+  onSelectEvent?: (recordId: string) => void;
+  onRelatedEventsChanged?: (recordId?: string) => void | Promise<void>;
 }
 
 const DETAIL_FIELD_GROUPS = [
@@ -133,6 +136,9 @@ const StageForm = ({
   actorId,
   actorLarkId,
   onSaved,
+  onSavedPatch,
+  onSelectEvent,
+  onRelatedEventsChanged,
 }: StageFormProps) => {
   const stageConfig: StageConfig | undefined = SIDEBAR_STAGES.find((s) => s.id === stageId);
   const [formData, setFormData] = useState<Record<string, FormValue>>({});
@@ -186,6 +192,16 @@ const StageForm = ({
     return fields;
   };
 
+  const getDirtyLocalFields = (): Record<string, FormValue> => {
+    const fields: Record<string, FormValue> = {};
+    for (const field of stageConfig.fields) {
+      if (dirtyFieldNames.has(field.baseField)) {
+        fields[field.baseField] = formData[field.key];
+      }
+    }
+    return fields;
+  };
+
   const handleSave = async () => {
     if (!canEdit) return;
     if (dirtyFieldNames.size === 0) {
@@ -201,13 +217,14 @@ const StageForm = ({
         fields,
         dirtyFieldNames,
       );
-      await updateTrackingRecord(detail.recordId, {
+      const response = await updateTrackingRecord(detail.recordId, {
         ...request,
         actorId,
         actorLarkId,
       });
       toast.success('保存成功');
       setDirtyFieldNames(new Set());
+      onSavedPatch?.(getDirtyLocalFields(), response.currentStage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : '保存失败';
       toast.error(msg);
@@ -273,7 +290,8 @@ const StageForm = ({
           canEdit={canEdit}
           actorId={actorId}
           actorLarkId={actorLarkId}
-          onChanged={onSaved}
+          onSelectEvent={onSelectEvent}
+          onChanged={onRelatedEventsChanged || onSaved}
         />
       )}
 

@@ -114,6 +114,7 @@ export interface RelatedTrackingEvent {
   priority: string;
   platform: string;
   isCurrent: boolean;
+  detail?: TrackingDetailSnapshot;
 }
 
 export interface GetTrackingRecordsParams {
@@ -268,6 +269,8 @@ export interface TrackingDetailPermissions {
   canEditArchive: boolean;
   canEditParams: boolean;
 }
+
+export type TrackingDetailSnapshot = Omit<TrackingDetail, 'relatedEvents'>;
 
 export interface TrackingDetail {
   recordId: string;

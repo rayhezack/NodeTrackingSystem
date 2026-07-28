@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, GitBranch, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
@@ -35,7 +34,8 @@ interface RelatedEventsPanelProps {
   canEdit: boolean;
   actorId?: string;
   actorLarkId?: string;
-  onChanged?: () => void | Promise<void>;
+  onSelectEvent?: (recordId: string) => void;
+  onChanged?: (recordId?: string) => void | Promise<void>;
 }
 
 type EventForm = {
@@ -54,9 +54,9 @@ export default function RelatedEventsPanel({
   canEdit,
   actorId,
   actorLarkId,
+  onSelectEvent,
   onChanged,
 }: RelatedEventsPanelProps) {
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -109,7 +109,7 @@ export default function RelatedEventsPanel({
       const res = await createSiblingTrackingEvent(detail.recordId, payload);
       toast.success('已新增同需求埋点事件');
       setOpen(false);
-      navigate(`/tracking/${res.recordId}?stage=design`);
+      await onChanged?.(res.recordId);
     } catch (error) {
       const msg = error instanceof Error ? error.message : '新增事件失败';
       toast.error(msg);
@@ -119,11 +119,7 @@ export default function RelatedEventsPanel({
   };
 
   const handleReuseSuccess = async (result: ReuseOfficialEventResponse) => {
-    if (result.recordId === detail.recordId) {
-      await onChanged?.();
-      return;
-    }
-    navigate(`/tracking/${result.recordId}?stage=design`);
+    await onChanged?.(result.recordId);
   };
 
   const handleDeleteEventConfirm = async () => {
@@ -137,9 +133,9 @@ export default function RelatedEventsPanel({
       toast.success(`已删除事件，并清理 ${result.deletedParamCount} 个设计参数`);
       setDeletingEvent(null);
       if (deletingEvent.isCurrent && result.redirectRecordId) {
-        navigate(`/tracking/${result.redirectRecordId}?stage=design`);
+        await onChanged?.(result.redirectRecordId);
       } else {
-        await onChanged?.();
+        await onChanged?.(detail.recordId);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : '删除事件失败';
@@ -201,7 +197,7 @@ export default function RelatedEventsPanel({
             <div className="flex items-start gap-2">
               <button
                 type="button"
-                onClick={() => !event.isCurrent && navigate(`/tracking/${event.recordId}?stage=design`)}
+                onClick={() => !event.isCurrent && onSelectEvent?.(event.recordId)}
                 className="min-w-0 flex-1 text-left"
               >
                 <div className="flex items-center gap-2">

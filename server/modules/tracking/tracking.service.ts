@@ -373,7 +373,7 @@ export class TrackingService {
     }
     const permissionConfig = await this.getStoredPermissionConfig();
     const detail = this.toTrackingDetail(record, ref.source, actorId, actorLarkId, permissionConfig);
-    detail.relatedEvents = await this.listRelatedEvents(ref.source, record);
+    detail.relatedEvents = await this.listRelatedEvents(ref.source, record, actorId, actorLarkId, permissionConfig);
     return {
       data: detail,
     };
@@ -1390,15 +1390,39 @@ export class TrackingService {
     }
   }
 
-  private async listRelatedEvents(source: TrackingSource, current: BitableRecord): Promise<RelatedTrackingEvent[]> {
+  private async listRelatedEvents(
+    source: TrackingSource,
+    current: BitableRecord,
+    actorId?: string,
+    actorLarkId?: string,
+    permissionConfig?: PermissionConfig | null,
+  ): Promise<RelatedTrackingEvent[]> {
     const records = await this.listRelatedWorkbenchRecords(source, current);
     return records
       .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))
-      .map((record) => this.toRelatedEvent(record, source, record.id === current.id));
+      .map((record) =>
+        this.toRelatedEvent(
+          record,
+          source,
+          record.id === current.id,
+          actorId,
+          actorLarkId,
+          permissionConfig,
+        ),
+      );
   }
 
-  private toRelatedEvent(record: BitableRecord, source: TrackingSource, isCurrent: boolean): RelatedTrackingEvent {
+  private toRelatedEvent(
+    record: BitableRecord,
+    source: TrackingSource,
+    isCurrent: boolean,
+    actorId?: string,
+    actorLarkId?: string,
+    permissionConfig?: PermissionConfig | null,
+  ): RelatedTrackingEvent {
     const stage = cellText(record.record['流程阶段']) || '需求录入';
+    const detail = this.toTrackingDetail(record, source, actorId, actorLarkId, permissionConfig);
+    const { relatedEvents: _relatedEvents, ...snapshot } = detail;
     return {
       recordId: encodeScopedRecordId(source, record.id),
       source,
@@ -1409,6 +1433,7 @@ export class TrackingService {
       priority: cellText(record.record['优先级']) || 'P2',
       platform: cellText(record.record['端']) || '-',
       isCurrent,
+      detail: snapshot,
     };
   }
 

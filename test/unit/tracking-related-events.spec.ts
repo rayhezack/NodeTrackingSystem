@@ -9,6 +9,7 @@ describe('同需求埋点事件', () => {
         需求ID: 'APP_REQ_TEST',
         evt_id: 'event_1',
         事件中文名: '主事件',
+        事件定义: '主事件定义',
         流程阶段: '埋点设计',
         记录类型: '埋点设计',
         优先级: 'P1',
@@ -23,6 +24,7 @@ describe('同需求埋点事件', () => {
         需求ID: 'APP_REQ_TEST',
         evt_id: 'event_2',
         事件中文名: '补充事件',
+        事件定义: '补充事件定义',
         流程阶段: '埋点设计',
         记录类型: '埋点设计',
         优先级: 'P2',
@@ -56,14 +58,24 @@ describe('同需求埋点事件', () => {
         evtId: 'event_1',
         eventName: '主事件',
         isCurrent: true,
+        detail: expect.objectContaining({
+          recordId: 'app:rec_1',
+          designFields: expect.objectContaining({ 事件定义: '主事件定义' }),
+        }),
       }),
       expect.objectContaining({
         recordId: 'app:rec_2',
         evtId: 'event_2',
         eventName: '补充事件',
         isCurrent: false,
+        detail: expect.objectContaining({
+          recordId: 'app:rec_2',
+          designFields: expect.objectContaining({ 事件定义: '补充事件定义' }),
+        }),
       }),
     ]);
+    expect(result.data.relatedEvents[0].detail).not.toHaveProperty('relatedEvents');
+    expect(result.data.relatedEvents[1].detail).not.toHaveProperty('relatedEvents');
   });
 
   it('设计阶段删除同需求事件时，应同步删除该事件下的设计参数并返回跳转事件', async () => {
