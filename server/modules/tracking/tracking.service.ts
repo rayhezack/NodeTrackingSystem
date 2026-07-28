@@ -330,7 +330,7 @@ export class TrackingService {
       .map((group) => this.toTrackingRecordGroup(group))
       .filter((record) => {
         if (keyword) {
-          const haystack = `${record.requestId || ''} ${record.evtId} ${record.eventName} ${record.eventIds.join(' ')} ${record.eventNames.join(' ')}`.toLowerCase();
+          const haystack = `${record.requestId || ''} ${record.requestName || ''} ${record.evtId} ${record.eventName} ${record.eventIds.join(' ')} ${record.eventNames.join(' ')}`.toLowerCase();
           if (!haystack.includes(keyword)) return false;
         }
         if (params.stage && record.uiStage !== params.stage && record.stage !== params.stage) {
@@ -544,11 +544,12 @@ export class TrackingService {
       }
     }
     const requirementLink = firstText(currentRecord['需求链接']).trim();
+    const requestName = getRequestNameFromRecords(records, currentRecord);
     const version = body.version || cellText(currentRecord['版本']) || '1.0.0';
     const platform = body.platform || cellText(currentRecord['端']);
     const record: Record<string, unknown> = {
       ...(requestId ? { 需求ID: requestId } : {}),
-      需求名称: firstText(currentRecord['需求名称'], currentRecord['事件中文名']),
+      需求名称: requestName,
       evt_id: evtId,
       事件中文名: eventName,
       事件定义: body.eventDefinition || '',
@@ -697,6 +698,7 @@ export class TrackingService {
           .filter((record) => selectedParamKeys.has(getOfficialParamKey(record.record).toLowerCase()))
       : [];
     const currentRecord = current.record;
+    const requestName = getRequestNameFromRecords(records, currentRecord);
     const version = firstText(officialEvent.record['上线版本'], currentRecord['版本']) || '1.0.0';
     const minVersion = firstText(currentRecord['最低版本'], version) || version;
     const officialMetricScenario = cellText(officialEvent.record['指标/使用场景']).trim();
@@ -739,7 +741,7 @@ export class TrackingService {
       const requirementLink = firstText(currentRecord['需求链接']).trim();
       const [created] = await this.bitable.batchAddRecords(workbench, [{
         ...(requestId ? { 需求ID: requestId } : {}),
-        需求名称: firstText(currentRecord['需求名称'], currentRecord['事件中文名']),
+        需求名称: requestName,
         ...designPatch,
         需求背景: cellText(currentRecord['需求背景']),
         ...(requirementLink ? { 需求链接: requirementLink } : {}),
@@ -785,6 +787,13 @@ export class TrackingService {
     if (Object.prototype.hasOwnProperty.call(patch, '端')) {
       patch['端'] = Array.isArray(patch['端']) ? patch['端'] : toPlatformCell(cellText(patch['端']), ref.source);
     }
+    if (Object.prototype.hasOwnProperty.call(patch, '需求名称')) {
+      const requestName = cellText(patch['需求名称']).trim();
+      if (!requestName) {
+        throw new BadRequestException('需求名称不能为空');
+      }
+      patch['需求名称'] = requestName;
+    }
     for (const fieldName of USER_FIELD_NAMES) {
       if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
         const userCells = createUserCells(patch[fieldName]);
@@ -811,6 +820,9 @@ export class TrackingService {
     }
 
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
+    if (Object.prototype.hasOwnProperty.call(patch, '需求名称')) {
+      await this.syncRequestNameForRelatedRecords(ref.source, { id: ref.rawId, record: nextRecord }, cellText(patch['需求名称']));
+    }
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
@@ -1265,6 +1277,24 @@ export class TrackingService {
     return Array.from(uniqueByRecordId.values());
   }
 
+  private async syncRequestNameForRelatedRecords(source: TrackingSource, current: BitableRecord, requestName: string): Promise<void> {
+    const normalizedRequestName = requestName.trim();
+    const requestId = cellText(current.record['需求ID']).trim();
+    if (!requestId || !normalizedRequestName) return;
+
+    const updates = (await this.listRelatedWorkbenchRecords(source, current))
+      .filter((record) => record.id !== current.id)
+      .filter((record) => cellText(record.record['需求名称']).trim() !== normalizedRequestName)
+      .map((record) => ({
+        id: record.id,
+        record: { 需求名称: normalizedRequestName },
+      }));
+
+    for (let index = 0; index < updates.length; index += 200) {
+      await this.bitable.batchUpdateRecords(workbenchKey(source), updates.slice(index, index + 200));
+    }
+  }
+
   private async listRelatedEvents(source: TrackingSource, current: BitableRecord): Promise<RelatedTrackingEvent[]> {
     const records = await this.listRelatedWorkbenchRecords(source, current);
     return records
@@ -1521,6 +1551,17 @@ function getGroupRequestName(records: BitableRecord[], fallbackRecord: BitableRe
     .map((record) => cellText(record.record['需求名称']).trim())
     .find(Boolean);
   return requestName || cellText(fallbackRecord.record['事件中文名']) || '未命名需求';
+}
+
+function getRequestNameFromRecords(records: BitableRecord[], currentRecord: Record<string, unknown>): string {
+  const requestId = cellText(currentRecord['需求ID']).trim();
+  const candidates = requestId
+    ? records.filter((record) => cellText(record.record['需求ID']).trim() === requestId)
+    : [];
+  const requestName = candidates
+    .map((record) => cellText(record.record['需求名称']).trim())
+    .find(Boolean);
+  return requestName || firstText(currentRecord['需求名称'], currentRecord['事件中文名']) || '未命名需求';
 }
 
 function selectGroupStageRecord(records: BitableRecord[]): BitableRecord {

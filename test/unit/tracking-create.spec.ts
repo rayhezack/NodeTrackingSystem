@@ -198,6 +198,76 @@ describe('提需创建记录', () => {
     expect(created['DS验收人']).toEqual([4001]);
   });
 
+  it('保存需求名称时，应同步填充同一需求ID下的所有事件记录', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_main',
+        record: {
+          需求ID: 'APP_REQ_TEST',
+          需求名称: '',
+          evt_id: 'event_1',
+          事件中文名: '主事件',
+          流程阶段: '需求录入',
+          记录类型: '埋点设计',
+          需求提出人: [{ id: '1001', name: '产品同学' }],
+          需求录入人: [{ id: '1001', name: '产品同学' }],
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_main',
+            record: {
+              需求ID: 'APP_REQ_TEST',
+              需求名称: '',
+              evt_id: 'event_1',
+              事件中文名: '主事件',
+              记录类型: '埋点设计',
+            },
+          },
+          {
+            id: 'rec_child',
+            record: {
+              需求ID: 'APP_REQ_TEST',
+              需求名称: '',
+              evt_id: 'event_2',
+              事件中文名: '补充事件',
+              记录类型: '埋点设计',
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_main' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_main', {
+      actorId: '1001',
+      stageId: 'requirement',
+      fields: {
+        需求名称: '核心漏斗埋点补齐',
+      },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenNthCalledWith(1, 'workbench', [
+      {
+        id: 'rec_main',
+        record: {
+          需求名称: '核心漏斗埋点补齐',
+        },
+      },
+    ]);
+    expect(bitable.batchUpdateRecords).toHaveBeenNthCalledWith(2, 'workbench', [
+      {
+        id: 'rec_child',
+        record: {
+          需求名称: '核心漏斗埋点补齐',
+        },
+      },
+    ]);
+  });
+
   it('应在调用 Base 前拒绝会被 JavaScript 舍入的人员 ID', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
