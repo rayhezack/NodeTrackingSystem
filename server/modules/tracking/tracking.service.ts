@@ -2394,11 +2394,11 @@ function getTodoAction(record: BitableRecord, actorCandidates: string[]): { stag
   const isDataOwner = intersects(actorCandidates, dataOwners);
   const isDevOwner = intersects(actorCandidates, devOwners);
   const isAcceptor = intersects(actorCandidates, dsAcceptors);
-  const isDataParticipant = isDataOwner || isAcceptor;
+  const isProjectParticipant = isRequester || isRecorder || isDataOwner || isDevOwner || isAcceptor;
 
   switch (baseStage) {
     case '需求录入':
-      if (isRequester || isRecorder || isDataParticipant) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点提需',
           targetStage: 'requirement',
@@ -2406,61 +2406,83 @@ function getTodoAction(record: BitableRecord, actorCandidates: string[]): { stag
             [isRequester, '提需人'],
             [isRecorder, '录入人'],
             [isDataOwner, '数据负责人'],
+            [isDevOwner, '研发负责人'],
             [isAcceptor, 'DS验收人'],
           ]),
         };
       }
       return null;
     case '埋点设计':
-      if (isDataParticipant) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点设计',
           targetStage: 'design',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
+            [isDevOwner, '研发负责人'],
             [isAcceptor, 'DS验收人'],
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
           ]),
         };
       }
       return null;
     case '评审通过':
-      if (isDevOwner) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点开发',
           targetStage: 'dev',
-          todoRole: '研发负责人',
+          todoRole: getFirstRole([
+            [isDevOwner, '研发负责人'],
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
+          ]),
         };
       }
       return null;
     case '埋点开发':
-      if (isDevOwner) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点开发',
           targetStage: 'dev',
-          todoRole: '研发负责人',
+          todoRole: getFirstRole([
+            [isDevOwner, '研发负责人'],
+            [isDataOwner, '数据负责人'],
+            [isAcceptor, 'DS验收人'],
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
+          ]),
         };
       }
       return null;
     case '数据验收':
-      if (isDataParticipant) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点校验',
           targetStage: 'acceptance',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
             [isAcceptor, 'DS验收人'],
+            [isDevOwner, '研发负责人'],
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
           ]),
         };
       }
       return null;
     case '上线监控':
-      if (isDataParticipant) {
+      if (isProjectParticipant) {
         return {
           stage: '埋点上线',
           targetStage: 'launch',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
             [isAcceptor, 'DS验收人'],
+            [isDevOwner, '研发负责人'],
+            [isRequester, '提需人'],
+            [isRecorder, '录入人'],
           ]),
         };
       }

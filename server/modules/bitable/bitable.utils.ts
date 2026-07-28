@@ -96,14 +96,14 @@ export function calculatePermissions(
   const isDevOwner = devOwner.includes(userId);
 
   return {
-    canEditRequirement: isDs,
-    canEditDesign: isDs,
-    canEditReview: isDs,
+    canEditRequirement: isDs || isDevOwner,
+    canEditDesign: isDs || isDevOwner,
+    canEditReview: isDs || isDevOwner,
     canEditDev: isDevOwner,
     canEditAcceptance: isDs,
     canEditLaunch: isDs,
     canEditArchive: isDs,
-    canEditParams: isDs,
+    canEditParams: isDs || isDevOwner,
   };
 }
 

@@ -136,16 +136,16 @@ describe('权限判断工具', () => {
       expect(perms.canEditParams).toBe(true);
     });
 
-    it('研发负责人应拥有开发侧权限', () => {
+    it('研发负责人应拥有需求录入到埋点开发的项目内权限', () => {
       const perms = calculatePermissions(devUserId, [], [devUserId], []);
-      expect(perms.canEditRequirement).toBe(false);
-      expect(perms.canEditDesign).toBe(false);
-      expect(perms.canEditReview).toBe(false);
+      expect(perms.canEditRequirement).toBe(true);
+      expect(perms.canEditDesign).toBe(true);
+      expect(perms.canEditReview).toBe(true);
       expect(perms.canEditDev).toBe(true);
       expect(perms.canEditAcceptance).toBe(false);
       expect(perms.canEditLaunch).toBe(false);
       expect(perms.canEditArchive).toBe(false);
-      expect(perms.canEditParams).toBe(false);
+      expect(perms.canEditParams).toBe(true);
     });
 
     it('既是 DS 又是研发负责人应拥有全部权限', () => {

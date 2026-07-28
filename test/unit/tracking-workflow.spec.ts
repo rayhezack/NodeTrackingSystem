@@ -595,6 +595,59 @@ describe('工作流 Base 回写', () => {
     expect(bitable.searchRecords).not.toHaveBeenCalled();
   });
 
+  it('被指定为研发负责人的同事应看到进行中的需求待办', async () => {
+    const devUserId = 'dev_user_1';
+    const bitable = {
+      searchRecords: jest
+        .fn()
+        .mockResolvedValueOnce({
+          records: [
+            {
+              id: 'rec_req',
+              record: {
+                需求ID: 'REQ_1',
+                需求名称: '研发参与需求录入',
+                evt_id: 'event_req',
+                事件中文名: '需求录入事件',
+                流程阶段: '需求录入',
+                记录类型: '埋点设计',
+                优先级: 'P1',
+                研发负责人: [{ id: devUserId, name: '研发同事' }],
+                创建时间: 200,
+              },
+            },
+            {
+              id: 'rec_design',
+              record: {
+                需求ID: 'REQ_2',
+                需求名称: '研发参与埋点设计',
+                evt_id: 'event_design',
+                事件中文名: '埋点设计事件',
+                流程阶段: '埋点设计',
+                记录类型: '埋点设计',
+                优先级: 'P2',
+                研发负责人: [{ id: devUserId, name: '研发同事' }],
+                创建时间: 100,
+              },
+            },
+          ],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getMyTodos(10, {
+      source: 'app',
+      actorId: devUserId,
+    });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.requestId)).toEqual(['REQ_1', 'REQ_2']);
+    expect(result.items.map((item) => item.targetStage)).toEqual(['requirement', 'design']);
+    expect(result.items.every((item) => item.todoRole === '研发负责人')).toBe(true);
+  });
+
   it('需求列表应按 pageToken 返回下一页而不是重复第一页', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({
