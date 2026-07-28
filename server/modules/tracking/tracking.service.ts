@@ -914,7 +914,15 @@ export class TrackingService {
       }
     }
 
-    await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
+    const updates = [{ id: ref.rawId, record: patch }];
+    if (isDesignReviewSubmission(body.stageId, patch)) {
+      updates.push(...await this.buildRequestReviewSubmissionUpdates(ref.source, {
+        id: ref.rawId,
+        record: nextRecord,
+      }));
+    }
+
+    await this.bitable.batchUpdateRecords(workbench, updates);
     if (Object.prototype.hasOwnProperty.call(patch, '需求名称')) {
       await this.syncRequestNameForRelatedRecords(ref.source, { id: ref.rawId, record: nextRecord }, cellText(patch['需求名称']));
     }
@@ -1388,6 +1396,20 @@ export class TrackingService {
     for (let index = 0; index < updates.length; index += 200) {
       await this.bitable.batchUpdateRecords(workbenchKey(source), updates.slice(index, index + 200));
     }
+  }
+
+  private async buildRequestReviewSubmissionUpdates(
+    source: TrackingSource,
+    current: BitableRecord,
+  ): Promise<{ id: string; record: Record<string, unknown> }[]> {
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    return relatedRecords
+      .filter((record) => record.id !== current.id)
+      .filter((record) => cellText(record.record['评审状态']) !== '评审中')
+      .map((record) => ({
+        id: record.id,
+        record: { 评审状态: '评审中' },
+      }));
   }
 
   private async listRelatedEvents(
@@ -2702,6 +2724,10 @@ function normalizeReviewStatus(value?: string): string {
   const raw = String(value || '').trim();
   const normalized = raw === '需修改' ? '已拒绝' : raw;
   return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized) ? normalized : '草稿';
+}
+
+function isDesignReviewSubmission(stageId: string | undefined, patch: Record<string, unknown>): boolean {
+  return stageId === 'design' && cellText(patch['评审状态']) === '评审中';
 }
 
 function normalizeAcceptanceStatus(value?: string): string {

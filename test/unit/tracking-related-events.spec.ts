@@ -157,4 +157,69 @@ describe('同需求埋点事件', () => {
     expect(bitable.deleteRecords).toHaveBeenCalledWith('paramDetail', ['rec_param_1']);
     expect(bitable.deleteRecords).toHaveBeenCalledWith('workbench', ['rec_2']);
   });
+
+  it('设计阶段提交评审应按需求粒度把所有同需求事件推进到埋点评审', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '主事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        创建时间: 100,
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_2',
+        事件中文名: '补充事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        创建时间: 200,
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }, { id: 'rec_2' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      actorId: '1867390536304713',
+      stageId: 'design',
+      fields: {
+        事件定义: '主事件定义补充',
+        评审状态: '评审中',
+      },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      {
+        id: 'rec_1',
+        record: {
+          事件定义: '主事件定义补充',
+          评审状态: '评审中',
+        },
+      },
+      {
+        id: 'rec_2',
+        record: {
+          评审状态: '评审中',
+        },
+      },
+    ]);
+  });
 });
