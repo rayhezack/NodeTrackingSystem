@@ -45,7 +45,7 @@ import type {
 } from '@shared/api.interface';
 import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
-import { calculatePermissions, getBaseStageFromUi, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
+import { calculatePermissions, getBaseStageFromUi, getStageIndex, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
 
 const WORKBENCH_FIELDS = [
   '需求ID',
@@ -372,8 +372,10 @@ export class TrackingService {
       throw new NotFoundException('埋点需求不存在');
     }
     const permissionConfig = await this.getStoredPermissionConfig();
-    const detail = this.toTrackingDetail(record, ref.source, actorId, actorLarkId, permissionConfig);
-    detail.relatedEvents = await this.listRelatedEvents(ref.source, record, actorId, actorLarkId, permissionConfig);
+    const relatedRecords = await this.listRelatedWorkbenchRecords(ref.source, record);
+    const workflowRecord = selectGroupWorkflowRecord(relatedRecords);
+    const detail = this.toTrackingDetail(applyRequestWorkflowState(record, workflowRecord), ref.source, actorId, actorLarkId, permissionConfig);
+    detail.relatedEvents = this.toRelatedEvents(ref.source, record, relatedRecords, actorId, actorLarkId, permissionConfig);
     return {
       data: detail,
     };
@@ -914,22 +916,32 @@ export class TrackingService {
       }
     }
 
-    const updates = [{ id: ref.rawId, record: patch }];
-    if (isDesignReviewSubmission(body.stageId, patch)) {
-      updates.push(...await this.buildRequestReviewSubmissionUpdates(ref.source, {
+    const updates = [{
+      id: ref.rawId,
+      record: patch,
+      nextRecord,
+    }];
+    const requestWorkflowPatch = toRequestWorkflowPatch(body.stageId, body.targetStage, patch);
+    if (requestWorkflowPatch) {
+      updates.push(...await this.buildRequestWorkflowUpdates(ref.source, {
         id: ref.rawId,
         record: nextRecord,
-      }));
+      }, body.stageId, requestWorkflowPatch));
     }
 
-    await this.bitable.batchUpdateRecords(workbench, updates);
+    await this.bitable.batchUpdateRecords(
+      workbench,
+      updates.map((update) => ({ id: update.id, record: update.record })),
+    );
     if (Object.prototype.hasOwnProperty.call(patch, '需求名称')) {
       await this.syncRequestNameForRelatedRecords(ref.source, { id: ref.rawId, record: nextRecord }, cellText(patch['需求名称']));
     }
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
-    await this.syncOfficialQueryLibrary(ref.source, ref.rawId, nextRecord);
+    for (const update of updates) {
+      await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
+    }
     return { success: true, recordId, currentStage };
   }
 
@@ -1398,33 +1410,38 @@ export class TrackingService {
     }
   }
 
-  private async buildRequestReviewSubmissionUpdates(
+  private async buildRequestWorkflowUpdates(
     source: TrackingSource,
     current: BitableRecord,
-  ): Promise<{ id: string; record: Record<string, unknown> }[]> {
+    stageId: string | undefined,
+    workflowPatch: Record<string, unknown>,
+  ): Promise<Array<{ id: string; record: Record<string, unknown>; nextRecord: Record<string, unknown> }>> {
     const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
     return relatedRecords
       .filter((record) => record.id !== current.id)
-      .filter((record) => cellText(record.record['评审状态']) !== '评审中')
+      .filter((record) => shouldApplyRequestWorkflowPatch(record, stageId, workflowPatch))
+      .filter((record) => !isPatchNoop(record.record, workflowPatch))
       .map((record) => ({
         id: record.id,
-        record: { 评审状态: '评审中' },
+        record: workflowPatch,
+        nextRecord: { ...record.record, ...workflowPatch },
       }));
   }
 
-  private async listRelatedEvents(
+  private toRelatedEvents(
     source: TrackingSource,
     current: BitableRecord,
+    records: BitableRecord[],
     actorId?: string,
     actorLarkId?: string,
     permissionConfig?: PermissionConfig | null,
-  ): Promise<RelatedTrackingEvent[]> {
-    const records = await this.listRelatedWorkbenchRecords(source, current);
+  ): RelatedTrackingEvent[] {
+    const workflowRecord = selectGroupWorkflowRecord(records);
     return records
       .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))
       .map((record) =>
         this.toRelatedEvent(
-          record,
+          applyRequestWorkflowState(record, workflowRecord),
           source,
           record.id === current.id,
           actorId,
@@ -1460,27 +1477,16 @@ export class TrackingService {
   }
 
   private toTodoCandidate(group: WorkbenchRecordGroup, isAdmin: boolean, actorCandidates: string[]): TodoCandidate | null {
-    const candidates = group.records
-      .map((record) => {
-        const action = isAdmin ? getAdminTodoAction(record) : getTodoAction(record, actorCandidates);
-        if (!action) return null;
-        return {
-          record,
-          action,
-        };
-      })
-      .filter((item): item is { record: BitableRecord; action: { stage: string; targetStage: string; todoRole: string } } => Boolean(item))
-      .sort((a, b) => compareTodoCandidate(a.record, b.record));
-
-    const selected = candidates[0];
-    if (!selected) return null;
+    const workflowRecord = selectGroupWorkflowRecord(group.records);
+    const action = isAdmin ? getAdminTodoAction(workflowRecord) : getGroupTodoAction(group.records, workflowRecord, actorCandidates);
+    if (!action) return null;
 
     return {
-      ...this.toTrackingRecordGroup(group, selected.record),
-      stage: selected.action.stage,
-      uiStage: selected.action.stage,
-      targetStage: selected.action.targetStage,
-      todoRole: selected.action.todoRole,
+      ...this.toTrackingRecordGroup(group, workflowRecord),
+      stage: action.stage,
+      uiStage: action.stage,
+      targetStage: action.targetStage,
+      todoRole: action.todoRole,
     };
   }
 
@@ -1488,7 +1494,7 @@ export class TrackingService {
     const records = group.records;
     const representative = preferredRecord || selectGroupRepresentative(records);
     const requestRecord = selectGroupRequestRecord(records);
-    const stageRecord = selectGroupStageRecord(records);
+    const stageRecord = selectGroupWorkflowRecord(records);
     const stage = cellText(stageRecord.record['流程阶段']) || '需求录入';
     const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
     const eventNames = uniqueStrings(records.map((record) => cellText(record.record['事件中文名']) || '未命名事件'));
@@ -1706,12 +1712,20 @@ function getRequestNameFromRecords(records: BitableRecord[], currentRecord: Reco
   return requestName || firstText(currentRecord['需求名称'], currentRecord['事件中文名']) || '未命名需求';
 }
 
-function selectGroupStageRecord(records: BitableRecord[]): BitableRecord {
-  return [...records].sort(compareRecordForGroup)[0];
+function selectGroupWorkflowRecord(records: BitableRecord[]): BitableRecord {
+  return [...records].sort(compareRecordForWorkflowProgress).at(-1) || records[0];
 }
 
-function compareTodoCandidate(a: BitableRecord, b: BitableRecord): number {
-  return compareRecordForGroup(a, b);
+function compareRecordForWorkflowProgress(a: BitableRecord, b: BitableRecord): number {
+  const uiStageDiff = getRecordUiStageProgressIndex(a) - getRecordUiStageProgressIndex(b);
+  if (uiStageDiff !== 0) return uiStageDiff;
+  const baseStageDiff = getRecordBaseStageIndex(a) - getRecordBaseStageIndex(b);
+  if (baseStageDiff !== 0) return baseStageDiff;
+  const reviewStatusDiff = getReviewStatusWeight(a) - getReviewStatusWeight(b);
+  if (reviewStatusDiff !== 0) return reviewStatusDiff;
+  const timeDiff = cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']);
+  if (timeDiff !== 0) return timeDiff;
+  return a.id.localeCompare(b.id);
 }
 
 function compareRecordForGroup(a: BitableRecord, b: BitableRecord): number {
@@ -1726,6 +1740,25 @@ function getRecordUiStageIndex(record: BitableRecord): number {
   const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
   const index = UI_STAGE_NODES.indexOf(uiStage);
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function getRecordUiStageProgressIndex(record: BitableRecord): number {
+  const uiStage = getUiStageFromBase(cellText(record.record['流程阶段']), cellText(record.record['评审状态']));
+  return UI_STAGE_NODES.indexOf(uiStage);
+}
+
+function getRecordBaseStageIndex(record: BitableRecord): number {
+  return getStageIndex(cellText(record.record['流程阶段']) || '需求录入');
+}
+
+function getReviewStatusWeight(record: BitableRecord): number {
+  const weights: Record<string, number> = {
+    草稿: 0,
+    已拒绝: 1,
+    评审中: 2,
+    已通过: 3,
+  };
+  return weights[cellText(record.record['评审状态'])] ?? 0;
 }
 
 function getHighestPriority(records: BitableRecord[]): string {
@@ -2428,13 +2461,13 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
   };
 }
 
-function getTodoAction(record: BitableRecord, actorCandidates: string[]): { stage: string; targetStage: string; todoRole: string } | null {
-  const baseStage = cellText(record.record['流程阶段']);
-  const requesters = cellUsers(record.record['需求提出人']).ids;
-  const recorders = cellUsers(record.record['需求录入人']).ids;
-  const dataOwners = cellUsers(record.record['数据负责人']).ids;
-  const devOwners = cellUsers(record.record['研发负责人']).ids;
-  const dsAcceptors = cellUsers(record.record['DS验收人']).ids;
+function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRecord, actorCandidates: string[]): { stage: string; targetStage: string; todoRole: string } | null {
+  const baseStage = cellText(workflowRecord.record['流程阶段']);
+  const requesters = mergeRecordUsers(records, '需求提出人').ids;
+  const recorders = mergeRecordUsers(records, '需求录入人').ids;
+  const dataOwners = mergeRecordUsers(records, '数据负责人').ids;
+  const devOwners = mergeRecordUsers(records, '研发负责人').ids;
+  const dsAcceptors = mergeRecordUsers(records, 'DS验收人').ids;
 
   const isRequester = intersects(actorCandidates, requesters);
   const isRecorder = intersects(actorCandidates, recorders);
@@ -2726,8 +2759,85 @@ function normalizeReviewStatus(value?: string): string {
   return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized) ? normalized : '草稿';
 }
 
-function isDesignReviewSubmission(stageId: string | undefined, patch: Record<string, unknown>): boolean {
-  return stageId === 'design' && cellText(patch['评审状态']) === '评审中';
+const REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID: Record<string, string[]> = {
+  requirement: ['流程阶段'],
+  design: ['评审状态'],
+  review: ['流程阶段', '评审状态', '评审意见'],
+  dev: ['流程阶段', '埋点开发状态'],
+  acceptance: ['流程阶段', 'DS验收状态', 'DS验收证据', 'DS验收时间'],
+  launch: ['流程阶段', '发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间'],
+  archive: ['流程阶段', '正式状态', '稳定归档时间'],
+};
+
+const REQUEST_WORKFLOW_FIELD_NAMES = uniqueStrings(Object.values(REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID).flat());
+
+function applyRequestWorkflowState(record: BitableRecord, workflowRecord: BitableRecord): BitableRecord {
+  if (record.id === workflowRecord.id) return record;
+
+  const workflowFields = pickPatchFields(workflowRecord.record, REQUEST_WORKFLOW_FIELD_NAMES);
+  return {
+    id: record.id,
+    record: {
+      ...record.record,
+      ...workflowFields,
+    },
+  };
+}
+
+function toRequestWorkflowPatch(
+  stageId: string | undefined,
+  targetStage: string | undefined,
+  patch: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const normalizedStageId = String(stageId || '').trim();
+  if (!normalizedStageId) return null;
+
+  const hasCompletionSignal =
+    Boolean(targetStage) ||
+    (normalizedStageId === 'design' && cellText(patch['评审状态']) === '评审中') ||
+    (normalizedStageId === 'archive' && Object.prototype.hasOwnProperty.call(patch, '正式状态'));
+  if (!hasCompletionSignal) return null;
+
+  const allowedFields = REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID[normalizedStageId] || [];
+  const workflowPatch = pickPatchFields(patch, allowedFields);
+  return Object.keys(workflowPatch).length ? workflowPatch : null;
+}
+
+function pickPatchFields(patch: Record<string, unknown>, fieldNames: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const fieldName of fieldNames) {
+    if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
+      result[fieldName] = patch[fieldName];
+    }
+  }
+  return result;
+}
+
+function shouldApplyRequestWorkflowPatch(
+  record: BitableRecord,
+  stageId: string | undefined,
+  workflowPatch: Record<string, unknown>,
+): boolean {
+  const targetStage = cellText(workflowPatch['流程阶段']);
+  if (targetStage) {
+    return isStageTransitionValid(cellText(record.record['流程阶段']) || '需求录入', targetStage);
+  }
+
+  if (stageId === 'design' && cellText(workflowPatch['评审状态']) === '评审中') {
+    return cellText(record.record['流程阶段']) === '埋点设计' && cellText(record.record['评审状态']) !== '已通过';
+  }
+
+  if (stageId === 'archive' && Object.prototype.hasOwnProperty.call(workflowPatch, '正式状态')) {
+    return ['稳定归档', '已废弃'].includes(cellText(record.record['流程阶段']));
+  }
+
+  return true;
+}
+
+function isPatchNoop(record: Record<string, unknown>, patch: Record<string, unknown>): boolean {
+  return Object.entries(patch).every(([fieldName, value]) =>
+    cellText(record[fieldName]) === cellText(value),
+  );
 }
 
 function normalizeAcceptanceStatus(value?: string): string {
