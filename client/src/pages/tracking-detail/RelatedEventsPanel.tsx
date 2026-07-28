@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GitBranch, Loader2, Plus, Save } from 'lucide-react';
+import { AlertTriangle, GitBranch, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -20,10 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@client/src/components/ui/select';
-import { createSiblingTrackingEvent } from '@client/src/api/tracking';
+import { createSiblingTrackingEvent, deleteTrackingEvent } from '@client/src/api/tracking';
 import type {
   CreateSiblingTrackingEventRequest,
   ReuseOfficialEventResponse,
+  RelatedTrackingEvent,
   TrackingDetail,
 } from '@shared/api.interface';
 import ReuseOfficialEventDialog from './ReuseOfficialEventDialog';
@@ -58,6 +60,8 @@ export default function RelatedEventsPanel({
   const [open, setOpen] = useState(false);
   const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState<RelatedTrackingEvent | null>(null);
   const [form, setForm] = useState<EventForm>(() => defaultForm(detail));
   const events = detail.relatedEvents?.length
     ? detail.relatedEvents
@@ -122,6 +126,29 @@ export default function RelatedEventsPanel({
     navigate(`/tracking/${result.recordId}?stage=design`);
   };
 
+  const handleDeleteEventConfirm = async () => {
+    if (!deletingEvent) return;
+    setDeleteBusy(true);
+    try {
+      const result = await deleteTrackingEvent(deletingEvent.recordId, {
+        actorId,
+        actorLarkId,
+      });
+      toast.success(`已删除事件，并清理 ${result.deletedParamCount} 个设计参数`);
+      setDeletingEvent(null);
+      if (deletingEvent.isCurrent && result.redirectRecordId) {
+        navigate(`/tracking/${result.redirectRecordId}?stage=design`);
+      } else {
+        await onChanged?.();
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '删除事件失败';
+      toast.error(msg);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-sm border border-border bg-muted/20 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -163,28 +190,44 @@ export default function RelatedEventsPanel({
 
       <div className="mt-3 flex flex-wrap gap-2">
         {events.map((event) => (
-          <button
+          <div
             key={event.recordId}
-            type="button"
-            onClick={() => !event.isCurrent && navigate(`/tracking/${event.recordId}?stage=design`)}
             className={`max-w-full rounded-sm border px-3 py-2 text-left text-xs transition-colors ${
               event.isCurrent
                 ? 'border-primary bg-primary/10 text-primary'
                 : 'border-border bg-card text-foreground hover:bg-accent'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-medium">
-                {event.evtId || '待填写 evt_id'}
-              </span>
-              <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
-                {event.uiStage || event.stage || '-'}
-              </Badge>
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => !event.isCurrent && navigate(`/tracking/${event.recordId}?stage=design`)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="break-all font-mono font-medium">
+                    {event.evtId || '待填写 evt_id'}
+                  </span>
+                  <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
+                    {event.uiStage || event.stage || '-'}
+                  </Badge>
+                </div>
+                <div className="mt-1 max-w-[280px] truncate text-muted-foreground">
+                  {event.eventName || '未命名事件'}
+                </div>
+              </button>
+              {canDeleteEvent(event, events.length, canEdit) && (
+                <button
+                  type="button"
+                  className="rounded-sm p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setDeletingEvent(event)}
+                  title="删除该设计事件"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-            <div className="mt-1 max-w-[280px] truncate text-muted-foreground">
-              {event.eventName || '未命名事件'}
-            </div>
-          </button>
+          </div>
         ))}
       </div>
 
@@ -305,6 +348,50 @@ export default function RelatedEventsPanel({
         onClose={() => setReuseOpen(false)}
         onReused={handleReuseSuccess}
       />
+
+      <Dialog open={Boolean(deletingEvent)} onOpenChange={(nextOpen) => !nextOpen && !deleteBusy && setDeletingEvent(null)}>
+        <DialogContent className="max-w-md rounded-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              确认删除埋点事件
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="text-xs text-muted-foreground">
+                确定要删除事件{' '}
+                <span className="font-mono font-medium text-foreground">
+                  {deletingEvent?.evtId || deletingEvent?.eventName || '未命名事件'}
+                </span>
+                吗？
+                <div className="mt-2">
+                  该操作会删除当前工作流中的设计事件，并同步清理该事件下的设计参数；不会删除正式查询库里的已上线事件。
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-sm"
+              onClick={() => setDeletingEvent(null)}
+              disabled={deleteBusy}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-8 rounded-sm"
+              onClick={handleDeleteEventConfirm}
+              disabled={deleteBusy}
+            >
+              {deleteBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              {deleteBusy ? '删除中...' : '确认删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -334,6 +421,12 @@ function textValue(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join('、');
   return '';
+}
+
+function canDeleteEvent(event: RelatedTrackingEvent, eventCount: number, canEdit: boolean): boolean {
+  if (!canEdit || eventCount <= 1) return false;
+  const stage = event.uiStage || event.stage || '';
+  return ['埋点提需', '埋点设计', '需求录入'].includes(stage);
 }
 
 function Field({

@@ -12,6 +12,8 @@ import type {
   CreateTrackingRecordResponse,
   CreateSiblingTrackingEventRequest,
   CreateSiblingTrackingEventResponse,
+  DeleteTrackingEventRequest,
+  DeleteTrackingEventResponse,
   ReuseOfficialEventRequest,
   ReuseOfficialEventResponse,
   GetPermissionConfigResponse,
@@ -26,6 +28,8 @@ import type {
   UpdateParamRequest,
   UpdateParamResponse,
   DeleteParamResponse,
+  BatchDeleteParamsRequest,
+  BatchDeleteParamsResponse,
   TrackingSourceFilter,
 } from '@shared/api.interface';
 
@@ -175,6 +179,22 @@ export async function createSiblingTrackingEvent(
   }
 }
 
+export async function deleteTrackingEvent(
+  recordId: string,
+  data: DeleteTrackingEventRequest,
+): Promise<DeleteTrackingEventResponse> {
+  try {
+    const response = await axiosForBackend.delete(
+      `/api/tracking/records/${recordId}`,
+      { data },
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('删除埋点事件失败', error);
+    throw toReadableError(error, '删除埋点事件失败，请确认仍处于设计阶段且至少保留一个事件');
+  }
+}
+
 export async function reuseOfficialTrackingEvent(
   recordId: string,
   data: ReuseOfficialEventRequest,
@@ -187,7 +207,7 @@ export async function reuseOfficialTrackingEvent(
     return response.data;
   } catch (error) {
     logger.error('复用已有正式事件失败', error);
-    throw toReadableError(error, '复用已有正式事件失败，请检查 Base 权限或是否已有进行中的同名 evt_id');
+    throw toReadableError(error, '复用已有正式事件失败，请检查 Base 权限或当前需求内是否已有同名 evt_id');
   }
 }
 
@@ -249,5 +269,21 @@ export async function deleteParam(
   } catch (error) {
     logger.error('删除参数失败', error);
     throw toReadableError(error, '删除参数失败，请稍后重试');
+  }
+}
+
+export async function batchDeleteParams(
+  recordId: string,
+  data: BatchDeleteParamsRequest,
+): Promise<BatchDeleteParamsResponse> {
+  try {
+    const response = await axiosForBackend.post(
+      `/api/tracking/records/${recordId}/params/batch-delete`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('批量删除参数失败', error);
+    throw toReadableError(error, '批量删除参数失败，请确认参数仍属于当前埋点设计');
   }
 }

@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  BatchDeleteParamsRequest,
+  BatchDeleteParamsResponse,
   CreateParamRequest,
   CreateParamResponse,
   CreateSiblingTrackingEventRequest,
@@ -7,6 +9,8 @@ import type {
   CreateTrackingRecordRequest,
   CreateTrackingRecordResponse,
   DeleteParamResponse,
+  DeleteTrackingEventRequest,
+  DeleteTrackingEventResponse,
   GetMyTodosParams,
   GetMyTodosResponse,
   GetParamsResponse,
@@ -294,6 +298,7 @@ export class TrackingService {
         recordId: record.recordId,
         source: record.source,
         requestId: record.requestId,
+        requestName: record.requestName,
         evtId: record.evtId,
         eventIds: record.eventIds,
         eventName: record.eventName,
@@ -330,7 +335,7 @@ export class TrackingService {
           return false;
         }
         if (params.priority && record.priority !== params.priority) return false;
-        if (params.platform && !record.platform.includes(params.platform)) return false;
+        if (params.platform && !matchesPlatformFilter(record, params.platform)) return false;
         if (params.owner) {
           const owners = [...record.dataOwner, ...record.devOwner].join(' ');
           if (!owners.includes(params.owner)) return false;
@@ -435,12 +440,6 @@ export class TrackingService {
     await this.assertCanCreateRecord(body.actorId, body.actorLarkId);
 
     const records = await this.listWorkbenchRecords(source);
-    if (evtId) {
-      const duplicate = records.find((record) => cellText(record.record['evt_id']).toLowerCase() === evtId.toLowerCase());
-      if (duplicate) {
-        throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
-      }
-    }
     const hasRequestIdField = hasWorkbenchField(source, '需求ID');
     const requestId = hasRequestIdField
       ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
@@ -532,21 +531,13 @@ export class TrackingService {
 
     const evtId = (body.evtId || '').trim();
     const records = await this.listWorkbenchRecords(source);
-    if (evtId) {
-      const duplicate = records.find((record) => cellText(record.record['evt_id']).trim().toLowerCase() === evtId.toLowerCase());
-      if (duplicate) {
-        throw new BadRequestException(`工作台已存在 evt_id：${evtId}`);
-      }
-    }
-
     const currentRecord = current.record;
-    const hasRequestIdField = hasWorkbenchField(source, '需求ID');
-    const existingRequestId = cellText(currentRecord['需求ID']).trim();
-    const requestId = hasRequestIdField && !existingRequestId
-      ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
-      : existingRequestId;
-    if (requestId && !existingRequestId && hasRequestIdField) {
-      await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: { 需求ID: requestId } }]);
+    const requestId = await this.ensureRequestId(source, current, records);
+    if (evtId) {
+      const duplicate = this.findDuplicateEvtIdInRequest(current, records, evtId);
+      if (duplicate) {
+        throw new BadRequestException(`当前需求内已存在 evt_id：${evtId}`);
+      }
     }
     const requirementLink = firstText(currentRecord['需求链接']).trim();
     const version = body.version || cellText(currentRecord['版本']) || '1.0.0';
@@ -597,6 +588,51 @@ export class TrackingService {
     };
   }
 
+  async deleteEvent(recordId: string, body: DeleteTrackingEventRequest = {}): Promise<DeleteTrackingEventResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const source = ref.source;
+    const workbench = workbenchKey(source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
+    if (!current) {
+      throw new NotFoundException('埋点事件不存在');
+    }
+    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '删除设计事件');
+    if (!permissions.canEditDesign) {
+      throw new ForbiddenException('当前用户无权限删除设计事件');
+    }
+
+    const uiStage = getUiStageFromBase(
+      cellText(current.record['流程阶段']) || '需求录入',
+      cellText(current.record['评审状态']),
+    );
+    if (!['埋点提需', '埋点设计'].includes(uiStage)) {
+      throw new BadRequestException('仅支持删除需求录入或埋点设计阶段的事件');
+    }
+
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    if (relatedRecords.length <= 1) {
+      throw new BadRequestException('一个需求至少需要保留一个埋点事件，不能删除最后一个事件');
+    }
+
+    const params = await this.listParamsForDesign(source, ref.rawId, cellText(current.record['evt_id']));
+    const paramIds = params.map((record) => record.id);
+    for (let index = 0; index < paramIds.length; index += 200) {
+      await this.bitable.deleteRecords(paramDetailKey(source), paramIds.slice(index, index + 200));
+    }
+    await this.bitable.deleteRecords(workbench, [ref.rawId]);
+
+    const redirectRecord = relatedRecords
+      .filter((record) => record.id !== ref.rawId)
+      .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))[0];
+
+    return {
+      success: true,
+      deletedRecordId: recordId,
+      deletedParamCount: paramIds.length,
+      redirectRecordId: redirectRecord ? encodeScopedRecordId(source, redirectRecord.id) : undefined,
+    };
+  }
+
   async reuseOfficialEvent(recordId: string, body: ReuseOfficialEventRequest): Promise<ReuseOfficialEventResponse> {
     const ref = parseScopedRecordId(recordId);
     const source = ref.source;
@@ -633,12 +669,17 @@ export class TrackingService {
     const records = await this.listWorkbenchRecords(source);
     const currentEvtId = cellText(current.record['evt_id']).trim();
     const shouldReuseCurrent = !currentEvtId || currentEvtId.toLowerCase() === evtId.toLowerCase();
-    const duplicate = records.find((record) =>
-      record.id !== (shouldReuseCurrent ? ref.rawId : '') &&
-      cellText(record.record['evt_id']).trim().toLowerCase() === evtId.toLowerCase(),
+    if (!shouldReuseCurrent) {
+      await this.ensureRequestId(source, current, records);
+    }
+    const duplicate = this.findDuplicateEvtIdInRequest(
+      current,
+      records,
+      evtId,
+      shouldReuseCurrent ? [ref.rawId] : [],
     );
     if (duplicate) {
-      throw new BadRequestException(`工作台已有进行中的同名 evt_id：${evtId}`);
+      throw new BadRequestException(`当前需求内已存在 evt_id：${evtId}`);
     }
 
     const selectedParamKeys = new Set(
@@ -688,14 +729,8 @@ export class TrackingService {
     if (shouldReuseCurrent) {
       await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: designPatch }]);
     } else {
-      const hasRequestIdField = hasWorkbenchField(source, '需求ID');
       const existingRequestId = cellText(currentRecord['需求ID']).trim();
-      const requestId = hasRequestIdField && !existingRequestId
-        ? createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])))
-        : existingRequestId;
-      if (requestId && !existingRequestId && hasRequestIdField) {
-        await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: { 需求ID: requestId } }]);
-      }
+      const requestId = existingRequestId || await this.ensureRequestId(source, current, records);
       const requirementLink = firstText(currentRecord['需求链接']).trim();
       const [created] = await this.bitable.batchAddRecords(workbench, [{
         ...(requestId ? { 需求ID: requestId } : {}),
@@ -760,6 +795,14 @@ export class TrackingService {
     const currentEvtId = cellText(current.record['evt_id']);
     const hasEvtIdPatch = Object.prototype.hasOwnProperty.call(patch, 'evt_id');
     const nextEvtId = hasEvtIdPatch ? cellText(patch.evt_id) : currentEvtId;
+
+    if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
+      const records = await this.listWorkbenchRecords(ref.source);
+      const duplicate = this.findDuplicateEvtIdInRequest(current, records, nextEvtId, [ref.rawId]);
+      if (duplicate) {
+        throw new BadRequestException(`当前需求内已存在 evt_id：${nextEvtId}`);
+      }
+    }
 
     await this.bitable.batchUpdateRecords(workbench, [{ id: ref.rawId, record: patch }]);
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
@@ -982,19 +1025,14 @@ export class TrackingService {
     const officialParamKey = officialParamDetailKey(source);
     const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
     const existingByParamKey = new Map<string, BitableRecord>();
-    const existingForEvent: BitableRecord[] = [];
 
     for (const item of officialParams) {
       const paramKey = getOfficialParamKey(item.record).toLowerCase();
       if (paramKey) {
         existingByParamKey.set(paramKey, item);
       }
-      if (isOfficialParamForEvent(item, officialEventRecordId, evtId)) {
-        existingForEvent.push(item);
-      }
     }
 
-    const activeParamKeys = new Set<string>();
     const updates: { id: string; record: Record<string, unknown> }[] = [];
     const inserts: Record<string, unknown>[] = [];
 
@@ -1003,27 +1041,12 @@ export class TrackingService {
       if (!officialParam) continue;
 
       const paramKey = cellText(officialParam['参数主键']).trim().toLowerCase();
-      activeParamKeys.add(paramKey);
       const existing = existingByParamKey.get(paramKey);
       if (existing) {
-        updates.push({ id: existing.id, record: officialParam });
+        updates.push({ id: existing.id, record: mergeOfficialParamRecord(existing.record, officialParam) });
       } else {
         inserts.push(officialParam);
       }
-    }
-
-    for (const officialParam of existingForEvent) {
-      const paramKey = getOfficialParamKey(officialParam.record).toLowerCase();
-      if (!paramKey || activeParamKeys.has(paramKey)) continue;
-      if (cellText(officialParam.record['参数状态']) === '已废弃') continue;
-      updates.push({
-        id: officialParam.id,
-        record: {
-          参数状态: '已废弃',
-          事件状态: getOfficialQueryStatus(designRecord),
-          关联事件: [officialEventRecordId],
-        },
-      });
     }
 
     for (let index = 0; index < updates.length; index += 200) {
@@ -1032,6 +1055,46 @@ export class TrackingService {
     for (let index = 0; index < inserts.length; index += 200) {
       await this.bitable.batchAddRecords(officialParamKey, inserts.slice(index, index + 200));
     }
+  }
+
+  async batchDeleteParams(recordId: string, body: BatchDeleteParamsRequest): Promise<BatchDeleteParamsResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const designRecord = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
+    if (!designRecord) {
+      throw new NotFoundException('埋点需求不存在');
+    }
+    await this.assertCanEditParams(designRecord, body.actorId, body.actorLarkId);
+
+    const selectedRawIds = uniqueStrings(body.paramRecordIds || [])
+      .map((id) => parseScopedRecordId(id))
+      .map((paramRef) => {
+        if (paramRef.source !== ref.source) {
+          throw new BadRequestException('参数分库与当前埋点分库不一致');
+        }
+        return paramRef.rawId;
+      });
+    if (!selectedRawIds.length) {
+      return { success: true, deletedCount: 0 };
+    }
+
+    const params = await this.listParamsForDesign(ref.source, ref.rawId, cellText(designRecord.record['evt_id']));
+    const allowedIds = new Set(
+      params
+        .filter((record) => !isRemovedDesignParam(record.record))
+        .map((record) => record.id),
+    );
+    const invalidIds = selectedRawIds.filter((id) => !allowedIds.has(id));
+    if (invalidIds.length) {
+      throw new BadRequestException('部分参数不属于当前埋点设计，已取消删除');
+    }
+
+    for (let index = 0; index < selectedRawIds.length; index += 200) {
+      await this.bitable.deleteRecords(paramDetailKey(ref.source), selectedRawIds.slice(index, index + 200));
+    }
+    return {
+      success: true,
+      deletedCount: selectedRawIds.length,
+    };
   }
 
   async deleteParam(paramRecordId: string, actorId?: string, actorLarkId?: string): Promise<DeleteParamResponse> {
@@ -1139,7 +1202,38 @@ export class TrackingService {
     return result.records.filter((record) => isBusinessWorkbenchRecord(record));
   }
 
-  private async listRelatedEvents(source: TrackingSource, current: BitableRecord): Promise<RelatedTrackingEvent[]> {
+  private async ensureRequestId(source: TrackingSource, current: BitableRecord, records: BitableRecord[]): Promise<string> {
+    if (!hasWorkbenchField(source, '需求ID')) return '';
+    const existingRequestId = cellText(current.record['需求ID']).trim();
+    if (existingRequestId) return existingRequestId;
+
+    const requestId = createUniqueRequestId(source, records.map((record) => cellText(record.record['需求ID'])));
+    await this.bitable.batchUpdateRecords(workbenchKey(source), [{ id: current.id, record: { 需求ID: requestId } }]);
+    current.record['需求ID'] = requestId;
+    return requestId;
+  }
+
+  private findDuplicateEvtIdInRequest(
+    current: BitableRecord,
+    records: BitableRecord[],
+    evtId: string,
+    excludedRecordIds: string[] = [],
+  ): BitableRecord | undefined {
+    const normalizedEvtId = evtId.trim().toLowerCase();
+    if (!normalizedEvtId) return undefined;
+    const excluded = new Set(excludedRecordIds);
+    const currentRequestId = cellText(current.record['需求ID']).trim();
+
+    return records.find((record) => {
+      if (excluded.has(record.id)) return false;
+      if (!isBusinessWorkbenchRecord(record)) return false;
+      if (cellText(record.record['evt_id']).trim().toLowerCase() !== normalizedEvtId) return false;
+      if (!currentRequestId) return record.id === current.id;
+      return record.id === current.id || cellText(record.record['需求ID']).trim() === currentRequestId;
+    });
+  }
+
+  private async listRelatedWorkbenchRecords(source: TrackingSource, current: BitableRecord): Promise<BitableRecord[]> {
     const requestId = cellText(current.record['需求ID']).trim();
     let records = [current];
     if (requestId) {
@@ -1162,7 +1256,12 @@ export class TrackingService {
     for (const record of records) {
       uniqueByRecordId.set(record.id, record);
     }
-    return Array.from(uniqueByRecordId.values())
+    return Array.from(uniqueByRecordId.values());
+  }
+
+  private async listRelatedEvents(source: TrackingSource, current: BitableRecord): Promise<RelatedTrackingEvent[]> {
+    const records = await this.listRelatedWorkbenchRecords(source, current);
+    return records
       .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))
       .map((record) => this.toRelatedEvent(record, source, record.id === current.id));
   }
@@ -1210,6 +1309,7 @@ export class TrackingService {
   private toTrackingRecordGroup(group: WorkbenchRecordGroup, preferredRecord?: BitableRecord): TrackingRecord {
     const records = group.records;
     const representative = preferredRecord || selectGroupRepresentative(records);
+    const requestRecord = selectGroupRequestRecord(records);
     const stageRecord = selectGroupStageRecord(records);
     const stage = cellText(stageRecord.record['流程阶段']) || '需求录入';
     const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
@@ -1221,6 +1321,7 @@ export class TrackingService {
       recordId: encodeScopedRecordId(group.source, representative.id),
       source: group.source,
       requestId: group.requestId || undefined,
+      requestName: cellText(requestRecord.record['事件中文名']) || eventNames[0] || '未命名需求',
       evtId: cellText(representative.record['evt_id']),
       eventIds,
       eventName: cellText(representative.record['事件中文名']) || eventNames[0] || '未命名需求',
@@ -1248,6 +1349,7 @@ export class TrackingService {
       recordId: encodeScopedRecordId(source, record.id),
       source,
       requestId: cellText(record.record['需求ID']) || undefined,
+      requestName: cellText(record.record['事件中文名']) || '未命名需求',
       evtId: cellText(record.record['evt_id']),
       eventIds: uniqueStrings([cellText(record.record['evt_id'])]),
       eventName: cellText(record.record['事件中文名']) || '未命名需求',
@@ -1306,9 +1408,10 @@ export class TrackingService {
 
   private isParamForDesign(record: BitableRecord, recordId: string, evtId: string): boolean {
     const sourceRecordId = cellText(record.record['来源设计记录ID']);
-    if (sourceRecordId === recordId) return true;
     const links = cellIds(record.record['关联设计']);
-    if (links.includes(recordId)) return true;
+    if (sourceRecordId || links.length) {
+      return sourceRecordId === recordId || links.includes(recordId);
+    }
     return Boolean(evtId) && cellText(record.record['evt_id']) === evtId;
   }
 
@@ -1393,6 +1496,14 @@ function selectGroupRepresentative(records: BitableRecord[]): BitableRecord {
   return [...records].sort(compareRecordForGroup)[0];
 }
 
+function selectGroupRequestRecord(records: BitableRecord[]): BitableRecord {
+  return [...records].sort((a, b) => {
+    const timeDiff = cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']);
+    if (timeDiff !== 0) return timeDiff;
+    return compareRecordForGroup(a, b);
+  })[0];
+}
+
 function selectGroupStageRecord(records: BitableRecord[]): BitableRecord {
   return [...records].sort(compareRecordForGroup)[0];
 }
@@ -1430,6 +1541,18 @@ function mergePlatforms(records: BitableRecord[]): string {
   );
   const unique = uniqueStrings(values);
   return unique.length ? unique.join('、') : '-';
+}
+
+function matchesPlatformFilter(record: TrackingRecord, platform: string): boolean {
+  const normalized = platform.trim();
+  if (!normalized) return true;
+  if (normalized === 'App') return record.source === 'app';
+  if (normalized === 'Web') return record.source === 'web' || record.platform.includes('Web');
+  return record.platform
+    .split(/[、,，/]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .includes(normalized);
 }
 
 function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
@@ -1787,6 +1910,58 @@ function toOfficialParamRecord(source: TrackingSource, designRecord: Record<stri
 function normalizeOfficialParamStatus(paramStatus: string, changeType: string): string {
   if (paramStatus === '废弃' || changeType === '废弃') return '已废弃';
   return '正式';
+}
+
+function mergeOfficialParamRecord(existing: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...incoming,
+    '枚举/取值范围': mergeEnumRangeText(
+      cellText(existing['枚举/取值范围']),
+      cellText(incoming['枚举/取值范围']),
+    ),
+  };
+
+  for (const fieldName of [
+    '数据类型',
+    '必传规则',
+    '条件说明',
+    '参数定义',
+    '版本',
+    '来源表',
+    'App适用性',
+    'Web适用性',
+    '备注',
+  ]) {
+    if (!cellText(merged[fieldName]) && cellText(existing[fieldName])) {
+      merged[fieldName] = existing[fieldName];
+    }
+  }
+
+  return merged;
+}
+
+function mergeEnumRangeText(existingText: string, incomingText: string): string {
+  const existingParts = splitEnumRange(existingText);
+  const incomingParts = splitEnumRange(incomingText);
+  const merged = uniqueStrings([...existingParts, ...incomingParts]);
+  if (!merged.length) return incomingText || existingText || '';
+  return merged.join(detectEnumDelimiter(existingText || incomingText));
+}
+
+function splitEnumRange(value: string): string[] {
+  return String(value || '')
+    .split(/[\n,，、/|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function detectEnumDelimiter(value: string): string {
+  if (value.includes('\n')) return '\n';
+  if (value.includes('，')) return '，';
+  if (value.includes('、')) return '、';
+  if (value.includes('/')) return '/';
+  if (value.includes('|')) return '|';
+  return ',';
 }
 
 function isRemovedDesignParam(record: Record<string, unknown>): boolean {

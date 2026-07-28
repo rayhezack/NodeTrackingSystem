@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { logger } from '@lark-apaas/client-toolkit/logger';
-import { Plus, AlertCircle, Wrench, Loader2, Copy } from 'lucide-react';
+import { Plus, AlertCircle, Wrench, Loader2, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -8,6 +8,7 @@ import {
   createParam,
   updateParam,
   deleteParam,
+  batchDeleteParams,
 } from '@client/src/api/tracking';
 import type {
   ParamDetail,
@@ -46,6 +47,8 @@ const ParamDesigner = ({
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingParam, setDeletingParam] = useState<ParamDetail | null>(null);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [selectedParamIds, setSelectedParamIds] = useState<string[]>([]);
 
   const loadParams = useCallback(async () => {
     setLoading(true);
@@ -67,6 +70,10 @@ const ParamDesigner = ({
       loadParams();
     }
   }, [recordId, loadParams]);
+
+  useEffect(() => {
+    setSelectedParamIds((prev) => prev.filter((id) => items.some((item) => item.recordId === id)));
+  }, [items]);
 
   const handleCreate = () => {
     setFormMode('create');
@@ -107,7 +114,20 @@ const ParamDesigner = ({
     if (!deletingParam) return;
     await deleteParam(deletingParam.recordId, actorId, actorLarkId);
     setItems((prev) => prev.filter((item) => item.recordId !== deletingParam.recordId));
+    setSelectedParamIds((prev) => prev.filter((id) => id !== deletingParam.recordId));
     setDeletingParam(null);
+  };
+
+  const handleBatchDeleteConfirm = async () => {
+    if (!selectedParamIds.length) return;
+    const idsToDelete = [...selectedParamIds];
+    await batchDeleteParams(recordId, {
+      paramRecordIds: idsToDelete,
+      actorId,
+      actorLarkId,
+    });
+    setItems((prev) => prev.filter((item) => !idsToDelete.includes(item.recordId)));
+    setSelectedParamIds([]);
   };
 
   const handleCopyParams = async () => {
@@ -202,6 +222,17 @@ const ParamDesigner = ({
               复制参数说明
             </Button>
           )}
+          {canEdit && selectedParamIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-sm text-destructive hover:text-destructive"
+              onClick={() => setBatchDeleteOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除选中 {selectedParamIds.length}
+            </Button>
+          )}
           {canEdit && (
             <Button size="sm" className="h-8 rounded-sm" onClick={handleCreate}>
               <Plus className="h-3.5 w-3.5" />
@@ -224,6 +255,8 @@ const ParamDesigner = ({
           items={items}
           source={source}
           canEdit={canEdit}
+          selectedIds={selectedParamIds}
+          onSelectionChange={setSelectedParamIds}
           onEdit={handleEdit}
           onDelete={handleDelete}
         />
@@ -244,6 +277,15 @@ const ParamDesigner = ({
         paramKey={deletingParam?.paramKey || ''}
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <DeleteParamDialog
+        open={batchDeleteOpen}
+        paramKeys={items
+          .filter((item) => selectedParamIds.includes(item.recordId))
+          .map((item) => item.paramKey)}
+        onClose={() => setBatchDeleteOpen(false)}
+        onConfirm={handleBatchDeleteConfirm}
       />
     </div>
   );

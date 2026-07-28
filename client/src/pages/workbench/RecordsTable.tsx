@@ -45,7 +45,7 @@ const STAGE_LIST = [
 ] as const;
 
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
-const PLATFORM_OPTIONS = ['iOS', 'Android', 'Web', '小程序', '服务端'];
+const PLATFORM_OPTIONS = ['iOS', 'Android', 'App', 'Web'];
 
 const STAGE_VARIANT: Record<string, string> = {
   埋点提需: 'bg-[hsl(217_91%_96%)] text-[hsl(217_91%_40%)] border-[hsl(217_91%_90%)]',

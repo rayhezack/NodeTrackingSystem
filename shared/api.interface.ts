@@ -40,6 +40,7 @@ export interface TodoItem {
   recordId: string;
   source: TrackingSource;
   requestId?: string;
+  requestName?: string;
   evtId: string;
   eventIds: string[];
   eventName: string;
@@ -67,6 +68,7 @@ export interface TrackingRecord {
   recordId: string;
   source: TrackingSource;
   requestId?: string;
+  requestName?: string;
   evtId: string;
   eventIds: string[];
   eventName: string;
@@ -178,6 +180,18 @@ export interface CreateSiblingTrackingEventResponse {
   success: boolean;
   recordId: string;
   currentStage: string;
+}
+
+export interface DeleteTrackingEventRequest {
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface DeleteTrackingEventResponse {
+  success: boolean;
+  deletedRecordId: string;
+  deletedParamCount: number;
+  redirectRecordId?: string;
 }
 
 export interface ReuseOfficialEventRequest {
@@ -353,6 +367,17 @@ export interface UpdateParamResponse {
 
 export interface DeleteParamResponse {
   success: boolean;
+}
+
+export interface BatchDeleteParamsRequest {
+  paramRecordIds: string[];
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface BatchDeleteParamsResponse {
+  success: boolean;
+  deletedCount: number;
 }
 
 // 正式查询库

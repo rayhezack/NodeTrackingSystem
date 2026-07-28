@@ -330,6 +330,95 @@ describe('工作流 Base 回写', () => {
     expect(bitable.batchAddRecords).not.toHaveBeenCalled();
   });
 
+  it('归档已有正式参数时应在正式库枚举基础上追加新增枚举，而不是覆盖', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'createflow_form_submit',
+          事件中文名: '创建流程提交',
+          流程阶段: '稳定归档',
+          端: ['Web'],
+          版本: '2.1.0',
+          正式状态: '已上线',
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      searchRecords: jest
+        .fn()
+        .mockResolvedValueOnce({
+          records: [
+            {
+              id: 'rec_official',
+              record: {
+                evt_id: 'createflow_form_submit',
+                事件中文名: '创建流程提交',
+              },
+            },
+          ],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [
+            {
+              id: 'rec_design_param',
+              record: {
+                evt_id: 'createflow_form_submit',
+                参数名: 'form_type',
+                数据类型: 'STRING',
+                必传规则: '非必传',
+                '枚举/取值范围': 'abc',
+                参数定义: '',
+                Web适用性: 'Web通用',
+                参数状态: '草稿',
+                变更类型: '修改',
+                来源设计记录ID: 'rec_1',
+                关联设计: ['rec_1'],
+              },
+            },
+          ],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [
+            {
+              id: 'rec_official_param',
+              record: {
+                参数主键: 'createflow_form_submit.form_type',
+                evt_id: 'createflow_form_submit',
+                参数名: 'form_type',
+                数据类型: 'STRING',
+                '枚举/取值范围': 'old,qwe',
+                参数定义: '正式库原有表单类型定义',
+                参数状态: '正式',
+                关联事件: ['rec_official'],
+              },
+            },
+          ],
+          hasMore: false,
+        }),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      actorId: '1867390536304713',
+      stageId: 'archive',
+      fields: {},
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('officialParamDetail', [
+      expect.objectContaining({
+        id: 'rec_official_param',
+        record: expect.objectContaining({
+          参数主键: 'createflow_form_submit.form_type',
+          '枚举/取值范围': 'old,qwe,abc',
+          参数定义: '正式库原有表单类型定义',
+        }),
+      }),
+    ]);
+  });
+
   it('提需人只应能维护需求录入节点，不能越权修改埋点设计', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
@@ -630,11 +719,13 @@ describe('工作流 Base 回写', () => {
     expect(dashboard.stats.find((item) => item.stage === '埋点设计')?.count).toBe(2);
     expect(groupedDemand).toMatchObject({
       recordId: 'app:rec_click',
+      requestName: '背景移除入口曝光',
       eventCount: 2,
       eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
       eventNames: ['背景移除入口点击', '背景移除入口曝光'],
     });
     expect(dashboard.todos.find((item) => item.requestId === 'APP_REQ_BG_REMOVE')).toMatchObject({
+      requestName: '背景移除入口曝光',
       eventCount: 2,
       eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
     });
@@ -646,5 +737,53 @@ describe('工作流 Base 回写', () => {
     });
     expect(searchResult.items).toHaveLength(1);
     expect(searchResult.items[0].requestId).toBe('APP_REQ_BG_REMOVE');
+  });
+
+  it('工作台平台筛选应按 App/Web 库和 iOS/Android 端过滤', async () => {
+    const bitable = {
+      searchRecords: jest.fn((instanceKey: string) => Promise.resolve({
+        records: instanceKey === 'webWorkbench'
+          ? [
+              {
+                id: 'web_rec',
+                record: {
+                  需求ID: 'WEB_REQ_TEST',
+                  evt_id: 'web_event',
+                  事件中文名: 'Web 事件',
+                  流程阶段: '埋点设计',
+                  记录类型: '埋点设计',
+                  优先级: 'P1',
+                  端: ['Web'],
+                  创建时间: 200,
+                },
+              },
+            ]
+          : [
+              {
+                id: 'app_rec',
+                record: {
+                  需求ID: 'APP_REQ_TEST',
+                  evt_id: 'app_event',
+                  事件中文名: 'App 事件',
+                  流程阶段: '埋点设计',
+                  记录类型: '埋点设计',
+                  优先级: 'P0',
+                  端: ['iOS', 'Android'],
+                  创建时间: 100,
+                },
+              },
+            ],
+        hasMore: false,
+      })),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const appResult = await service.getRecords({ source: 'all', platform: 'App', pageSize: 20 });
+    const webResult = await service.getRecords({ source: 'all', platform: 'Web', pageSize: 20 });
+    const iosResult = await service.getRecords({ source: 'all', platform: 'iOS', pageSize: 20 });
+
+    expect(appResult.items.map((item) => item.source)).toEqual(['app']);
+    expect(webResult.items.map((item) => item.source)).toEqual(['web']);
+    expect(iosResult.items.map((item) => item.evtId)).toEqual(['app_event']);
   });
 });

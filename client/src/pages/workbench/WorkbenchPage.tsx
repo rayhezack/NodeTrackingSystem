@@ -17,6 +17,7 @@ import type {
   StageStat,
   TodoItem,
   TrackingRecord,
+  TrackingSourceFilter,
 } from '@shared/api.interface';
 
 const WorkbenchPage = () => {
@@ -53,6 +54,7 @@ const WorkbenchPage = () => {
 
   // 首屏聚合加载：统计、待办、列表共用一次后端 Base 读取，避免重复扫表。
   const loadDashboard = useCallback(async () => {
+    const { source, platform } = normalizePlatformFilter(platformFilter);
     setStatsLoading(true);
     setTodosLoading(true);
     setRecordsLoading(true);
@@ -61,11 +63,11 @@ const WorkbenchPage = () => {
     setRecordsError(null);
     try {
       const res = await trackingApi.getWorkbenchDashboard({
-        source: 'all',
+        source,
         keyword: keyword || undefined,
         stage: stageFilter || undefined,
         priority: priorityFilter || undefined,
-        platform: platformFilter || undefined,
+        platform,
         pageSize: 20,
         todoLimit: 10,
         actorId: actor.id,
@@ -94,15 +96,16 @@ const WorkbenchPage = () => {
   // 加载更多只追加列表，避免刷新统计/待办。
   const loadMoreRecords = useCallback(
     async () => {
+      const { source, platform } = normalizePlatformFilter(platformFilter);
       setLoadingMore(true);
       setRecordsError(null);
       try {
         const res = await trackingApi.getTrackingRecords({
-          source: 'all',
+          source,
           keyword: keyword || undefined,
           stage: stageFilter || undefined,
           priority: priorityFilter || undefined,
-          platform: platformFilter || undefined,
+          platform,
           pageSize: 20,
           pageToken,
         });
@@ -227,3 +230,12 @@ const WorkbenchPage = () => {
 };
 
 export default WorkbenchPage;
+
+function normalizePlatformFilter(platformFilter: string): { source: TrackingSourceFilter; platform?: string } {
+  if (platformFilter === 'App') return { source: 'app' };
+  if (platformFilter === 'Web') return { source: 'web' };
+  return {
+    source: 'all',
+    platform: platformFilter || undefined,
+  };
+}

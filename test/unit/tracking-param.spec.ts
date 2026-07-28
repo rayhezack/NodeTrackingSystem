@@ -149,6 +149,59 @@ describe('埋点参数 Base 回写', () => {
     }));
   });
 
+  it('同 evt_id 并行修订时，参数列表不应串到其他需求的设计参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: { evt_id: 'shared_event' },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_current_param',
+            record: {
+              evt_id: 'shared_event',
+              参数名: 'current_param',
+              数据类型: 'STRING',
+              参数状态: '草稿',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+            },
+          },
+          {
+            id: 'rec_other_param',
+            record: {
+              evt_id: 'shared_event',
+              参数名: 'other_param',
+              数据类型: 'STRING',
+              参数状态: '草稿',
+              来源设计记录ID: 'rec_other_design',
+              关联设计: ['rec_other_design'],
+            },
+          },
+          {
+            id: 'rec_legacy_param',
+            record: {
+              evt_id: 'shared_event',
+              参数名: 'legacy_param_without_owner',
+              数据类型: 'STRING',
+              参数状态: '草稿',
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getParams('app:rec_design');
+
+    expect(result.items.map((item) => item.paramName).sort()).toEqual([
+      'current_param',
+      'legacy_param_without_owner',
+    ]);
+  });
+
   it('App 参数适用端不应继续写入与 App通用 重复的仅App', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
@@ -325,6 +378,90 @@ describe('埋点参数 Base 回写', () => {
     await service.deleteParam('app:rec_param', '1867390536304713');
 
     expect(bitable.deleteRecords).toHaveBeenCalledWith('paramDetail', ['rec_param']);
+  });
+
+  it('批量删除参数时应一次性删除当前设计下的所选参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: {
+          evt_id: 'test_event',
+          流程阶段: '埋点设计',
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_param_1',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'button_name',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+              参数状态: '草稿',
+            },
+          },
+          {
+            id: 'rec_param_2',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'entry_source',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+              参数状态: '草稿',
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+      deleteRecords: jest.fn().mockResolvedValue(true),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.batchDeleteParams('app:rec_design', {
+      actorId: '1867390536304713',
+      paramRecordIds: ['app:rec_param_1', 'app:rec_param_2'],
+    });
+
+    expect(result).toEqual({ success: true, deletedCount: 2 });
+    expect(bitable.deleteRecords).toHaveBeenCalledWith('paramDetail', ['rec_param_1', 'rec_param_2']);
+  });
+
+  it('批量删除参数时不允许删除其他设计记录下的参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_design',
+        record: {
+          evt_id: 'test_event',
+          流程阶段: '埋点设计',
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_param_1',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'button_name',
+              来源设计记录ID: 'rec_design',
+              关联设计: ['rec_design'],
+              参数状态: '草稿',
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+      deleteRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.batchDeleteParams('app:rec_design', {
+        actorId: '1867390536304713',
+        paramRecordIds: ['app:rec_param_1', 'app:rec_other_param'],
+      }),
+    ).rejects.toThrow('部分参数不属于当前埋点设计');
+    expect(bitable.deleteRecords).not.toHaveBeenCalled();
   });
 
   it('普通提需人不能越权新增设计参数', async () => {

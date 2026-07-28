@@ -118,34 +118,30 @@ const MyTodos = ({
                   onClick={() => onItemClick(item.recordId, item.targetStage)}
                   className="flex w-full min-w-0 items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
                 >
-                  <span className="w-44 min-w-0 shrink-0">
+                  <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
-                        className="block min-w-0 flex-1 truncate font-mono text-xs text-primary"
-                        title={eventTitle(item.eventIds)}
+                        className="block min-w-0 truncate text-sm text-foreground"
+                        title={item.requestName || item.eventName || '未命名需求'}
                       >
-                        {item.evtId || '待填写'}
+                        {item.requestName || item.eventName || '未命名需求'}
                       </span>
                       {item.eventCount > 1 && (
-                        <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
-                          {item.eventCount} 个
+                        <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium text-muted-foreground">
+                          {item.eventCount} 个事件
                         </Badge>
                       )}
+                    </span>
+                    <span
+                      className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground"
+                      title={eventTitle(item.eventIds)}
+                    >
+                      {formatTodoEventSummary(item)}
                     </span>
                   </span>
                   <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
                     {item.source === 'web' ? 'Web' : 'App'}
                   </Badge>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-foreground">
-                      {item.eventName || '未命名需求'}
-                    </span>
-                    {item.eventCount > 1 && (
-                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground" title={eventTitle(item.eventNames)}>
-                        {item.eventNames.slice(0, 3).join('、')}
-                      </span>
-                    )}
-                  </span>
                   {item.todoRole && (
                     <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
                       {item.todoRole}
@@ -179,4 +175,12 @@ export default MyTodos;
 
 function eventTitle(values: string[]): string {
   return values.filter(Boolean).join('\n');
+}
+
+function formatTodoEventSummary(item: TodoItem): string {
+  const eventIds = item.eventIds.filter(Boolean);
+  if (!eventIds.length) return '待填写 evt_id';
+  if (eventIds.length === 1) return eventIds[0];
+  const visible = eventIds.slice(0, 3).join('、');
+  return eventIds.length > 3 ? `${visible} 等 ${eventIds.length} 个 evt_id` : visible;
 }

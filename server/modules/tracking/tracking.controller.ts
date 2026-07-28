@@ -10,10 +10,12 @@ import {
   Query,
 } from '@nestjs/common';
 import type {
+  BatchDeleteParamsRequest,
   CreateParamRequest,
   ReuseOfficialEventRequest,
   CreateSiblingTrackingEventRequest,
   CreateTrackingRecordRequest,
+  DeleteTrackingEventRequest,
   TrackingSourceFilter,
   UpdatePermissionConfigRequest,
   UpdateParamRequest,
@@ -79,6 +81,14 @@ export class TrackingController {
     return this.trackingService.createSiblingEvent(recordId, body);
   }
 
+  @Delete('records/:recordId')
+  deleteEvent(
+    @Param('recordId') recordId: string,
+    @Body() body: DeleteTrackingEventRequest = {},
+  ) {
+    return this.trackingService.deleteEvent(recordId, body);
+  }
+
   @Post('records/:recordId/reuse-official-event')
   reuseOfficialEvent(
     @Param('recordId') recordId: string,
@@ -112,6 +122,14 @@ export class TrackingController {
   @Post('records/:recordId/params')
   createParam(@Param('recordId') recordId: string, @Body() body: CreateParamRequest) {
     return this.trackingService.createParam(recordId, body);
+  }
+
+  @Post('records/:recordId/params/batch-delete')
+  batchDeleteParams(
+    @Param('recordId') recordId: string,
+    @Body() body: BatchDeleteParamsRequest,
+  ) {
+    return this.trackingService.batchDeleteParams(recordId, body);
   }
 
   @Put('params/:paramRecordId')

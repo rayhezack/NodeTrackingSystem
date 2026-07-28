@@ -193,4 +193,131 @@ describe('复用正式埋点事件', () => {
       }),
     ]);
   });
+
+  it('不同需求可以并行复用同一个正式事件，不应被全局 evt_id 拦截', async () => {
+    const otherDemandRecord = {
+      id: 'rec_other_demand',
+      record: {
+        需求ID: 'APP_REQ_OTHER',
+        evt_id: 'app_launch',
+        事件中文名: '另一个需求也在修订 App 激活',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+      },
+    };
+    const currentDesignRecord = {
+      id: 'rec_design',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'new_event',
+        事件中文名: '当前需求的新事件',
+        需求背景: '当前需求也需要修订老事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        优先级: 'P2',
+        端: ['iOS', 'Android'],
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        需求提出人: [{ id: '1867390536304713', name: '孙文' }],
+        需求录入人: [{ id: '1867390536304713', name: '孙文' }],
+        DS验收人: [{ id: '1867390536304713', name: '孙文' }],
+        版本: '1.0.0',
+      },
+    };
+    const officialEventRecord = {
+      id: 'rec_official',
+      record: {
+        evt_id: 'app_launch',
+        事件中文名: 'App 激活',
+        端: ['iOS', 'Android'],
+        上线版本: '3.12.0',
+        事件定义: '用户完成 App 初始化后上报',
+        触发时机: '首个页面可交互后触发',
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockImplementation(async (instanceKey: string, recordId: string) => {
+        if (instanceKey === 'workbench' && recordId === 'rec_design') return currentDesignRecord;
+        if (instanceKey === 'queryLibrary' && recordId === 'rec_official') return officialEventRecord;
+        return null;
+      }),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [currentDesignRecord, otherDemandRecord], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_reused' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.reuseOfficialEvent('app:rec_design', {
+      officialRecordId: 'app:rec_official',
+      actorId: '1867390536304713',
+    });
+
+    expect(result.recordId).toBe('app:rec_reused');
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('workbench', [
+      expect.objectContaining({
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'app_launch',
+        事件中文名: 'App 激活',
+      }),
+    ]);
+  });
+
+  it('同一需求内复用重复 evt_id 时仍应拦截', async () => {
+    const currentDesignRecord = {
+      id: 'rec_design',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'new_event',
+        事件中文名: '当前事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+      },
+    };
+    const siblingRecord = {
+      id: 'rec_sibling',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'app_launch',
+        事件中文名: '同需求已有 App 激活',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+      },
+    };
+    const officialEventRecord = {
+      id: 'rec_official',
+      record: {
+        evt_id: 'app_launch',
+        事件中文名: 'App 激活',
+        端: ['iOS', 'Android'],
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockImplementation(async (instanceKey: string, recordId: string) => {
+        if (instanceKey === 'workbench' && recordId === 'rec_design') return currentDesignRecord;
+        if (instanceKey === 'queryLibrary' && recordId === 'rec_official') return officialEventRecord;
+        return null;
+      }),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [currentDesignRecord, siblingRecord], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.reuseOfficialEvent('app:rec_design', {
+        officialRecordId: 'app:rec_official',
+        actorId: '1867390536304713',
+      }),
+    ).rejects.toThrow('当前需求内已存在 evt_id：app_launch');
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
 });
