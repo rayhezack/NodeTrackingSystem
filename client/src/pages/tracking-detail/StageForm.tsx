@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getAppId } from '@lark-apaas/client-toolkit';
+import { getDefaultBucketId } from '@lark-apaas/client-toolkit/tools/storage';
 import {
   Save,
   Loader2,
@@ -590,8 +592,8 @@ function toAttachmentArray(value: unknown): TrackingAttachment[] {
         const text = item.trim();
         if (!text) return null;
         return {
-          url: isHttpUrl(text) ? text : '',
-          file_path: isHttpUrl(text) ? '' : text,
+          url: isPreviewableUrl(text) ? text : '',
+          file_path: isPreviewableUrl(text) ? '' : text,
           name: text.split('/').pop() || text,
         };
       }
@@ -657,7 +659,7 @@ function AttachmentUploadField({
           return {
             bucket_id: result.bucketId,
             file_path: result.filePath,
-            url: result.url,
+            url: result.url || buildStorageObjectUrl(result.filePath, result.bucketId),
             name: file.name,
           } satisfies TrackingAttachment;
         }),
@@ -832,7 +834,34 @@ function attachmentName(file: TrackingAttachment, index: number): string {
 }
 
 function attachmentUrl(file: TrackingAttachment): string {
-  return textValue(file.url || file.download_url);
+  const directUrl = textValue(file.url || file.download_url).trim();
+  if (directUrl) return directUrl;
+
+  const filePath = textValue(file.file_path || file.filePath).trim();
+  if (!filePath) return '';
+  if (isPreviewableUrl(filePath)) return filePath;
+
+  const bucketId = textValue(file.bucket_id || file.bucketId).trim() || getDefaultBucketId();
+  return buildStorageObjectUrl(filePath, bucketId);
+}
+
+function buildStorageObjectUrl(filePath: string, bucketId?: string): string {
+  const normalizedPath = filePath.trim().replace(/^\/+/, '');
+  const normalizedBucketId = (bucketId || '').trim();
+  const appId = getAppId();
+  if (!appId || !normalizedBucketId || !normalizedPath) return '';
+  return `/app/${appId}/runtime/api/v1/storage/object/${normalizedBucketId}/${encodeURIComponent(normalizedPath)}`;
+}
+
+function isPreviewableUrl(value: string): boolean {
+  const text = value.trim();
+  return (
+    isHttpUrl(text) ||
+    text.startsWith('/app/') ||
+    text.startsWith('/spark/app/') ||
+    text.startsWith('/runtime/api/v1/storage/object/') ||
+    text.startsWith('/aily/api/v1/files/static/')
+  );
 }
 
 function textValue(value: unknown): string {
