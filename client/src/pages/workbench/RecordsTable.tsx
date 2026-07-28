@@ -312,7 +312,7 @@ const RecordsTable = ({
                       </TableCell>
                       <TableCell className="px-3 py-2 text-xs text-foreground">
                         <span className="block min-w-0 truncate">
-                          {rec.eventName || '未命名需求'}
+                          {rec.requestName || rec.eventName || '未命名需求'}
                         </span>
                         {rec.eventCount > 1 && (
                           <span className="mt-0.5 block min-w-0 truncate text-[11px] text-muted-foreground" title={eventTitle(rec.eventNames)}>

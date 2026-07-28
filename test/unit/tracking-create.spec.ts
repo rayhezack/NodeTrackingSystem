@@ -13,6 +13,7 @@ describe('提需创建记录', () => {
 
     await service.createRecord({
       source: 'app',
+      requestName: '测试需求',
       eventName: '测试需求',
       requirementLink: '   ',
       actorId: '1867390536304713',
@@ -30,6 +31,8 @@ describe('提需创建记录', () => {
     expect(record).not.toHaveProperty('DS验收时间');
     expect(record).not.toHaveProperty('稳定归档时间');
     expect(record['需求ID']).toMatch(/^APP_REQ_/);
+    expect(record['需求名称']).toBe('测试需求');
+    expect(record['事件中文名']).toBe('测试需求');
     expect(record['需求提出人']).toEqual([1867390536304713]);
     expect(record['需求录入人']).toEqual([1867390536304713]);
     expect(record['数据负责人']).toEqual([1867390536304713]);
@@ -64,6 +67,7 @@ describe('提需创建记录', () => {
 
     await service.createRecord({
       source: 'app',
+      requestName: '产品自助提需',
       eventName: '产品自助提需',
       actorId: '1001',
       requesterIds: ['1001'],
@@ -75,6 +79,7 @@ describe('提需创建记录', () => {
 
     expect(bitable.batchAddRecords).toHaveBeenCalledTimes(1);
     const record = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
+    expect(record['需求名称']).toBe('产品自助提需');
     expect(record['需求提出人']).toEqual([1001]);
     expect(record['数据负责人']).toEqual([2001]);
     expect(record['研发负责人']).toEqual([3001]);
@@ -91,6 +96,7 @@ describe('提需创建记录', () => {
 
     await service.createRecord({
       source: 'app',
+      requestName: '默认提需人',
       eventName: '默认提需人',
       actorId: '1001',
       recorderIds: ['1001'],
@@ -100,6 +106,7 @@ describe('提需创建记录', () => {
     });
 
     const record = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
+    expect(record['需求名称']).toBe('默认提需人');
     expect(record['需求提出人']).toEqual([1001]);
     expect(record['需求录入人']).toEqual([1001]);
     expect(record['需求ID']).toMatch(/^APP_REQ_/);
@@ -132,6 +139,7 @@ describe('提需创建记录', () => {
         id: 'rec_1',
         record: {
           evt_id: 'event_1',
+          需求名称: '核心漏斗补齐',
           事件中文名: '主事件',
           需求背景: '业务需要补齐核心漏斗',
           需求链接: 'https://example.com/prd',
@@ -173,6 +181,7 @@ describe('提需创建记录', () => {
     });
     expect(demandId).toMatch(/^APP_REQ_/);
     expect(created['需求ID']).toBe(demandId);
+    expect(created['需求名称']).toBe('核心漏斗补齐');
     expect(created['evt_id']).toBe('event_2');
     expect(created['事件中文名']).toBe('补充事件');
     expect(created['需求背景']).toBe('业务需要补齐核心漏斗');

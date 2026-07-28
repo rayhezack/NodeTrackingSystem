@@ -129,6 +129,7 @@ export interface GetWorkbenchDashboardResponse extends GetTrackingRecordsRespons
 export interface CreateTrackingRecordRequest {
   source: TrackingSource;
   evtId?: string;
+  requestName?: string;
   eventName: string;
   requirementBackground?: string;
   requirementLink?: string;
@@ -252,6 +253,8 @@ export interface TrackingDetailPermissions {
 export interface TrackingDetail {
   recordId: string;
   source: TrackingSource;
+  requestId?: string;
+  requestName?: string;
   evtId: string;
   eventName: string;
   stage: string;

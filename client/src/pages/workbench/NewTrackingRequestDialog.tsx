@@ -48,6 +48,7 @@ const getSourceByPlatform = (platform: string): TrackingSource =>
 
 const defaultForm = () => ({
   source: 'app' as TrackingSource,
+  requestName: '',
   eventName: '',
   priority: 'P2',
   platform: 'iOS、Android',
@@ -112,7 +113,8 @@ export default function NewTrackingRequestDialog({
   };
 
   const handleSubmit = async () => {
-    if (!form.eventName.trim()) {
+    const requestName = form.requestName.trim();
+    if (!requestName) {
       toast.error('请输入需求名称');
       return;
     }
@@ -150,7 +152,8 @@ export default function NewTrackingRequestDialog({
       await onSubmit({
         ...form,
         evtId: '',
-        eventName: form.eventName.trim(),
+        requestName,
+        eventName: form.eventName.trim() || requestName,
         requirementBackground: form.requirementBackground.trim(),
         requirementLink: form.requirementLink.trim(),
         metricScenario: form.metricScenario.trim(),
@@ -192,8 +195,8 @@ export default function NewTrackingRequestDialog({
           <Field label="需求名称" required className="md:col-span-2">
             <Input
               className={inputCls}
-              value={form.eventName}
-              onChange={(event) => updateField('eventName', event.target.value)}
+              value={form.requestName}
+              onChange={(event) => updateField('requestName', event.target.value)}
               placeholder="如：App 快捷入口与 Launch 数据补齐"
             />
           </Field>

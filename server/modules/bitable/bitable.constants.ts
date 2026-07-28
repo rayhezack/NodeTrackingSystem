@@ -65,6 +65,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: true,
     },
     {
+      id: 'fldRm9rCgD',
+      name: '需求名称',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldsrxaEFF',
       name: 'evt_id',
       type: 1,
@@ -900,6 +908,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     },
   ],
   webWorkbench: [
+    {
+      id: 'fldzPZpSsE',
+      name: '需求名称',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
     {
       id: 'fldsrxaEFF',
       name: 'evt_id',

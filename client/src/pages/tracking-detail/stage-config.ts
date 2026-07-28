@@ -72,6 +72,7 @@ export const CHANGE_TYPE_OPTIONS = [
   { value: '修改', label: '修改' },
   { value: '废弃', label: '废弃' },
   { value: '口径调整', label: '口径调整' },
+  { value: '仅校验', label: '仅校验（不修改正式库）' },
 ];
 
 export const QUALITY_GATE_OPTIONS = [
@@ -125,6 +126,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['需求录入'],
     permissionKey: 'canEditRequirement',
     fields: [
+      { key: 'requestName', label: '需求名称', type: 'input', baseField: '需求名称', placeholder: '如：App 快捷入口与 Launch 数据补齐' },
       { key: 'priority', label: '优先级', type: 'select', baseField: '优先级', options: PRIORITY_OPTIONS },
       { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
       { key: 'requesterIds', label: '需求提出人 / 提需人', type: 'user', baseField: '需求提出人', multiple: true },

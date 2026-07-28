@@ -53,8 +53,13 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
             {detail.evtId || '待填写 evt_id'}
           </div>
           <div className="text-sm text-muted-foreground">
-            {detail.eventName || '未命名需求'}
+            {detail.requestName || detail.eventName || '未命名需求'}
           </div>
+          {detail.requestName && detail.eventName && detail.requestName !== detail.eventName && (
+            <div className="text-xs text-muted-foreground">
+              事件：{detail.eventName}
+            </div>
+          )}
         </div>
 
         {/* 右侧：状态 + 负责人 */}

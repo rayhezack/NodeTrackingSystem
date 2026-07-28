@@ -659,6 +659,7 @@ describe('工作流 Base 回写', () => {
             id: 'rec_expose',
             record: {
               需求ID: 'APP_REQ_BG_REMOVE',
+              需求名称: '图片背景移除埋点补齐',
               evt_id: 'bg_remove_entry_expose',
               事件中文名: '背景移除入口曝光',
               流程阶段: '埋点设计',
@@ -674,6 +675,7 @@ describe('工作流 Base 回写', () => {
             id: 'rec_click',
             record: {
               需求ID: 'APP_REQ_BG_REMOVE',
+              需求名称: '图片背景移除埋点补齐',
               evt_id: 'bg_remove_entry_click',
               事件中文名: '背景移除入口点击',
               流程阶段: '埋点设计',
@@ -719,13 +721,13 @@ describe('工作流 Base 回写', () => {
     expect(dashboard.stats.find((item) => item.stage === '埋点设计')?.count).toBe(2);
     expect(groupedDemand).toMatchObject({
       recordId: 'app:rec_click',
-      requestName: '背景移除入口曝光',
+      requestName: '图片背景移除埋点补齐',
       eventCount: 2,
       eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
       eventNames: ['背景移除入口点击', '背景移除入口曝光'],
     });
     expect(dashboard.todos.find((item) => item.requestId === 'APP_REQ_BG_REMOVE')).toMatchObject({
-      requestName: '背景移除入口曝光',
+      requestName: '图片背景移除埋点补齐',
       eventCount: 2,
       eventIds: ['bg_remove_entry_click', 'bg_remove_entry_expose'],
     });
@@ -785,5 +787,45 @@ describe('工作流 Base 回写', () => {
     expect(appResult.items.map((item) => item.source)).toEqual(['app']);
     expect(webResult.items.map((item) => item.source)).toEqual(['web']);
     expect(iosResult.items.map((item) => item.evtId)).toEqual(['app_event']);
+  });
+
+  it('仅校验事件归档时不应同步正式查询库和正式参数库', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_validation_only',
+        record: {
+          evt_id: 'createflow_form_submit',
+          事件中文名: '创建流程提交',
+          流程阶段: '上线监控',
+          正式状态: '待开发',
+          发布状态: '发布成功',
+          上线监控状态: '通过',
+          变更类型: '仅校验',
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_validation_only' }]),
+      searchRecords: jest.fn(),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_validation_only', {
+      actorId: '1867390536304713',
+      stageId: 'archive',
+      targetStage: '归档',
+      fields: {},
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      {
+        id: 'rec_validation_only',
+        record: {
+          流程阶段: '稳定归档',
+        },
+      },
+    ]);
+    expect(bitable.searchRecords).not.toHaveBeenCalled();
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
   });
 });

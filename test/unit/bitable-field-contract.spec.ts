@@ -31,12 +31,14 @@ describe('线上 Base 字段契约', () => {
     expect(fieldIds('workbench')).toMatchObject({
       ...expectedSharedIds,
       需求ID: 'fldg05KBjv',
+      需求名称: 'fldRm9rCgD',
       需求提出人: 'fldgwGzNsP',
       需求录入人: 'fldOXTa5uB',
       UI图: 'fld6yxssk2',
     });
     expect(fieldIds('webWorkbench')).toMatchObject({
       ...expectedSharedIds,
+      需求名称: 'fldzPZpSsE',
       需求提出人: 'fld3VkDsty',
       需求录入人: 'fldmXg85mP',
       UI图: 'fldhJiDfHu',

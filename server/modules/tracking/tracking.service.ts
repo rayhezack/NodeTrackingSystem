@@ -45,6 +45,7 @@ import { calculatePermissions, getBaseStageFromUi, getUiStageFromBase, isStageTr
 
 const WORKBENCH_FIELDS = [
   '需求ID',
+  '需求名称',
   'evt_id',
   '事件中文名',
   '事件定义',
@@ -165,6 +166,7 @@ const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
 };
 const FIELD_PERMISSION_BY_STAGE_ID: Record<string, Record<string, PermissionKey>> = {
   requirement: {
+    需求名称: 'canEditRequirement',
     需求提出人: 'canEditRequirement',
     需求录入人: 'canEditRequirement',
     需求背景: 'canEditRequirement',
@@ -432,8 +434,9 @@ export class TrackingService {
   async createRecord(body: CreateTrackingRecordRequest): Promise<CreateTrackingRecordResponse> {
     const source = normalizeSource(body.source);
     const evtId = (body.evtId || '').trim();
-    const eventName = (body.eventName || '').trim();
-    if (!eventName) {
+    const requestName = (body.requestName || body.eventName || '').trim();
+    const eventName = (body.eventName || requestName).trim();
+    if (!requestName) {
       throw new BadRequestException('需求名称不能为空');
     }
 
@@ -457,6 +460,7 @@ export class TrackingService {
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         ...(requestId ? { 需求ID: requestId } : {}),
+        需求名称: requestName,
         evt_id: evtId,
         事件中文名: eventName,
         事件定义: body.eventDefinition || '',
@@ -544,6 +548,7 @@ export class TrackingService {
     const platform = body.platform || cellText(currentRecord['端']);
     const record: Record<string, unknown> = {
       ...(requestId ? { 需求ID: requestId } : {}),
+      需求名称: firstText(currentRecord['需求名称'], currentRecord['事件中文名']),
       evt_id: evtId,
       事件中文名: eventName,
       事件定义: body.eventDefinition || '',
@@ -734,6 +739,7 @@ export class TrackingService {
       const requirementLink = firstText(currentRecord['需求链接']).trim();
       const [created] = await this.bitable.batchAddRecords(workbench, [{
         ...(requestId ? { 需求ID: requestId } : {}),
+        需求名称: firstText(currentRecord['需求名称'], currentRecord['事件中文名']),
         ...designPatch,
         需求背景: cellText(currentRecord['需求背景']),
         ...(requirementLink ? { 需求链接: requirementLink } : {}),
@@ -1314,6 +1320,7 @@ export class TrackingService {
     const stage = cellText(stageRecord.record['流程阶段']) || '需求录入';
     const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
     const eventNames = uniqueStrings(records.map((record) => cellText(record.record['事件中文名']) || '未命名事件'));
+    const requestName = getGroupRequestName(records, requestRecord);
     const dataUsers = mergeRecordUsers(records, '数据负责人');
     const devUsers = mergeRecordUsers(records, '研发负责人');
 
@@ -1321,7 +1328,7 @@ export class TrackingService {
       recordId: encodeScopedRecordId(group.source, representative.id),
       source: group.source,
       requestId: group.requestId || undefined,
-      requestName: cellText(requestRecord.record['事件中文名']) || eventNames[0] || '未命名需求',
+      requestName,
       evtId: cellText(representative.record['evt_id']),
       eventIds,
       eventName: cellText(representative.record['事件中文名']) || eventNames[0] || '未命名需求',
@@ -1349,7 +1356,7 @@ export class TrackingService {
       recordId: encodeScopedRecordId(source, record.id),
       source,
       requestId: cellText(record.record['需求ID']) || undefined,
-      requestName: cellText(record.record['事件中文名']) || '未命名需求',
+      requestName: firstText(record.record['需求名称'], record.record['事件中文名']) || '未命名需求',
       evtId: cellText(record.record['evt_id']),
       eventIds: uniqueStrings([cellText(record.record['evt_id'])]),
       eventName: cellText(record.record['事件中文名']) || '未命名需求',
@@ -1392,7 +1399,7 @@ export class TrackingService {
       devOwnerIds: devOwner.ids,
       dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
-      requirementFields: pickFields(record.record, ['需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
+      requirementFields: pickFields(record.record, ['需求名称', '需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
       designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', 'UI图', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
       reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
       devFields: pickFields(record.record, ['研发负责人', '埋点开发状态']),
@@ -1502,6 +1509,18 @@ function selectGroupRequestRecord(records: BitableRecord[]): BitableRecord {
     if (timeDiff !== 0) return timeDiff;
     return compareRecordForGroup(a, b);
   })[0];
+}
+
+function getGroupRequestName(records: BitableRecord[], fallbackRecord: BitableRecord): string {
+  const requestName = [...records]
+    .sort((a, b) => {
+      const timeDiff = cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']);
+      if (timeDiff !== 0) return timeDiff;
+      return compareRecordForGroup(a, b);
+    })
+    .map((record) => cellText(record.record['需求名称']).trim())
+    .find(Boolean);
+  return requestName || cellText(fallbackRecord.record['事件中文名']) || '未命名需求';
 }
 
 function selectGroupStageRecord(records: BitableRecord[]): BitableRecord {
@@ -2027,6 +2046,9 @@ function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean
   if (!cellText(record['evt_id']).trim() || !cellText(record['事件中文名']).trim()) {
     return false;
   }
+  if (isValidationOnlyChange(record)) {
+    return false;
+  }
 
   const stage = cellText(record['流程阶段']);
   const officialStatus = cellText(record['正式状态']);
@@ -2042,6 +2064,10 @@ function getOfficialQueryStatus(record: Record<string, unknown>): string {
     return officialStatus;
   }
   return '已上线';
+}
+
+function isValidationOnlyChange(record: Record<string, unknown>): boolean {
+  return normalizeChangeType(cellText(record['变更类型'])) === '仅校验';
 }
 
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
@@ -2375,9 +2401,13 @@ function normalizeChangeType(value?: string): string {
   const alias: Record<string, string> = {
     删除: '废弃',
     不变: '修改',
+    仅开发校验: '仅校验',
+    开发校验: '仅校验',
+    不修改正式库: '仅校验',
+    仅校验不归档: '仅校验',
   };
   const normalized = alias[raw] || raw;
-  return ['新增', '修改', '废弃', '口径调整'].includes(normalized) ? normalized : '新增';
+  return ['新增', '修改', '废弃', '口径调整', '仅校验'].includes(normalized) ? normalized : '新增';
 }
 
 function normalizeDevStatus(value?: string): string {
