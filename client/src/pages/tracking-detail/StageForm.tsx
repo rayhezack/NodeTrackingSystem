@@ -4,6 +4,8 @@ import {
   Loader2,
   Upload,
   X,
+  Eye,
+  ExternalLink,
   Image as ImageIcon,
   CheckCircle2,
   LockKeyhole,
@@ -31,6 +33,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@client/src/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@client/src/components/ui/dialog';
 import { UserSelect } from '@client/src/components/business-ui/user-select';
 import { uploadFile } from '@client/src/components/business-ui/api/files/service';
 import {
@@ -625,6 +635,9 @@ function AttachmentUploadField({
   placeholder?: string;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<TrackingAttachment | null>(null);
+  const previewUrl = previewFile ? attachmentUrl(previewFile) : '';
+  const previewName = previewFile ? attachmentName(previewFile, 0) : '';
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files || []);
@@ -696,20 +709,54 @@ function AttachmentUploadField({
                 key={`${file.file_path || file.url || fileName}-${index}`}
                 className="flex items-center gap-2 rounded-sm border border-border bg-muted/30 px-2 py-1.5"
               >
-                <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 {url ? (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-0 flex-1 truncate text-xs text-primary hover:underline"
+                  <button
+                    type="button"
+                    className="h-10 w-10 shrink-0 overflow-hidden rounded-sm border border-border bg-background"
+                    onClick={() => setPreviewFile(file)}
+                    aria-label={`预览 ${fileName}`}
                   >
-                    {fileName}
-                  </a>
+                    <img
+                      src={url}
+                      alt={fileName}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
                 ) : (
-                  <span className="min-w-0 flex-1 truncate text-xs text-foreground">
-                    {fileName}
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-background">
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  {url ? (
+                    <button
+                      type="button"
+                      className="block max-w-full truncate text-left text-xs text-primary hover:underline"
+                      onClick={() => setPreviewFile(file)}
+                    >
+                      {fileName}
+                    </button>
+                  ) : (
+                    <span className="block truncate text-xs text-foreground">
+                      {fileName}
+                    </span>
+                  )}
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    {url ? '点击预览 UI 图' : '暂无可预览链接'}
                   </span>
+                </div>
+                {url && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 rounded-sm px-2 text-xs text-muted-foreground hover:text-primary"
+                    onClick={() => setPreviewFile(file)}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    预览
+                  </Button>
                 )}
                 {!disabled && (
                   <Button
@@ -732,6 +779,46 @@ function AttachmentUploadField({
           暂无 UI 图
         </div>
       )}
+
+      <Dialog
+        open={Boolean(previewFile)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewFile(null);
+        }}
+      >
+        <DialogContent className="max-w-5xl gap-0 overflow-hidden rounded-sm p-0">
+          <DialogHeader className="border-b border-border px-4 py-3 pr-12">
+            <DialogTitle className="truncate text-sm">{previewName || 'UI 图预览'}</DialogTitle>
+            <DialogDescription className="text-xs">
+              查看当前埋点事件关联的 UI 截图或原型图
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[72vh] overflow-auto bg-muted/30 p-4">
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={previewName || 'UI 图预览'}
+                className="mx-auto max-h-[68vh] max-w-full rounded-sm border border-border bg-background object-contain"
+              />
+            ) : (
+              <div className="flex h-48 flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card text-xs text-muted-foreground">
+                <ImageIcon className="mb-2 h-8 w-8" />
+                该 UI 图暂无可预览链接
+              </div>
+            )}
+          </div>
+          <DialogFooter className="border-t border-border px-4 py-3">
+            {previewUrl && (
+              <Button asChild variant="outline" size="sm" className="rounded-sm">
+                <a href={previewUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  新窗口打开
+                </a>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
