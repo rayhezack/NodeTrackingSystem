@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
 import type {
   BatchDeleteParamsRequest,
   BatchDeleteParamsResponse,
@@ -25,8 +26,11 @@ import type {
   PermissionConfig,
   ParamDetail,
   RelatedTrackingEvent,
+  ResolveUiImagePreviewRequest,
+  ResolveUiImagePreviewResponse,
   ReuseOfficialEventRequest,
   ReuseOfficialEventResponse,
+  TrackingAttachment,
   TrackingSource,
   TrackingSourceFilter,
   TrackingDetail,
@@ -241,7 +245,13 @@ const TARGET_STAGE_PERMISSION_BY_BASE_STAGE: Record<string, PermissionKey> = {
 
 @Injectable()
 export class TrackingService {
-  constructor(private readonly bitable: BitableService) {}
+  private readonly uiImagePreviewCacheTtlMs = 8 * 60 * 1000;
+  private readonly uiImagePreviewCache = new Map<string, { expiresAt: number; result: ResolveUiImagePreviewResponse }>();
+
+  constructor(
+    private readonly bitable: BitableService,
+    private readonly fileService: FileService,
+  ) {}
 
   async getStageStats(params: GetStageStatsParams = {}): Promise<GetStageStatsResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
@@ -367,6 +377,91 @@ export class TrackingService {
     return {
       data: detail,
     };
+  }
+
+  async resolveUiImagePreview(body: ResolveUiImagePreviewRequest): Promise<ResolveUiImagePreviewResponse> {
+    const attachment = body?.attachment || {};
+    const directUrl = attachmentDirectUrl(attachment);
+    if (directUrl) {
+      return {
+        url: directUrl,
+        source: 'direct',
+      };
+    }
+
+    const cacheKey = attachmentPreviewCacheKey(attachment);
+    const cached = this.uiImagePreviewCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.result;
+    }
+
+    const result = await this.resolveUiImagePreviewUncached(attachment);
+    this.uiImagePreviewCache.set(cacheKey, {
+      expiresAt: Date.now() + this.uiImagePreviewCacheTtlMs,
+      result,
+    });
+    return result;
+  }
+
+  private async resolveUiImagePreviewUncached(attachment: TrackingAttachment): Promise<ResolveUiImagePreviewResponse> {
+    const paths = attachmentStoragePathCandidates(attachment);
+    for (const path of paths) {
+      const signed = await this.createUiImageSignedUrl(path);
+      if (signed) {
+        return {
+          url: signed,
+          filePath: path,
+          source: 'storage_path',
+        };
+      }
+    }
+
+    const fileName = attachmentFileName(attachment);
+    if (fileName) {
+      const matched = await this.findUiImageByName(fileName);
+      if (matched?.filePath) {
+        const signed = await this.createUiImageSignedUrl(matched.filePath);
+        if (signed) {
+          return {
+            url: signed,
+            filePath: matched.filePath,
+            source: 'storage_name',
+          };
+        }
+      }
+    }
+
+    return {
+      url: '',
+      reason: fileName || paths.length ? 'STORAGE_LOOKUP_FAILED' : 'NO_PREVIEW_SOURCE',
+    };
+  }
+
+  private async createUiImageSignedUrl(filePath: string): Promise<string> {
+    try {
+      const normalizedPath = normalizeFilePath(filePath);
+      if (!normalizedPath) return '';
+      const metadata = await this.fileService.getFileMetadata(normalizedPath);
+      if (!metadata) return '';
+      const signedUrl = await this.fileService.createSignedUrl(normalizedPath, 10 * 60);
+      return signedUrl || metadata.downloadURL || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  private async findUiImageByName(fileName: string): Promise<FileMeta | null> {
+    try {
+      const listed = await this.fileService.list('', { maxKeys: 200 });
+      const normalizedName = normalizeAttachmentName(fileName);
+      return (
+        listed.attachments.find((file) => normalizeAttachmentName(file.name) === normalizedName) ||
+        listed.attachments.find((file) => normalizeAttachmentName(file.filePath.split('/').pop() || '') === normalizedName) ||
+        null
+      );
+    } catch (error) {
+      return null;
+    }
   }
 
   async getPermissionConfig(actorId?: string): Promise<GetPermissionConfigResponse> {
@@ -1644,6 +1739,105 @@ function pickFields(record: Record<string, Cell>, fields: string[]): Record<stri
 function cellFiles(value: Cell): unknown[] {
   if (value == null) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+function attachmentDirectUrl(file: TrackingAttachment): string {
+  const direct = [
+    file.url,
+    file.download_url,
+    file.downloadUrl,
+    file.tmp_url,
+    file.thumbnail_url,
+    file.link,
+  ]
+    .map((value) => cellText(value).trim())
+    .find(isPreviewableDirectUrl);
+  if (direct) return direct;
+
+  const path = cellText(file.file_path || file.filePath).trim();
+  return isPreviewableDirectUrl(path) ? path : '';
+}
+
+function attachmentStoragePathCandidates(file: TrackingAttachment): string[] {
+  return uniqueStrings([
+    cellText(file.file_path || file.filePath),
+    attachmentFileName(file),
+  ])
+    .map(normalizeFilePath)
+    .filter(Boolean);
+}
+
+function attachmentFileName(file: TrackingAttachment): string {
+  const explicitName = cellText(file.name || file.fileName).trim();
+  if (explicitName) return explicitName;
+  const path = cellText(file.file_path || file.filePath).trim();
+  if (!path) return '';
+  return path.split('/').pop() || path;
+}
+
+function attachmentPreviewCacheKey(file: TrackingAttachment): string {
+  return [
+    file.file_token,
+    file.fileToken,
+    file.token,
+    file.url,
+    file.download_url,
+    file.downloadUrl,
+    file.file_path,
+    file.filePath,
+    file.name,
+    file.fileName,
+  ]
+    .map((value) => cellText(value).trim())
+    .filter(Boolean)
+    .join('|') || 'empty';
+}
+
+function normalizeFilePath(value: string): string {
+  const text = String(value || '').trim();
+  if (!text || isPreviewableHttpUrl(text)) return '';
+
+  const marker = '/runtime/api/v1/storage/object/';
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex >= 0) {
+    const rest = text.slice(markerIndex + marker.length);
+    const pathStart = rest.indexOf('/');
+    return safeDecodeURIComponent(pathStart >= 0 ? rest.slice(pathStart + 1) : '');
+  }
+
+  return safeDecodeURIComponent(text.replace(/^\/+/, ''));
+}
+
+function normalizeAttachmentName(value: string): string {
+  return safeDecodeURIComponent(String(value || '').trim()).toLowerCase();
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isPreviewableDirectUrl(value?: string): value is string {
+  const text = String(value || '').trim();
+  return (
+    isPreviewableHttpUrl(text) ||
+    text.startsWith('/app/') ||
+    text.startsWith('/spark/app/') ||
+    text.startsWith('/runtime/api/v1/storage/object/') ||
+    text.startsWith('/aily/api/v1/files/static/')
+  );
+}
+
+function isPreviewableHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function cellText(value: Cell): string {

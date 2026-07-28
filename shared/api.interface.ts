@@ -16,9 +16,28 @@ export interface TrackingAttachment {
   filePath?: string;
   url?: string;
   download_url?: string;
+  downloadUrl?: string;
+  file_token?: string;
+  fileToken?: string;
+  token?: string;
+  tmp_url?: string;
+  thumbnail_url?: string;
+  link?: string;
   name?: string;
   fileName?: string;
+  size?: number;
   [key: string]: unknown;
+}
+
+export interface ResolveUiImagePreviewRequest {
+  attachment: TrackingAttachment;
+}
+
+export interface ResolveUiImagePreviewResponse {
+  url: string;
+  filePath?: string;
+  source?: 'direct' | 'storage_path' | 'storage_name';
+  reason?: 'NO_PREVIEW_SOURCE' | 'STORAGE_LOOKUP_FAILED';
 }
 
 // 阶段统计

@@ -51,7 +51,7 @@ import {
   isUiNodeCompleted,
   type StageConfig,
 } from './stage-config';
-import { updateTrackingRecord } from '@client/src/api/tracking';
+import { resolveUiImagePreview, updateTrackingRecord } from '@client/src/api/tracking';
 import type {
   TrackingAttachment,
   TrackingDetail,
@@ -603,7 +603,8 @@ function toAttachmentArray(value: unknown): TrackingAttachment[] {
         ...file,
         bucket_id: textValue(file.bucket_id || file.bucketId),
         file_path: textValue(file.file_path || file.filePath),
-        url: textValue(file.url || file.download_url),
+        file_token: textValue(file.file_token || file.fileToken || file.token),
+        url: textValue(file.url || file.download_url || file.downloadUrl || file.tmp_url || file.thumbnail_url || file.link),
         name: textValue(file.name || file.fileName),
       };
     })
@@ -615,7 +616,7 @@ function toAttachmentTextArray(value: unknown): string[] {
     new Set(
       toAttachmentArray(value)
         .map((file) =>
-          textValue(file.url || file.download_url) ||
+          textValue(file.url || file.download_url || file.downloadUrl || file.tmp_url || file.thumbnail_url || file.link) ||
           textValue(file.file_path || file.filePath) ||
           textValue(file.name || file.fileName),
         )
@@ -638,8 +639,51 @@ function AttachmentUploadField({
 }) {
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<TrackingAttachment | null>(null);
-  const previewUrl = previewFile ? attachmentUrl(previewFile) : '';
+  const [previewCache, setPreviewCache] = useState<Record<string, { url: string; attempted: boolean }>>({});
+  const [resolvingKeys, setResolvingKeys] = useState<Record<string, boolean>>({});
+  const previewUrl = previewFile ? resolvedAttachmentUrl(previewFile, previewCache) : '';
   const previewName = previewFile ? attachmentName(previewFile, 0) : '';
+
+  useEffect(() => {
+    const unresolvedFiles = value
+      .map((file) => ({
+        file,
+        key: attachmentPreviewKey(file),
+      }))
+      .filter(({ file, key }) => {
+        if (!key || attachmentUrl(file)) return false;
+        if (previewCache[key]?.attempted || resolvingKeys[key]) return false;
+        return canResolveAttachmentPreview(file);
+      })
+      .slice(0, 6);
+
+    if (!unresolvedFiles.length) return;
+
+    setResolvingKeys((current) => ({
+      ...current,
+      ...Object.fromEntries(unresolvedFiles.map(({ key }) => [key, true])),
+    }));
+
+    Promise.all(
+      unresolvedFiles.map(async ({ file, key }) => {
+        const result = await resolveUiImagePreview({ attachment: file });
+        return {
+          key,
+          url: result.url || '',
+        };
+      }),
+    ).then((items) => {
+      setPreviewCache((current) => ({
+        ...current,
+        ...Object.fromEntries(items.map((item) => [item.key, { url: item.url, attempted: true }])),
+      }));
+      setResolvingKeys((current) => {
+        const next = { ...current };
+        for (const item of items) delete next[item.key];
+        return next;
+      });
+    });
+  }, [value, previewCache, resolvingKeys]);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files || []);
@@ -705,10 +749,12 @@ function AttachmentUploadField({
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {value.map((file, index) => {
             const fileName = attachmentName(file, index);
-            const url = attachmentUrl(file);
+            const key = attachmentPreviewKey(file);
+            const url = resolvedAttachmentUrl(file, previewCache);
+            const isResolving = Boolean(key && resolvingKeys[key]);
             return (
               <div
-                key={`${file.file_path || file.url || fileName}-${index}`}
+                key={`${key || file.file_path || file.url || fileName}-${index}`}
                 className="flex items-center gap-2 rounded-sm border border-border bg-muted/30 px-2 py-1.5"
               >
                 {url ? (
@@ -727,7 +773,11 @@ function AttachmentUploadField({
                   </button>
                 ) : (
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-background">
-                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                    {isResolving ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                    )}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
@@ -745,7 +795,7 @@ function AttachmentUploadField({
                     </span>
                   )}
                   <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {url ? '点击预览 UI 图' : '暂无可预览链接'}
+                    {url ? '点击预览 UI 图' : isResolving ? '正在解析预览链接...' : '暂无可预览链接'}
                   </span>
                 </div>
                 {url && (
@@ -834,7 +884,7 @@ function attachmentName(file: TrackingAttachment, index: number): string {
 }
 
 function attachmentUrl(file: TrackingAttachment): string {
-  const directUrl = textValue(file.url || file.download_url).trim();
+  const directUrl = textValue(file.url || file.download_url || file.downloadUrl || file.tmp_url || file.thumbnail_url || file.link).trim();
   if (directUrl) return directUrl;
 
   const filePath = textValue(file.file_path || file.filePath).trim();
@@ -843,6 +893,42 @@ function attachmentUrl(file: TrackingAttachment): string {
 
   const bucketId = textValue(file.bucket_id || file.bucketId).trim() || getDefaultBucketId();
   return buildStorageObjectUrl(filePath, bucketId);
+}
+
+function resolvedAttachmentUrl(
+  file: TrackingAttachment,
+  previewCache: Record<string, { url: string; attempted: boolean }>,
+): string {
+  const directUrl = attachmentUrl(file);
+  if (directUrl) return directUrl;
+  const key = attachmentPreviewKey(file);
+  return key ? previewCache[key]?.url || '' : '';
+}
+
+function canResolveAttachmentPreview(file: TrackingAttachment): boolean {
+  return Boolean(
+    textValue(file.file_path || file.filePath).trim() ||
+    textValue(file.name || file.fileName).trim() ||
+    textValue(file.file_token || file.fileToken || file.token).trim()
+  );
+}
+
+function attachmentPreviewKey(file: TrackingAttachment): string {
+  return [
+    file.file_token,
+    file.fileToken,
+    file.token,
+    file.url,
+    file.download_url,
+    file.downloadUrl,
+    file.file_path,
+    file.filePath,
+    file.name,
+    file.fileName,
+  ]
+    .map((value) => textValue(value).trim())
+    .filter(Boolean)
+    .join('|');
 }
 
 function buildStorageObjectUrl(filePath: string, bucketId?: string): string {

@@ -16,6 +16,7 @@ import type {
   CreateSiblingTrackingEventRequest,
   CreateTrackingRecordRequest,
   DeleteTrackingEventRequest,
+  ResolveUiImagePreviewRequest,
   TrackingSourceFilter,
   UpdatePermissionConfigRequest,
   UpdateParamRequest,
@@ -66,6 +67,11 @@ export class TrackingController {
   @Put('permissions')
   updatePermissions(@Body() body: UpdatePermissionConfigRequest) {
     return this.trackingService.updatePermissionConfig(body);
+  }
+
+  @Post('ui-image-preview')
+  resolveUiImagePreview(@Body() body: ResolveUiImagePreviewRequest) {
+    return this.trackingService.resolveUiImagePreview(body);
   }
 
   @Post('records')

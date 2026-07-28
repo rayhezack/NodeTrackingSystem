@@ -14,6 +14,8 @@ import type {
   CreateSiblingTrackingEventResponse,
   DeleteTrackingEventRequest,
   DeleteTrackingEventResponse,
+  ResolveUiImagePreviewRequest,
+  ResolveUiImagePreviewResponse,
   ReuseOfficialEventRequest,
   ReuseOfficialEventResponse,
   GetPermissionConfigResponse,
@@ -144,6 +146,21 @@ export async function getTrackingDetail(
   } catch (error) {
     logger.error('获取需求详情失败', error);
     throw toReadableError(error, '获取需求详情失败，请检查 Base 权限');
+  }
+}
+
+export async function resolveUiImagePreview(
+  data: ResolveUiImagePreviewRequest,
+): Promise<ResolveUiImagePreviewResponse> {
+  try {
+    const response = await axiosForBackend.post('/api/tracking/ui-image-preview', data);
+    return response.data;
+  } catch (error) {
+    logger.error('解析 UI 图预览失败', error);
+    return {
+      url: '',
+      reason: 'STORAGE_LOOKUP_FAILED',
+    };
   }
 }
 
