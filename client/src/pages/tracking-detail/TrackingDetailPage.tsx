@@ -410,7 +410,8 @@ function patchTrackingDetail(
   );
 
   const patchedSnapshot = toDetailSnapshot(next);
-  const shouldSyncRequestName = Object.prototype.hasOwnProperty.call(fields, '需求名称');
+  const sharedFields = pickRequestSharedFields(fields);
+  const shouldSyncSharedFields = Object.keys(sharedFields).length > 0;
   next.relatedEvents = (next.relatedEvents?.length ? next.relatedEvents : [eventSummaryFromDetail(next)])
     .map((event) => {
       if (event.recordId === next.recordId) {
@@ -426,17 +427,11 @@ function patchTrackingDetail(
           detail: patchedSnapshot,
         };
       }
-      if (shouldSyncRequestName && event.detail) {
+      if (shouldSyncSharedFields && event.detail) {
+        const syncedDetail = patchRequestSharedFields(event.detail, sharedFields);
         return {
           ...event,
-          detail: {
-            ...event.detail,
-            requestName: next.requestName,
-            requirementFields: {
-              ...event.detail.requirementFields,
-              需求名称: next.requestName || '',
-            },
-          },
+          detail: syncedDetail,
         };
       }
       return {
@@ -458,6 +453,8 @@ const DETAIL_FIELD_GROUPS = [
   'archiveFields',
 ] as const;
 
+const REQUEST_SHARED_FIELD_NAMES = new Set(['需求名称', '需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
+
 function fieldGroupForStage(stageId: string): typeof DETAIL_FIELD_GROUPS[number] | null {
   const map: Record<string, typeof DETAIL_FIELD_GROUPS[number]> = {
     requirement: 'requirementFields',
@@ -471,7 +468,39 @@ function fieldGroupForStage(stageId: string): typeof DETAIL_FIELD_GROUPS[number]
   return map[stageId] || null;
 }
 
-function applyTopLevelField(detail: TrackingDetail, fieldName: string, value: unknown) {
+function pickRequestSharedFields(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([fieldName]) => REQUEST_SHARED_FIELD_NAMES.has(fieldName)),
+  );
+}
+
+function patchRequestSharedFields(
+  detail: TrackingDetailSnapshot,
+  fields: Record<string, unknown>,
+): TrackingDetailSnapshot {
+  const next: TrackingDetailSnapshot = {
+    ...detail,
+    requirementFields: { ...detail.requirementFields },
+    devFields: { ...detail.devFields },
+    acceptanceFields: { ...detail.acceptanceFields },
+  };
+
+  for (const [fieldName, value] of Object.entries(fields)) {
+    for (const fieldGroup of DETAIL_FIELD_GROUPS) {
+      if (Object.prototype.hasOwnProperty.call(next[fieldGroup], fieldName)) {
+        next[fieldGroup] = {
+          ...next[fieldGroup],
+          [fieldName]: value,
+        };
+      }
+    }
+    applyTopLevelField(next, fieldName, value);
+  }
+
+  return next;
+}
+
+function applyTopLevelField(detail: TrackingDetail | TrackingDetailSnapshot, fieldName: string, value: unknown) {
   switch (fieldName) {
     case '需求名称':
       detail.requestName = displayText(value);
@@ -518,7 +547,7 @@ function applyTopLevelField(detail: TrackingDetail, fieldName: string, value: un
 }
 
 function applyUserRefs(
-  detail: TrackingDetail,
+  detail: TrackingDetail | TrackingDetailSnapshot,
   userKey: 'requester' | 'recorder' | 'dataOwner' | 'devOwner' | 'dsAcceptor',
   idsKey: 'requesterIds' | 'recorderIds' | 'dataOwnerIds' | 'devOwnerIds' | 'dsAcceptorIds',
   value: unknown,

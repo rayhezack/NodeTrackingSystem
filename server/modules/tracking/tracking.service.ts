@@ -157,7 +157,9 @@ type SourcedWorkbenchRecord = { source: TrackingSource; record: BitableRecord };
 type WorkbenchRecordGroup = { source: TrackingSource; requestId: string; records: BitableRecord[] };
 type TodoCandidate = TrackingRecord & { targetStage: string; todoRole: string };
 
-const USER_FIELD_NAMES = new Set(['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
+const USER_FIELD_NAME_LIST = ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'];
+const USER_FIELD_NAMES = new Set(USER_FIELD_NAME_LIST);
+const REQUEST_SHARED_FIELD_NAMES = ['需求名称', ...USER_FIELD_NAME_LIST];
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
   requirement: 'canEditRequirement',
@@ -374,7 +376,8 @@ export class TrackingService {
     const permissionConfig = await this.getStoredPermissionConfig();
     const relatedRecords = await this.listRelatedWorkbenchRecords(ref.source, record);
     const workflowRecord = selectGroupWorkflowRecord(relatedRecords);
-    const detail = this.toTrackingDetail(applyRequestWorkflowState(record, workflowRecord), ref.source, actorId, actorLarkId, permissionConfig);
+    const requestSharedFields = mergeRequestSharedFields(relatedRecords);
+    const detail = this.toTrackingDetail(applyRequestDisplayState(record, workflowRecord, requestSharedFields), ref.source, actorId, actorLarkId, permissionConfig);
     detail.relatedEvents = this.toRelatedEvents(ref.source, record, relatedRecords, actorId, actorLarkId, permissionConfig);
     return {
       data: detail,
@@ -625,15 +628,18 @@ export class TrackingService {
       throw new BadRequestException('事件名不能为空');
     }
 
-    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '新增同需求埋点事件');
+    const permissions = await this.getActorPermissionsForRecord(source, current, body.actorId, body.actorLarkId, '新增同需求埋点事件');
     if (!permissions.canEditDesign) {
       throw new ForbiddenException('当前用户无权限新增同需求埋点事件');
     }
 
     const evtId = (body.evtId || '').trim();
     const records = await this.listWorkbenchRecords(source);
-    const currentRecord = current.record;
     const requestId = await this.ensureRequestId(source, current, records);
+    const currentRecord = {
+      ...current.record,
+      ...mergeRequestSharedFields(await this.listRelatedWorkbenchRecords(source, current)),
+    };
     if (evtId) {
       const duplicate = this.findDuplicateEvtIdInRequest(current, records, evtId);
       if (duplicate) {
@@ -699,7 +705,7 @@ export class TrackingService {
     if (!current) {
       throw new NotFoundException('埋点事件不存在');
     }
-    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '删除设计事件');
+    const permissions = await this.getActorPermissionsForRecord(source, current, body.actorId, body.actorLarkId, '删除设计事件');
     if (!permissions.canEditDesign) {
       throw new ForbiddenException('当前用户无权限删除设计事件');
     }
@@ -754,7 +760,7 @@ export class TrackingService {
       throw new BadRequestException('正式事件分库与当前需求分库不一致');
     }
 
-    const permissions = await this.getActorPermissionsForRecord(current, body.actorId, body.actorLarkId, '复用已有事件');
+    const permissions = await this.getActorPermissionsForRecord(source, current, body.actorId, body.actorLarkId, '复用已有事件');
     if (!permissions.canEditDesign) {
       throw new ForbiddenException('当前用户无权限复用已有事件');
     }
@@ -794,7 +800,10 @@ export class TrackingService {
       ? (await this.listOfficialParamsForEvent(source, officialRef.rawId, evtId))
           .filter((record) => selectedParamKeys.has(getOfficialParamKey(record.record).toLowerCase()))
       : [];
-    const currentRecord = current.record;
+    const currentRecord = {
+      ...current.record,
+      ...mergeRequestSharedFields(await this.listRelatedWorkbenchRecords(source, current)),
+    };
     const requestName = getRequestNameFromRecords(records, currentRecord);
     const version = firstText(officialEvent.record['上线版本'], currentRecord['版本']) || '1.0.0';
     const minVersion = firstText(currentRecord['最低版本'], version) || version;
@@ -868,7 +877,7 @@ export class TrackingService {
     if (!current) {
       throw new NotFoundException('埋点需求不存在');
     }
-    await this.assertCanUpdateRecord(current, body);
+    await this.assertCanUpdateRecord(ref.source, current, body);
 
     const patch = { ...(body.fields || {}) };
     let currentStage = cellText(current.record['流程阶段']);
@@ -928,18 +937,23 @@ export class TrackingService {
         record: nextRecord,
       }, body.stageId, requestWorkflowPatch));
     }
+    const requestSharedPatch = toRequestSharedPatch(patch);
+    if (requestSharedPatch) {
+      updates.push(...await this.buildRequestSharedFieldUpdates(ref.source, {
+        id: ref.rawId,
+        record: nextRecord,
+      }, requestSharedPatch));
+    }
+    const mergedUpdates = mergeBitableRecordUpdates(updates);
 
     await this.bitable.batchUpdateRecords(
       workbench,
-      updates.map((update) => ({ id: update.id, record: update.record })),
+      mergedUpdates.map((update) => ({ id: update.id, record: update.record })),
     );
-    if (Object.prototype.hasOwnProperty.call(patch, '需求名称')) {
-      await this.syncRequestNameForRelatedRecords(ref.source, { id: ref.rawId, record: nextRecord }, cellText(patch['需求名称']));
-    }
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
-    for (const update of updates) {
+    for (const update of mergedUpdates) {
       await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
     }
     return { success: true, recordId, currentStage };
@@ -968,7 +982,7 @@ export class TrackingService {
     if (!detail) {
       throw new NotFoundException('埋点需求不存在');
     }
-    await this.assertCanEditParams(detail, body.actorId, body.actorLarkId);
+    await this.assertCanEditParams(ref.source, detail, body.actorId, body.actorLarkId);
     const evtId = body.evtId || cellText(detail.record['evt_id']);
     const paramName = body.paramName.trim();
     if (!evtId || !paramName) {
@@ -992,7 +1006,7 @@ export class TrackingService {
       throw new NotFoundException('埋点参数不存在');
     }
     const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
-    await this.assertCanEditParams(designRecord, body.actorId, body.actorLarkId);
+    await this.assertCanEditParams(ref.source, designRecord, body.actorId, body.actorLarkId);
 
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields) ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source) : fields;
@@ -1196,7 +1210,7 @@ export class TrackingService {
     if (!designRecord) {
       throw new NotFoundException('埋点需求不存在');
     }
-    await this.assertCanEditParams(designRecord, body.actorId, body.actorLarkId);
+    await this.assertCanEditParams(ref.source, designRecord, body.actorId, body.actorLarkId);
 
     const selectedRawIds = uniqueStrings(body.paramRecordIds || [])
       .map((id) => parseScopedRecordId(id))
@@ -1237,7 +1251,7 @@ export class TrackingService {
       throw new NotFoundException('埋点参数不存在');
     }
     const designRecord = await this.findDesignRecordForParam(ref.source, paramRecord);
-    await this.assertCanEditParams(designRecord, actorId, actorLarkId);
+    await this.assertCanEditParams(ref.source, designRecord, actorId, actorLarkId);
 
     await this.bitable.deleteRecords(paramDetailKey(ref.source), [ref.rawId]);
     return { success: true };
@@ -1250,8 +1264,8 @@ export class TrackingService {
     }
   }
 
-  private async assertCanUpdateRecord(record: BitableRecord, body: UpdateTrackingRecordRequest): Promise<void> {
-    const permissions = await this.getActorPermissionsForRecord(record, body.actorId, body.actorLarkId, '更新需求');
+  private async assertCanUpdateRecord(source: TrackingSource, record: BitableRecord, body: UpdateTrackingRecordRequest): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(source, record, body.actorId, body.actorLarkId, '更新需求');
     const requiredPermissions = getRequiredPermissionsForUpdate(body);
     const denied = requiredPermissions.filter((permission) => !permissions[permission]);
     if (denied.length) {
@@ -1259,14 +1273,14 @@ export class TrackingService {
     }
   }
 
-  private async assertCanEditParams(record: BitableRecord, actorId?: string, actorLarkId?: string): Promise<void> {
-    const permissions = await this.getActorPermissionsForRecord(record, actorId, actorLarkId, '维护参数');
+  private async assertCanEditParams(source: TrackingSource, record: BitableRecord, actorId?: string, actorLarkId?: string): Promise<void> {
+    const permissions = await this.getActorPermissionsForRecord(source, record, actorId, actorLarkId, '维护参数');
     if (!permissions.canEditParams) {
       throw new ForbiddenException('当前用户无权限维护参数');
     }
   }
 
-  private async getActorPermissionsForRecord(record: BitableRecord, actorId: string | undefined, actorLarkId: string | undefined, actionLabel: string): Promise<StagePermissions> {
+  private async getActorPermissionsForRecord(source: TrackingSource, record: BitableRecord, actorId: string | undefined, actorLarkId: string | undefined, actionLabel: string): Promise<StagePermissions> {
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
     if (!actorCandidates.length) {
       throw new ForbiddenException(`无法识别当前用户，不能${actionLabel}`);
@@ -1276,7 +1290,8 @@ export class TrackingService {
     }
 
     const permissionConfig = await this.getStoredPermissionConfig();
-    return calculateRawRecordPermissions(record.record, actorId, actorLarkId, permissionConfig);
+    const permissionRecord = await this.toRequestScopedRecord(source, record);
+    return calculateRawRecordPermissions(permissionRecord.record, actorId, actorLarkId, permissionConfig);
   }
 
   private async findDesignRecordForParam(source: TrackingSource, paramRecord: BitableRecord): Promise<BitableRecord> {
@@ -1392,22 +1407,31 @@ export class TrackingService {
     return Array.from(uniqueByRecordId.values());
   }
 
-  private async syncRequestNameForRelatedRecords(source: TrackingSource, current: BitableRecord, requestName: string): Promise<void> {
-    const normalizedRequestName = requestName.trim();
-    const requestId = cellText(current.record['需求ID']).trim();
-    if (!requestId || !normalizedRequestName) return;
+  private async toRequestScopedRecord(source: TrackingSource, current: BitableRecord): Promise<BitableRecord> {
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    return applyRequestDisplayState(
+      current,
+      selectGroupWorkflowRecord(relatedRecords),
+      mergeRequestSharedFields(relatedRecords),
+    );
+  }
 
-    const updates = (await this.listRelatedWorkbenchRecords(source, current))
+  private async buildRequestSharedFieldUpdates(
+    source: TrackingSource,
+    current: BitableRecord,
+    sharedPatch: Record<string, unknown>,
+  ): Promise<Array<{ id: string; record: Record<string, unknown>; nextRecord: Record<string, unknown> }>> {
+    const requestId = cellText(current.record['需求ID']).trim();
+    if (!requestId || !Object.keys(sharedPatch).length) return [];
+
+    return (await this.listRelatedWorkbenchRecords(source, current))
       .filter((record) => record.id !== current.id)
-      .filter((record) => cellText(record.record['需求名称']).trim() !== normalizedRequestName)
+      .filter((record) => !isPatchNoop(record.record, sharedPatch))
       .map((record) => ({
         id: record.id,
-        record: { 需求名称: normalizedRequestName },
+        record: sharedPatch,
+        nextRecord: { ...record.record, ...sharedPatch },
       }));
-
-    for (let index = 0; index < updates.length; index += 200) {
-      await this.bitable.batchUpdateRecords(workbenchKey(source), updates.slice(index, index + 200));
-    }
   }
 
   private async buildRequestWorkflowUpdates(
@@ -1437,11 +1461,12 @@ export class TrackingService {
     permissionConfig?: PermissionConfig | null,
   ): RelatedTrackingEvent[] {
     const workflowRecord = selectGroupWorkflowRecord(records);
+    const requestSharedFields = mergeRequestSharedFields(records);
     return records
       .sort((a, b) => cellTimestamp(a.record['创建时间']) - cellTimestamp(b.record['创建时间']))
       .map((record) =>
         this.toRelatedEvent(
-          applyRequestWorkflowState(record, workflowRecord),
+          applyRequestDisplayState(record, workflowRecord, requestSharedFields),
           source,
           record.id === current.id,
           actorId,
@@ -1790,24 +1815,47 @@ function matchesPlatformFilter(record: TrackingRecord, platform: string): boolea
     .includes(normalized);
 }
 
+function mergeRequestSharedFields(records: BitableRecord[]): Record<string, unknown> {
+  const sharedFields: Record<string, unknown> = {};
+  const requestName = records
+    .map((record) => cellText(record.record['需求名称']).trim())
+    .find(Boolean);
+  if (requestName) {
+    sharedFields['需求名称'] = requestName;
+  }
+
+  for (const fieldName of USER_FIELD_NAME_LIST) {
+    const users = mergeRecordUserRefs(records, fieldName);
+    if (users.length) {
+      sharedFields[fieldName] = users;
+    }
+  }
+
+  return sharedFields;
+}
+
 function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
-  const idToName = new Map<string, string>();
+  const users = mergeRecordUserRefs(records, fieldName);
+  return {
+    ids: users.map((user) => user.user_id),
+    names: users.map((user) => user.name || '').filter(Boolean),
+  };
+}
+
+function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): TrackingUserRef[] {
+  const idToUser = new Map<string, TrackingUserRef>();
   for (const record of records) {
     for (const user of cellUsers(record.record[fieldName]).items) {
       if (!user.user_id) continue;
-      const currentName = idToName.get(user.user_id);
-      if (!currentName && user.name) {
-        idToName.set(user.user_id, user.name);
-      } else if (!idToName.has(user.user_id)) {
-        idToName.set(user.user_id, '');
-      }
+      const current = idToUser.get(user.user_id);
+      idToUser.set(user.user_id, {
+        user_id: user.user_id,
+        larkUserId: current?.larkUserId || user.larkUserId,
+        name: current?.name || user.name,
+      });
     }
   }
-  const ids = Array.from(idToName.keys());
-  return {
-    ids,
-    names: ids.map((id) => idToName.get(id) || '').filter(Boolean),
-  };
+  return Array.from(idToUser.values());
 }
 
 function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, unknown> {
@@ -2771,17 +2819,27 @@ const REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID: Record<string, string[]> = {
 
 const REQUEST_WORKFLOW_FIELD_NAMES = uniqueStrings(Object.values(REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID).flat());
 
-function applyRequestWorkflowState(record: BitableRecord, workflowRecord: BitableRecord): BitableRecord {
-  if (record.id === workflowRecord.id) return record;
-
+function applyRequestDisplayState(
+  record: BitableRecord,
+  workflowRecord: BitableRecord,
+  requestSharedFields: Record<string, unknown>,
+): BitableRecord {
   const workflowFields = pickPatchFields(workflowRecord.record, REQUEST_WORKFLOW_FIELD_NAMES);
+  if (record.id === workflowRecord.id && !Object.keys(requestSharedFields).length) return record;
+
   return {
     id: record.id,
     record: {
       ...record.record,
       ...workflowFields,
+      ...requestSharedFields,
     },
   };
+}
+
+function toRequestSharedPatch(patch: Record<string, unknown>): Record<string, unknown> | null {
+  const sharedPatch = pickPatchFields(patch, REQUEST_SHARED_FIELD_NAMES);
+  return Object.keys(sharedPatch).length ? sharedPatch : null;
 }
 
 function toRequestWorkflowPatch(
@@ -2838,6 +2896,20 @@ function isPatchNoop(record: Record<string, unknown>, patch: Record<string, unkn
   return Object.entries(patch).every(([fieldName, value]) =>
     cellText(record[fieldName]) === cellText(value),
   );
+}
+
+function mergeBitableRecordUpdates<T extends { id: string; record: Record<string, unknown>; nextRecord: Record<string, unknown> }>(updates: T[]): T[] {
+  const merged = new Map<string, T>();
+  for (const update of updates) {
+    const existing = merged.get(update.id);
+    if (!existing) {
+      merged.set(update.id, { ...update, record: { ...update.record }, nextRecord: { ...update.nextRecord } });
+      continue;
+    }
+    existing.record = { ...existing.record, ...update.record };
+    existing.nextRecord = { ...existing.nextRecord, ...update.record };
+  }
+  return Array.from(merged.values());
 }
 
 function normalizeAcceptanceStatus(value?: string): string {

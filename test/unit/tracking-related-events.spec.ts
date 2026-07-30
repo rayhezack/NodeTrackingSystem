@@ -192,6 +192,185 @@ describe('同需求埋点事件', () => {
     ]);
   });
 
+  it('详情页应按需求粒度合并项目角色，而不是只取当前埋点事件', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '主事件',
+        流程阶段: '评审通过',
+        记录类型: '埋点设计',
+        评审状态: '已通过',
+        数据负责人: [{ id: '1001', name: '孙文' }],
+        研发负责人: [{ id: '3001', name: '曾家其' }],
+        创建时间: 100,
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_2',
+        事件中文名: '补充事件',
+        流程阶段: '评审通过',
+        记录类型: '埋点设计',
+        评审状态: '已通过',
+        数据负责人: [{ id: '1001', name: '孙文' }],
+        研发负责人: [{ id: '3002', name: '刘桥' }],
+        创建时间: 200,
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getDetail('app:rec_1', '1001');
+
+    expect(result.data.devOwnerIds).toEqual(['3001', '3002']);
+    expect(result.data.devOwner.map((user) => user.name)).toEqual(['曾家其', '刘桥']);
+    expect(result.data.devFields['研发负责人']).toEqual([
+      { user_id: '3001', name: '曾家其' },
+      { user_id: '3002', name: '刘桥' },
+    ]);
+    expect(result.data.relatedEvents).toEqual([
+      expect.objectContaining({
+        recordId: 'app:rec_1',
+        detail: expect.objectContaining({
+          devOwnerIds: ['3001', '3002'],
+        }),
+      }),
+      expect.objectContaining({
+        recordId: 'app:rec_2',
+        detail: expect.objectContaining({
+          devOwnerIds: ['3001', '3002'],
+        }),
+      }),
+    ]);
+  });
+
+  it('更新项目角色时应同步写回同需求全部埋点事件', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '主事件',
+        流程阶段: '需求录入',
+        记录类型: '埋点设计',
+        数据负责人: [{ id: '1001', name: '孙文' }],
+        研发负责人: [{ id: '3001', name: '曾家其' }],
+        创建时间: 100,
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_2',
+        事件中文名: '补充事件',
+        流程阶段: '需求录入',
+        记录类型: '埋点设计',
+        数据负责人: [{ id: '1001', name: '孙文' }],
+        研发负责人: [{ id: '3001', name: '曾家其' }],
+        创建时间: 200,
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }, { id: 'rec_2' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      actorId: '1001',
+      stageId: 'requirement',
+      fields: {
+        研发负责人: ['3001', '3002'],
+      },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      {
+        id: 'rec_1',
+        record: {
+          研发负责人: [3001, 3002],
+        },
+      },
+      {
+        id: 'rec_2',
+        record: {
+          研发负责人: [3001, 3002],
+        },
+      },
+    ]);
+  });
+
+  it('同需求任一事件中的研发负责人，都应有当前事件的开发权限', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '主事件',
+        流程阶段: '评审通过',
+        记录类型: '埋点设计',
+        埋点开发状态: '未开始',
+        研发负责人: [{ id: '3001', name: '曾家其' }],
+        创建时间: 100,
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_2',
+        事件中文名: '补充事件',
+        流程阶段: '评审通过',
+        记录类型: '埋点设计',
+        埋点开发状态: '未开始',
+        研发负责人: [{ id: '3002', name: '刘桥' }],
+        创建时间: 200,
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }, { id: 'rec_2' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(service.updateRecord('app:rec_1', {
+      actorId: '3002',
+      stageId: 'dev',
+      fields: {
+        埋点开发状态: '开发中',
+      },
+    })).resolves.toEqual({
+      success: true,
+      recordId: 'app:rec_1',
+      currentStage: '评审通过',
+    });
+  });
+
   it('设计阶段删除同需求事件时，应同步删除该事件下的设计参数并返回跳转事件', async () => {
     const current = {
       id: 'rec_2',

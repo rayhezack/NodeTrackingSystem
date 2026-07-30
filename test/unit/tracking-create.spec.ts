@@ -257,8 +257,6 @@ describe('提需创建记录', () => {
           需求名称: '核心漏斗埋点补齐',
         },
       },
-    ]);
-    expect(bitable.batchUpdateRecords).toHaveBeenNthCalledWith(2, 'workbench', [
       {
         id: 'rec_child',
         record: {
