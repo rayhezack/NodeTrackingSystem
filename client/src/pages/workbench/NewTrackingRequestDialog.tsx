@@ -59,11 +59,13 @@ const defaultForm = () => ({
 
 const defaultParticipants = (
   actorId?: string,
+  actorLarkId?: string,
   actorName?: string,
 ): ParticipantForm => {
-  const currentUser = actorId
+  const currentUser = actorId || actorLarkId
     ? [{
-        user_id: actorId,
+        user_id: actorId || actorLarkId || '',
+        ...(actorLarkId ? { larkUserId: actorLarkId } : {}),
         name: actorName || '当前用户',
       }]
     : [];
@@ -86,15 +88,15 @@ export default function NewTrackingRequestDialog({
 }: NewTrackingRequestDialogProps) {
   const [form, setForm] = useState(defaultForm);
   const [participants, setParticipants] = useState<ParticipantForm>(() =>
-    defaultParticipants(actorId, actorName),
+    defaultParticipants(actorId, actorLarkId, actorName),
   );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setForm(defaultForm());
-    setParticipants(defaultParticipants(actorId, actorName));
-  }, [open, actorId, actorName]);
+    setParticipants(defaultParticipants(actorId, actorLarkId, actorName));
+  }, [open, actorId, actorLarkId, actorName]);
 
   const updateField = (key: keyof ReturnType<typeof defaultForm>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -160,11 +162,11 @@ export default function NewTrackingRequestDialog({
         actorId,
         actorLarkId,
         actorName,
-        requesterIds: toParticipantIds(participants.requesterIds),
-        recorderIds: toParticipantIds(participants.recorderIds),
-        dataOwnerIds: toParticipantIds(participants.dataOwnerIds),
-        devOwnerIds: toParticipantIds(participants.devOwnerIds),
-        dsAcceptorIds: toParticipantIds(participants.dsAcceptorIds),
+        requesterIds: participants.requesterIds,
+        recorderIds: participants.recorderIds,
+        dataOwnerIds: participants.dataOwnerIds,
+        devOwnerIds: participants.devOwnerIds,
+        dsAcceptorIds: participants.dsAcceptorIds,
         initialParams: [],
       });
       toast.success('需求已创建，并已同步写入对应 Base；项目成员将获得对应节点权限');
@@ -375,21 +377,12 @@ function ProjectUserSelect({
   );
 }
 
-function toParticipantIds(value: TrackingUserRef[]): string[] {
-  return uniqueStrings(
-    value
-      .map((item) => extractNumericUserId(item))
-      .filter((id): id is string => Boolean(id)),
-  );
-}
-
 function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
   return value
     .map<TrackingUserRef | null>((item) => {
       if (!item || typeof item !== 'object') return null;
       const user = item as Record<string, unknown>;
-      const id = extractNumericUserId(user);
-      if (!id) return null;
+      const numericId = extractNumericUserId(user);
       const larkUserId = [
         user.larkUserId,
         user.larkUserID,
@@ -398,7 +391,7 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
         user.lark_id,
         user.open_id,
         user.openId,
-      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
+      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
       const name = localizedText(user.name) || localizedText(user.en_name);
       const email = [
         user.email,
@@ -406,9 +399,11 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
         user.emailAddress,
         user.email_address,
       ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'));
+      const id = numericId || larkUserId || email || '';
+      if (!id) return null;
       return {
         user_id: id,
-        larkUserId,
+        ...(larkUserId ? { larkUserId } : {}),
         ...(email ? { email } : {}),
         ...(name && name !== id ? { name } : {}),
       };
@@ -448,8 +443,4 @@ function localizedText(value: unknown): string {
     }
   }
   return '';
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
 }

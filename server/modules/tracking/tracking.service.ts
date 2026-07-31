@@ -1650,8 +1650,8 @@ export class TrackingService {
 
   private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
     const users = {
-      data: cellUsers(record.record['数据负责人']),
-      dev: cellUsers(record.record['研发负责人']),
+      data: recordUsers(record, '数据负责人'),
+      dev: recordUsers(record, '研发负责人'),
     };
     const stage = cellText(record.record['流程阶段']) || '需求录入';
     return {
@@ -1677,14 +1677,30 @@ export class TrackingService {
   }
 
   private toTrackingDetail(record: BitableRecord, source: TrackingSource, actorId?: string, actorLarkId?: string, permissionConfig?: PermissionConfig | null): TrackingDetail {
-    const requester = cellUsers(record.record['需求提出人']);
-    const recorder = cellUsers(record.record['需求录入人']);
-    const dataOwner = cellUsers(record.record['数据负责人']);
-    const devOwner = cellUsers(record.record['研发负责人']);
-    const dsAcceptor = cellUsers(record.record['DS验收人']);
+    const requester = recordUsers(record, '需求提出人');
+    const recorder = recordUsers(record, '需求录入人');
+    const dataOwner = recordUsers(record, '数据负责人');
+    const devOwner = recordUsers(record, '研发负责人');
+    const dsAcceptor = recordUsers(record, 'DS验收人');
     const actor = actorId || actorLarkId || '';
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
     const stage = cellText(record.record['流程阶段']) || '需求录入';
+    const requirementFields = {
+      ...pickFields(record.record, ['需求名称', '需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
+      需求提出人: requester.items,
+      需求录入人: recorder.items,
+      数据负责人: dataOwner.items,
+      研发负责人: devOwner.items,
+      DS验收人: dsAcceptor.items,
+    };
+    const devFields = {
+      ...pickFields(record.record, ['研发负责人', '埋点开发状态']),
+      研发负责人: devOwner.items,
+    };
+    const acceptanceFields = {
+      ...pickFields(record.record, ['DS验收人', 'DS验收状态', 'DS验收证据', 'DS验收时间']),
+      DS验收人: dsAcceptor.items,
+    };
 
     return {
       ...this.toTrackingRecord(record, source),
@@ -1701,11 +1717,11 @@ export class TrackingService {
       devOwnerIds: devOwner.ids,
       dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
-      requirementFields: pickFields(record.record, ['需求名称', '需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
+      requirementFields,
       designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', 'UI图', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
       reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
-      devFields: pickFields(record.record, ['研发负责人', '埋点开发状态']),
-      acceptanceFields: pickFields(record.record, ['DS验收人', 'DS验收状态', 'DS验收证据', 'DS验收时间']),
+      devFields,
+      acceptanceFields,
       launchFields: pickFields(record.record, ['发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间']),
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       relatedEvents: [],
@@ -1939,9 +1955,18 @@ function mergeRequestSharedFields(records: BitableRecord[]): Record<string, unkn
 
 function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
   const users = mergeRecordUserRefs(records, fieldName);
+  return toUserCollection(users);
+}
+
+function recordUsers(record: BitableRecord, fieldName: string): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
+  return toUserCollection(mergeRecordUserRefs([record], fieldName));
+}
+
+function toUserCollection(users: TrackingUserRef[]): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
   return {
-    ids: users.map((user) => user.user_id),
+    ids: uniqueStrings(users.flatMap((user) => [user.user_id, user.larkUserId || '', user.email || ''])),
     names: users.map((user) => user.name || '').filter(Boolean),
+    items: users,
   };
 }
 
@@ -1956,7 +1981,8 @@ function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): Track
 
 function mergeUserRefsIntoMap(idToUser: Map<string, TrackingUserRef>, users: TrackingUserRef[]): void {
   for (const user of users) {
-    const key = user.user_id || user.larkUserId || user.email || '';
+    const userKeys = userIdentityKeys(user);
+    const key = findExistingUserRefKey(idToUser, userKeys) || userKeys[0] || '';
     if (!key) continue;
     const current = idToUser.get(key);
     idToUser.set(key, {
@@ -1966,6 +1992,30 @@ function mergeUserRefsIntoMap(idToUser: Map<string, TrackingUserRef>, users: Tra
       name: current?.name || user.name,
     });
   }
+}
+
+function findExistingUserRefKey(idToUser: Map<string, TrackingUserRef>, keys: string[]): string | undefined {
+  if (!keys.length) return undefined;
+  for (const [existingKey, existingUser] of idToUser.entries()) {
+    const existingKeys = userIdentityKeys(existingUser);
+    if (keys.some((key) => existingKeys.includes(key) || key === existingKey)) {
+      return existingKey;
+    }
+  }
+  return undefined;
+}
+
+function userIdentityKeys(user: TrackingUserRef): string[] {
+  return uniqueStrings([
+    user.user_id || '',
+    user.larkUserId || '',
+    normalizeSnapshotEmail(user.email),
+  ]);
+}
+
+function normalizeSnapshotEmail(value?: string): string {
+  const email = String(value || '').trim().toLowerCase();
+  return email.includes('@') ? email : '';
 }
 
 function buildWorkflowNotificationRecipients(records: BitableRecord[], fieldNames: string[]): WorkflowNotificationRecipient[] {
@@ -2731,11 +2781,12 @@ function normalizeScopedRawId(recordId: string, source: TrackingSource): string 
 }
 
 function calculateRawRecordPermissions(record: Record<string, Cell>, actorId?: string, actorLarkId?: string, permissionConfig?: PermissionConfig | null): StagePermissions {
-  const requester = cellUsers(record['需求提出人']);
-  const recorder = cellUsers(record['需求录入人']);
-  const dataOwner = cellUsers(record['数据负责人']);
-  const devOwner = cellUsers(record['研发负责人']);
-  const dsAcceptor = cellUsers(record['DS验收人']);
+  const currentRecord = { id: '', record };
+  const requester = recordUsers(currentRecord, '需求提出人');
+  const recorder = recordUsers(currentRecord, '需求录入人');
+  const dataOwner = recordUsers(currentRecord, '数据负责人');
+  const devOwner = recordUsers(currentRecord, '研发负责人');
+  const dsAcceptor = recordUsers(currentRecord, 'DS验收人');
   const actor = actorId || actorLarkId || '';
   const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
 

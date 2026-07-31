@@ -81,7 +81,7 @@ export class FeishuNotificationService {
   }
 
   private async sendToRecipient(token: string, payload: WorkflowTransitionNotification, recipient: WorkflowNotificationRecipient): Promise<void> {
-    const recipientKey = recipient.larkUserId || normalizeEmail(recipient.email) || recipient.user_id;
+    const recipientKey = normalizeEmail(recipient.email) || recipient.larkUserId || recipient.user_id;
     const dedupeKey = `${payload.idempotencyKey}:${recipientKey}`;
     if (this.hasRecentSentKey(dedupeKey)) return;
 
@@ -117,12 +117,19 @@ export class FeishuNotificationService {
   }
 
   private async resolveOpenId(token: string, recipient: WorkflowNotificationRecipient): Promise<string | null> {
+    const email = normalizeEmail(recipient.email);
+    if (email) {
+      const emailOpenId = await this.resolveOpenIdByEmail(token, email);
+      if (emailOpenId) return emailOpenId;
+    }
+
     const directOpenId = [recipient.larkUserId, recipient.user_id].find((value) => typeof value === 'string' && value.startsWith('ou_'));
     if (directOpenId) return directOpenId;
 
-    const email = normalizeEmail(recipient.email);
-    if (!email) return null;
+    return null;
+  }
 
+  private async resolveOpenIdByEmail(token: string, email: string): Promise<string | null> {
     const cached = this.openIdCache.get(email);
     if (cached && cached.expiresAt > Date.now()) return cached.openId;
 
@@ -310,7 +317,7 @@ export class FeishuNotificationService {
 function dedupeRecipients(recipients: WorkflowNotificationRecipient[]): WorkflowNotificationRecipient[] {
   const keyToRecipient = new Map<string, WorkflowNotificationRecipient>();
   for (const recipient of recipients) {
-    const key = recipient.larkUserId || normalizeEmail(recipient.email) || recipient.user_id;
+    const key = normalizeEmail(recipient.email) || recipient.larkUserId || recipient.user_id;
     if (!key) continue;
     const current = keyToRecipient.get(key);
     keyToRecipient.set(key, {

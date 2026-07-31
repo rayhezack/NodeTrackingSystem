@@ -10,6 +10,8 @@ export interface TrackingUserRef {
   name?: string;
 }
 
+export type TrackingUserInput = string | TrackingUserRef;
+
 export interface TrackingAttachment {
   bucket_id?: string;
   bucketId?: string;
@@ -167,11 +169,11 @@ export interface CreateTrackingRecordRequest {
   actorId?: string;
   actorLarkId?: string;
   actorName?: string;
-  requesterIds?: string[];
-  recorderIds?: string[];
-  dataOwnerIds?: string[];
-  devOwnerIds?: string[];
-  dsAcceptorIds?: string[];
+  requesterIds?: TrackingUserInput[];
+  recorderIds?: TrackingUserInput[];
+  dataOwnerIds?: TrackingUserInput[];
+  devOwnerIds?: TrackingUserInput[];
+  dsAcceptorIds?: TrackingUserInput[];
   initialParams?: CreateParamRequest[];
 }
 
