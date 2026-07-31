@@ -15,6 +15,7 @@ import type {
   ReuseOfficialEventRequest,
   CreateSiblingTrackingEventRequest,
   CreateTrackingRecordRequest,
+  DeleteTrackingRequestRequest,
   DeleteTrackingEventRequest,
   ResolveUiImagePreviewRequest,
   TrackingSourceFilter,
@@ -74,6 +75,11 @@ export class TrackingController {
     return this.trackingService.resolveUiImagePreview(body);
   }
 
+  @Get('notifications/status')
+  getNotificationStatus() {
+    return this.trackingService.getNotificationStatus();
+  }
+
   @Post('records')
   createRecord(@Body() body: CreateTrackingRecordRequest) {
     return this.trackingService.createRecord(body);
@@ -93,6 +99,14 @@ export class TrackingController {
     @Body() body: DeleteTrackingEventRequest = {},
   ) {
     return this.trackingService.deleteEvent(recordId, body);
+  }
+
+  @Delete('records/:recordId/request')
+  deleteRequest(
+    @Param('recordId') recordId: string,
+    @Body() body: DeleteTrackingRequestRequest = {},
+  ) {
+    return this.trackingService.deleteRequest(recordId, body);
   }
 
   @Post('records/:recordId/reuse-official-event')

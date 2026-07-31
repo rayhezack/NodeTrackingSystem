@@ -382,23 +382,26 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
     .map<TrackingUserRef | null>((item) => {
       if (!item || typeof item !== 'object') return null;
       const user = item as Record<string, unknown>;
+      const candidates = userObjectCandidates(user);
       const numericId = extractNumericUserId(user);
-      const larkUserId = [
-        user.larkUserId,
-        user.larkUserID,
-        user.larkID,
-        user.lark_user_id,
-        user.lark_id,
-        user.open_id,
-        user.openId,
-      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
-      const name = localizedText(user.name) || localizedText(user.en_name);
-      const email = [
-        user.email,
-        user.mail,
-        user.emailAddress,
-        user.email_address,
-      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'));
+      const larkUserId = firstUserCandidateValue(candidates, [
+        'larkUserId',
+        'larkUserID',
+        'larkID',
+        'lark_user_id',
+        'lark_id',
+        'open_id',
+        'openId',
+        'id',
+        'user_id',
+      ], (candidate) => typeof candidate === 'string' && candidate.trim().startsWith('ou_'));
+      const name = firstLocalizedUserCandidateValue(candidates, ['name', 'en_name', 'display_name', 'displayName']);
+      const email = firstUserCandidateValue(candidates, [
+        'email',
+        'mail',
+        'emailAddress',
+        'email_address',
+      ], (candidate) => typeof candidate === 'string' && candidate.includes('@'));
       const id = numericId || larkUserId || email || '';
       if (!id) return null;
       return {
@@ -409,6 +412,39 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
+}
+
+function userObjectCandidates(user: Record<string, unknown>): Record<string, unknown>[] {
+  const raw = user.raw;
+  const candidates = [user];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    candidates.push(raw as Record<string, unknown>);
+  }
+  return candidates;
+}
+
+function firstUserCandidateValue(
+  candidates: Record<string, unknown>[],
+  keys: string[],
+  predicate: (value: unknown) => boolean,
+): string {
+  for (const candidate of candidates) {
+    for (const key of keys) {
+      const value = candidate[key];
+      if (predicate(value)) return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function firstLocalizedUserCandidateValue(candidates: Record<string, unknown>[], keys: string[]): string {
+  for (const candidate of candidates) {
+    for (const key of keys) {
+      const value = localizedText(candidate[key]);
+      if (value) return value;
+    }
+  }
+  return '';
 }
 
 function extractNumericUserId(value: unknown): string {
@@ -426,6 +462,7 @@ function extractNumericUserId(value: unknown): string {
     'employee_id',
     'employeeID',
     'id',
+    'raw',
   ]) {
     const id = extractNumericUserId(user[key]);
     if (id) return id;

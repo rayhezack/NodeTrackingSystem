@@ -111,12 +111,13 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
       if (!item || typeof item !== 'object') return null;
 
       const user = item as Record<string, unknown>;
-      const numericId = firstNumericId(user);
-      const larkUserId = firstLarkUserId(user);
+      const candidates = userObjectCandidates(user);
+      const numericId = firstNumericId(candidates);
+      const larkUserId = firstLarkUserId(candidates);
       const id = numericId || larkUserId;
       if (!id) return null;
-      const name = localizedText(user.name);
-      const email = firstEmail(user);
+      const name = firstLocalizedText(candidates, ['name', 'en_name', 'display_name', 'displayName']);
+      const email = firstEmail(candidates);
 
       return {
         user_id: id,
@@ -128,48 +129,73 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
     .filter((item): item is TrackingUserRef => Boolean(item));
 }
 
-function firstNumericId(user: Record<string, unknown>): string {
-  for (const key of [
-    'user_id',
-    'userId',
-    'userID',
-    'miaoda_user_id',
-    'miaodaUserID',
-    'employee_id',
-    'employeeID',
-    'id',
-  ]) {
-    const value = user[key];
-    const id = typeof value === 'number' ? String(value) : String(value || '').trim();
-    if (/^\d+$/.test(id)) return id;
+function userObjectCandidates(user: Record<string, unknown>): Record<string, unknown>[] {
+  const raw = user.raw;
+  const candidates = [user];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    candidates.push(raw as Record<string, unknown>);
   }
-  return '';
+  return candidates;
 }
 
-function firstLarkUserId(user: Record<string, unknown>): string {
-  for (const key of [
-    'larkUserId',
-    'larkUserID',
-    'lark_user_id',
-    'larkID',
-    'lark_id',
-    'open_id',
-    'openId',
-    'id',
-    'user_id',
-  ]) {
-    const value = user[key];
-    if (typeof value === 'string' && isLarkUserId(value.trim())) {
-      return value.trim();
+function firstNumericId(candidates: Record<string, unknown>[]): string {
+  for (const user of candidates) {
+    for (const key of [
+      'user_id',
+      'userId',
+      'userID',
+      'miaoda_user_id',
+      'miaodaUserID',
+      'employee_id',
+      'employeeID',
+      'id',
+    ]) {
+      const value = user[key];
+      const id = typeof value === 'number' ? String(value) : String(value || '').trim();
+      if (/^\d+$/.test(id)) return id;
     }
   }
   return '';
 }
 
-function firstEmail(user: Record<string, unknown>): string {
-  for (const key of ['email', 'mail', 'emailAddress', 'email_address']) {
-    const value = user[key];
-    if (typeof value === 'string' && value.includes('@')) return value.trim();
+function firstLarkUserId(candidates: Record<string, unknown>[]): string {
+  for (const user of candidates) {
+    for (const key of [
+      'larkUserId',
+      'larkUserID',
+      'lark_user_id',
+      'larkID',
+      'lark_id',
+      'open_id',
+      'openId',
+      'id',
+      'user_id',
+    ]) {
+      const value = user[key];
+      if (typeof value === 'string' && isLarkUserId(value.trim())) {
+        return value.trim();
+      }
+    }
+  }
+  return '';
+}
+
+function firstEmail(candidates: Record<string, unknown>[]): string {
+  for (const user of candidates) {
+    for (const key of ['email', 'mail', 'emailAddress', 'email_address']) {
+      const value = user[key];
+      if (typeof value === 'string' && value.includes('@')) return value.trim();
+    }
+  }
+  return '';
+}
+
+function firstLocalizedText(candidates: Record<string, unknown>[], keys: string[]): string {
+  for (const user of candidates) {
+    for (const key of keys) {
+      const value = localizedText(user[key]);
+      if (value) return value;
+    }
   }
   return '';
 }

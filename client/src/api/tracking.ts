@@ -14,6 +14,9 @@ import type {
   CreateSiblingTrackingEventResponse,
   DeleteTrackingEventRequest,
   DeleteTrackingEventResponse,
+  DeleteTrackingRequestRequest,
+  DeleteTrackingRequestResponse,
+  NotificationRuntimeStatus,
   ResolveUiImagePreviewRequest,
   ResolveUiImagePreviewResponse,
   ReuseOfficialEventRequest,
@@ -209,6 +212,37 @@ export async function deleteTrackingEvent(
   } catch (error) {
     logger.error('删除埋点事件失败', error);
     throw toReadableError(error, '删除埋点事件失败，请确认仍处于设计阶段且至少保留一个事件');
+  }
+}
+
+export async function deleteTrackingRequest(
+  recordId: string,
+  data: DeleteTrackingRequestRequest,
+): Promise<DeleteTrackingRequestResponse> {
+  try {
+    const response = await axiosForBackend.delete(
+      `/api/tracking/records/${recordId}/request`,
+      { data },
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('删除需求单失败', error);
+    throw toReadableError(error, '删除需求单失败，请确认需求尚未进入正式上线/归档链路');
+  }
+}
+
+export async function getNotificationStatus(): Promise<NotificationRuntimeStatus> {
+  try {
+    const response = await axiosForBackend.get('/api/tracking/notifications/status');
+    return response.data;
+  } catch (error) {
+    logger.error('获取通知配置状态失败', error);
+    return {
+      configured: false,
+      hasAppId: false,
+      hasAppSecret: false,
+      usingDefaultAppId: true,
+    };
   }
 }
 

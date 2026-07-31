@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { TrackingSource, TrackingUserRef } from '@shared/api.interface';
+import type { NotificationRuntimeStatus, TrackingSource, TrackingUserRef, WorkflowNotificationResult } from '@shared/api.interface';
 
 type FeishuApiResponse<T = Record<string, unknown>> = {
   code?: number;
@@ -7,6 +7,12 @@ type FeishuApiResponse<T = Record<string, unknown>> = {
   data?: T;
   tenant_access_token?: string;
   expire?: number;
+};
+
+type RecipientDeliveryResult = {
+  sent: boolean;
+  skippedReason?: string;
+  error?: string;
 };
 
 const DEFAULT_FEISHU_APP_ID = 'cli_aaeb58a8113a9be5';
@@ -39,11 +45,30 @@ export class FeishuNotificationService {
   private readonly sentKeys = new Map<string, number>();
   private tokenCache: { token: string; expiresAt: number } | null = null;
 
-  async sendWorkflowTransitionNotification(payload: WorkflowTransitionNotification): Promise<void> {
+  getRuntimeStatus(): NotificationRuntimeStatus {
+    return {
+      configured: this.isConfigured(),
+      hasAppId: Boolean(this.appId),
+      hasAppSecret: Boolean(this.appSecret),
+      usingDefaultAppId: !process.env.FEISHU_APP_ID && !process.env.LARK_APP_ID,
+    };
+  }
+
+  async sendWorkflowTransitionNotification(payload: WorkflowTransitionNotification): Promise<WorkflowNotificationResult> {
+    const baseResult: WorkflowNotificationResult = {
+      planned: true,
+      configured: this.isConfigured(),
+      recipientCount: 0,
+      sentCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    };
+
     if (!this.isConfigured()) {
+      const skippedReason = 'Feishu bot credential is not configured';
       this.logger.warn(
         JSON.stringify({
-          message: 'Skip workflow notification: Feishu bot credential is not configured',
+          message: `Skip workflow notification: ${skippedReason}`,
           requestId: payload.requestId,
           recordId: payload.recordId,
           toStage: payload.toStage,
@@ -52,40 +77,85 @@ export class FeishuNotificationService {
           recipientCount: payload.recipients.length,
         }),
       );
-      return;
+      return {
+        ...baseResult,
+        skippedCount: payload.recipients.length,
+        skippedReasons: [skippedReason],
+      };
     }
 
     const recipients = dedupeRecipients(payload.recipients);
+    baseResult.recipientCount = recipients.length;
     if (!recipients.length) {
-      this.logger.warn(`Skip workflow notification: no recipients for ${payload.idempotencyKey}`);
-      return;
+      const skippedReason = 'no recipients';
+      this.logger.warn(`Skip workflow notification: ${skippedReason} for ${payload.idempotencyKey}`);
+      return {
+        ...baseResult,
+        skippedCount: 1,
+        skippedReasons: [skippedReason],
+      };
     }
 
-    const token = await this.getTenantAccessToken();
-    await Promise.all(
-      recipients.map((recipient) =>
-        this.sendToRecipient(token, payload, recipient).catch((error) => {
-          this.logger.warn(
-            JSON.stringify({
-              message: 'Failed to send workflow notification',
-              requestId: payload.requestId,
-              recordId: payload.recordId,
-              toStage: payload.toStage,
-              recipient: maskRecipient(recipient),
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+    let token = '';
+    try {
+      token = await this.getTenantAccessToken();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Failed to get Feishu tenant access token',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          error: errorMessage,
         }),
-      ),
+      );
+      return {
+        ...baseResult,
+        failedCount: recipients.length,
+        errors: [errorMessage],
+      };
+    }
+
+    const deliveries = await Promise.all(
+      recipients.map((recipient) => this.sendToRecipient(token, payload, recipient)),
     );
+    const skippedReasons = uniqueStrings(deliveries.map((item) => item.skippedReason || '').filter(Boolean));
+    const errors = uniqueStrings(deliveries.map((item) => item.error || '').filter(Boolean));
+    return {
+      ...baseResult,
+      sentCount: deliveries.filter((item) => item.sent).length,
+      skippedCount: deliveries.filter((item) => item.skippedReason).length,
+      failedCount: deliveries.filter((item) => item.error).length,
+      ...(skippedReasons.length ? { skippedReasons } : {}),
+      ...(errors.length ? { errors } : {}),
+    };
   }
 
-  private async sendToRecipient(token: string, payload: WorkflowTransitionNotification, recipient: WorkflowNotificationRecipient): Promise<void> {
+  private async sendToRecipient(token: string, payload: WorkflowTransitionNotification, recipient: WorkflowNotificationRecipient): Promise<RecipientDeliveryResult> {
     const recipientKey = normalizeEmail(recipient.email) || recipient.larkUserId || recipient.user_id;
     const dedupeKey = `${payload.idempotencyKey}:${recipientKey}`;
-    if (this.hasRecentSentKey(dedupeKey)) return;
+    if (this.hasRecentSentKey(dedupeKey)) {
+      return {
+        sent: false,
+        skippedReason: 'duplicate notification suppressed',
+      };
+    }
 
-    const openId = await this.resolveOpenId(token, recipient);
+    const openId = await this.resolveOpenId(token, recipient).catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Failed to resolve workflow notification recipient',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          recipient: maskRecipient(recipient),
+          error: errorMessage,
+        }),
+      );
+      return '';
+    });
     if (!openId) {
       this.logger.warn(
         JSON.stringify({
@@ -96,7 +166,10 @@ export class FeishuNotificationService {
           recipient: maskRecipient(recipient),
         }),
       );
-      return;
+      return {
+        sent: false,
+        skippedReason: 'cannot resolve recipient open_id',
+      };
     }
 
     this.markSentKey(dedupeKey);
@@ -110,21 +183,51 @@ export class FeishuNotificationService {
         },
         token,
       );
+      this.logger.log(
+        JSON.stringify({
+          message: 'Workflow notification sent',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          recipient: maskRecipient(recipient),
+        }),
+      );
+      return { sent: true };
     } catch (error) {
       this.sentKeys.delete(dedupeKey);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Failed to send workflow notification',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          recipient: maskRecipient(recipient),
+          error: errorMessage,
+        }),
+      );
+      return {
+        sent: false,
+        error: errorMessage,
+      };
     }
   }
 
   private async resolveOpenId(token: string, recipient: WorkflowNotificationRecipient): Promise<string | null> {
+    const directOpenId = [recipient.larkUserId, recipient.user_id].find((value) => typeof value === 'string' && value.startsWith('ou_'));
+    if (directOpenId) return directOpenId;
+
     const email = normalizeEmail(recipient.email);
     if (email) {
       const emailOpenId = await this.resolveOpenIdByEmail(token, email);
       if (emailOpenId) return emailOpenId;
     }
 
-    const directOpenId = [recipient.larkUserId, recipient.user_id].find((value) => typeof value === 'string' && value.startsWith('ou_'));
-    if (directOpenId) return directOpenId;
+    const numericUserId = normalizeNumericUserId(recipient.user_id);
+    if (numericUserId) {
+      const userOpenId = await this.resolveOpenIdByUserId(token, numericUserId);
+      if (userOpenId) return userOpenId;
+    }
 
     return null;
   }
@@ -133,7 +236,7 @@ export class FeishuNotificationService {
     const cached = this.openIdCache.get(email);
     if (cached && cached.expiresAt > Date.now()) return cached.openId;
 
-    const response = await this.postFeishuApi<{ user_list?: Array<{ user_id?: string }> }>(
+    const response = await this.postFeishuApi<{ user_list?: Array<{ user_id?: string; open_id?: string }> }>(
       'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id',
       {
         emails: [email],
@@ -141,10 +244,29 @@ export class FeishuNotificationService {
       },
       token,
     );
-    const openId = response.data?.user_list?.[0]?.user_id || '';
+    const openId = response.data?.user_list?.[0]?.user_id || response.data?.user_list?.[0]?.open_id || '';
     if (!openId) return null;
 
     this.openIdCache.set(email, {
+      openId,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    });
+    return openId;
+  }
+
+  private async resolveOpenIdByUserId(token: string, userId: string): Promise<string | null> {
+    const cacheKey = `user_id:${userId}`;
+    const cached = this.openIdCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.openId;
+
+    const response = await this.getFeishuApi<{ user?: { open_id?: string; user_id?: string; email?: string } }>(
+      `https://open.feishu.cn/open-apis/contact/v3/users/${encodeURIComponent(userId)}?user_id_type=user_id`,
+      token,
+    );
+    const openId = response.data?.user?.open_id || (response.data?.user?.user_id?.startsWith('ou_') ? response.data.user.user_id : '');
+    if (!openId) return null;
+
+    this.openIdCache.set(cacheKey, {
       openId,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
@@ -180,15 +302,31 @@ export class FeishuNotificationService {
     body: Record<string, unknown>,
     token?: string,
   ): Promise<FeishuApiResponse<T>> {
+    return this.requestFeishuApi('POST', url, token, body);
+  }
+
+  private async getFeishuApi<T = Record<string, unknown>>(
+    url: string,
+    token?: string,
+  ): Promise<FeishuApiResponse<T>> {
+    return this.requestFeishuApi('GET', url, token);
+  }
+
+  private async requestFeishuApi<T = Record<string, unknown>>(
+    method: 'GET' | 'POST',
+    url: string,
+    token?: string,
+    body?: Record<string, unknown>,
+  ): Promise<FeishuApiResponse<T>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json; charset=utf-8',
     };
     if (token) headers.Authorization = `Bearer ${token}`;
 
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       headers,
-      body: JSON.stringify(body),
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const payload = await response.json().catch(() => ({})) as FeishuApiResponse<T>;
     if (!response.ok || payload.code !== 0) {
@@ -347,6 +485,15 @@ function normalizeEmail(value?: string): string {
 }
 
 function uniqueRoleLabels(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function normalizeNumericUserId(value?: string): string {
+  const id = String(value || '').trim();
+  return /^\d+$/.test(id) ? id : '';
+}
+
+function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 }
 

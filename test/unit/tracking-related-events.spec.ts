@@ -451,6 +451,113 @@ describe('同需求埋点事件', () => {
     expect(bitable.deleteRecords).toHaveBeenCalledWith('workbench', ['rec_2']);
   });
 
+  it('应支持按需求单删除所有同需求事件和设计参数', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '测试事件 1',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        正式状态: '待开发',
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_2',
+        事件中文名: '测试事件 2',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        正式状态: '待开发',
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        if (instanceKey === 'paramDetail') {
+          return {
+            records: [
+              {
+                id: 'param_1',
+                record: {
+                  evt_id: 'event_1',
+                  参数名: 'p1',
+                  来源设计记录ID: 'rec_1',
+                  关联设计: ['rec_1'],
+                },
+              },
+              {
+                id: 'param_2',
+                record: {
+                  evt_id: 'event_2',
+                  参数名: 'p2',
+                  来源设计记录ID: 'rec_2',
+                  关联设计: ['rec_2'],
+                },
+              },
+            ],
+            hasMore: false,
+          };
+        }
+        return { records: [], hasMore: false };
+      }),
+      deleteRecords: jest.fn().mockResolvedValue(true),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.deleteRequest('app:rec_1', {
+      actorId: '1867390536304713',
+    });
+
+    expect(result).toEqual({
+      success: true,
+      deletedRequestId: 'APP_REQ_TEST',
+      deletedRecordCount: 2,
+      deletedParamCount: 2,
+    });
+    expect(bitable.deleteRecords).toHaveBeenCalledWith('paramDetail', ['param_1', 'param_2']);
+    expect(bitable.deleteRecords).toHaveBeenCalledWith('workbench', ['rec_1', 'rec_2']);
+  });
+
+  it('已进入正式链路的需求单不应被物理删除', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        evt_id: 'event_1',
+        事件中文名: '正式事件',
+        流程阶段: '稳定归档',
+        记录类型: '埋点设计',
+        评审状态: '已通过',
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        正式状态: '已上线',
+        发布状态: '发布成功',
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockResolvedValue({ records: [current], hasMore: false }),
+      deleteRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(service.deleteRequest('app:rec_1', {
+      actorId: '1867390536304713',
+    })).rejects.toThrow('不支持直接删除');
+
+    expect(bitable.deleteRecords).not.toHaveBeenCalled();
+  });
+
   it('设计阶段提交评审应按需求粒度把所有同需求事件推进到埋点评审', async () => {
     const current = {
       id: 'rec_1',
@@ -514,6 +621,97 @@ describe('同需求埋点事件', () => {
         },
       },
     ]);
+  });
+
+  it('提交评审时应按需求粒度通知数据和研发负责人', async () => {
+    const current = {
+      id: 'rec_1',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        需求名称: '图片背景移除功能',
+        evt_id: 'event_1',
+        事件中文名: '主事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        优先级: 'P0',
+        端: ['iOS', 'Android'],
+        数据负责人: [{ id: 'ou_data_owner', name: '数据同学' }],
+        研发负责人: [{ id: 'ou_dev_owner', name: '研发同学' }],
+        创建时间: 100,
+      },
+    };
+    const sibling = {
+      id: 'rec_2',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        需求名称: '图片背景移除功能',
+        evt_id: 'event_2',
+        事件中文名: '补充事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        评审状态: '草稿',
+        数据负责人: [{ id: 'ou_data_owner', name: '数据同学' }],
+        研发负责人: [{ id: 'ou_dev_owner', name: '研发同学' }],
+        创建时间: 200,
+      },
+    };
+    const notification = {
+      getRuntimeStatus: jest.fn().mockReturnValue({
+        configured: true,
+        hasAppId: true,
+        hasAppSecret: true,
+        usingDefaultAppId: false,
+      }),
+      sendWorkflowTransitionNotification: jest.fn().mockResolvedValue({
+        planned: true,
+        configured: true,
+        recipientCount: 2,
+        sentCount: 2,
+        skippedCount: 0,
+        failedCount: 0,
+      }),
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'workbench') {
+          return { records: [current, sibling], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }, { id: 'rec_2' }]),
+    };
+    const service = new TrackingService(
+      bitable as unknown as BitableService,
+      undefined as never,
+      notification as never,
+    );
+
+    const result = await service.updateRecord('app:rec_1', {
+      actorId: '1867390536304713',
+      stageId: 'design',
+      fields: {
+        评审状态: '评审中',
+      },
+    });
+
+    expect(result.notification).toEqual(expect.objectContaining({
+      recipientCount: 2,
+      sentCount: 2,
+    }));
+    expect(notification.sendWorkflowTransitionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'APP_REQ_TEST',
+        requestName: '图片背景移除功能',
+        toStage: '埋点评审',
+        eventIds: ['event_1', 'event_2'],
+        recipients: expect.arrayContaining([
+          expect.objectContaining({ larkUserId: 'ou_data_owner', role: '数据负责人' }),
+          expect.objectContaining({ larkUserId: 'ou_dev_owner', role: '研发负责人' }),
+        ]),
+      }),
+    );
   });
 
   it('评审通过应按需求粒度把所有同需求事件推进到埋点开发', async () => {
@@ -639,6 +837,7 @@ describe('同需求埋点事件', () => {
         record: {
           埋点开发状态: '已开发',
           流程阶段: '数据验收',
+          评审状态: '已通过',
         },
       },
       {
@@ -646,6 +845,7 @@ describe('同需求埋点事件', () => {
         record: {
           流程阶段: '数据验收',
           埋点开发状态: '已开发',
+          评审状态: '已通过',
         },
       },
     ]);

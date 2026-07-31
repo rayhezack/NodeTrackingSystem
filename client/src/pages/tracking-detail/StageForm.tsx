@@ -55,6 +55,7 @@ import { resolveUiImagePreview, updateTrackingRecord } from '@client/src/api/tra
 import type {
   TrackingAttachment,
   TrackingDetail,
+  WorkflowNotificationResult,
 } from '@shared/api.interface';
 import ParamDesigner from './param-designer/ParamDesigner';
 import RelatedEventsPanel from './RelatedEventsPanel';
@@ -243,12 +244,12 @@ const StageForm = ({
         fields,
         dirtyFieldNames,
       );
-      await updateTrackingRecord(detail.recordId, {
+      const response = await updateTrackingRecord(detail.recordId, {
         ...request,
         actorId,
         actorLarkId,
       });
-      toast.success(`${stageConfig.label}已标记完成`);
+      showCompletionToast(stageConfig.label, response.notification);
       await onSaved?.();
     } catch (error) {
       const msg = error instanceof Error ? error.message : '标记完成失败';
@@ -500,6 +501,31 @@ function getOptionsForField(field: StageConfig['fields'][number], detail: Tracki
     return detail.source === 'web' ? WEB_HANDLER_OPTIONS : APP_HANDLER_OPTIONS;
   }
   return field.options || [];
+}
+
+function showCompletionToast(label: string, notification?: WorkflowNotificationResult) {
+  if (!notification) {
+    toast.success(`${label}已标记完成`);
+    return;
+  }
+
+  if (!notification.configured) {
+    toast.warning(`${label}已标记完成，但机器人通知未配置`);
+    return;
+  }
+
+  if (notification.sentCount > 0 && notification.failedCount === 0 && notification.skippedCount === 0) {
+    toast.success(`${label}已标记完成，已通知 ${notification.sentCount} 人`);
+    return;
+  }
+
+  const issue = [
+    ...(notification.errors || []),
+    ...(notification.skippedReasons || []),
+  ][0];
+  toast.warning(
+    `${label}已标记完成，但通知未完全送达：成功 ${notification.sentCount}/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
+  );
 }
 
 export default StageForm;

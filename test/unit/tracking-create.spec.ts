@@ -87,6 +87,49 @@ describe('提需创建记录', () => {
     expect(record['需求ID']).toMatch(/^APP_REQ_/);
   });
 
+  it('人员选择器返回 raw 信息时，应在通知身份快照中保留 open_id 和邮箱', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.createRecord({
+      source: 'app',
+      requestName: '通知身份测试',
+      eventName: '通知身份测试',
+      actorId: '1867390536304713',
+      requesterIds: [
+        {
+          user_id: '1867390536304713',
+          name: '孙文',
+        },
+      ],
+      dataOwnerIds: [
+        {
+          user_id: '3008',
+          name: 'Joe Liu',
+          raw: {
+            open_id: 'ou_joe_owner',
+            email: 'joe@mail.pollo.ai',
+            name: { zh_cn: '刘桥' },
+          },
+        } as never,
+      ],
+    });
+
+    const record = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
+    const snapshot = JSON.parse(String(record['通知身份快照'])) as Record<string, Array<Record<string, string>>>;
+    expect(snapshot['数据负责人']).toEqual([
+      expect.objectContaining({
+        user_id: '3008',
+        larkUserId: 'ou_joe_owner',
+        email: 'joe@mail.pollo.ai',
+        name: 'Joe Liu',
+      }),
+    ]);
+  });
+
   it('未显式传需求提出人时，应默认使用当前用户作为提需人', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),

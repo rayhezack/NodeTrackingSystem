@@ -9,6 +9,8 @@ import type {
   CreateSiblingTrackingEventResponse,
   CreateTrackingRecordRequest,
   CreateTrackingRecordResponse,
+  DeleteTrackingRequestRequest,
+  DeleteTrackingRequestResponse,
   DeleteParamResponse,
   DeleteTrackingEventRequest,
   DeleteTrackingEventResponse,
@@ -42,6 +44,8 @@ import type {
   UpdateParamResponse,
   UpdateTrackingRecordRequest,
   UpdateTrackingRecordResponse,
+  NotificationRuntimeStatus,
+  WorkflowNotificationResult,
 } from '@shared/api.interface';
 import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
@@ -269,8 +273,17 @@ export class TrackingService {
   constructor(
     private readonly bitable: BitableService,
     private readonly fileService: FileService,
-    private readonly notification: FeishuNotificationService,
+    private readonly notification?: FeishuNotificationService,
   ) {}
+
+  getNotificationStatus(): NotificationRuntimeStatus {
+    return this.notification?.getRuntimeStatus?.() || {
+      configured: false,
+      hasAppId: false,
+      hasAppSecret: false,
+      usingDefaultAppId: true,
+    };
+  }
 
   async getStageStats(params: GetStageStatsParams = {}): Promise<GetStageStatsResponse> {
     const records = await this.listWorkbenchRecordsBySource(params.source);
@@ -768,6 +781,50 @@ export class TrackingService {
     };
   }
 
+  async deleteRequest(recordId: string, body: DeleteTrackingRequestRequest = {}): Promise<DeleteTrackingRequestResponse> {
+    const ref = parseScopedRecordId(recordId);
+    const source = ref.source;
+    const workbench = workbenchKey(source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
+    if (!current) {
+      throw new NotFoundException('埋点需求不存在');
+    }
+
+    const permissions = await this.getActorPermissionsForRecord(source, current, body.actorId, body.actorLarkId, '删除需求单');
+    if (!permissions.canEditRequirement && !permissions.canEditDesign && !permissions.canEditArchive) {
+      throw new ForbiddenException('当前用户无权限删除需求单');
+    }
+
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    const blockedRecord = relatedRecords.find((record) => hasOfficialSyncFootprint(record.record));
+    if (blockedRecord) {
+      throw new BadRequestException('需求已进入正式上线或归档链路，不支持直接删除；如需下线请走废弃/归档流程以保留审计');
+    }
+
+    const paramIds: string[] = [];
+    for (const record of relatedRecords) {
+      const params = await this.listParamsForDesign(source, record.id, cellText(record.record['evt_id']));
+      paramIds.push(...params.map((param) => param.id));
+    }
+
+    const uniqueParamIds = uniqueStrings(paramIds);
+    for (let index = 0; index < uniqueParamIds.length; index += 200) {
+      await this.bitable.deleteRecords(paramDetailKey(source), uniqueParamIds.slice(index, index + 200));
+    }
+
+    const recordIds = relatedRecords.map((record) => record.id);
+    for (let index = 0; index < recordIds.length; index += 200) {
+      await this.bitable.deleteRecords(workbench, recordIds.slice(index, index + 200));
+    }
+
+    return {
+      success: true,
+      deletedRequestId: cellText(current.record['需求ID']) || undefined,
+      deletedRecordCount: recordIds.length,
+      deletedParamCount: uniqueParamIds.length,
+    };
+  }
+
   async reuseOfficialEvent(recordId: string, body: ReuseOfficialEventRequest): Promise<ReuseOfficialEventResponse> {
     const ref = parseScopedRecordId(recordId);
     const source = ref.source;
@@ -927,6 +984,7 @@ export class TrackingService {
       }
       patch['需求名称'] = requestName;
     }
+    normalizeWorkflowProgressPatch(patch, current.record);
     const notificationSnapshotPatch = buildMergedNotificationIdentitySnapshot(ref.source, current.record, body.fields || {});
     for (const fieldName of USER_FIELD_NAMES) {
       if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
@@ -987,8 +1045,13 @@ export class TrackingService {
     for (const update of mergedUpdates) {
       await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
     }
-    await this.notifyWorkflowTransition(ref.source, recordId, current.record, nextRecord, body, mergedUpdates);
-    return { success: true, recordId, currentStage };
+    const notification = await this.notifyWorkflowTransition(ref.source, recordId, current.record, nextRecord, body, mergedUpdates);
+    return {
+      success: true,
+      recordId,
+      currentStage,
+      ...(notification ? { notification } : {}),
+    };
   }
 
   async getParams(recordId: string): Promise<GetParamsResponse> {
@@ -1771,9 +1834,21 @@ export class TrackingService {
     nextRecord: Record<string, unknown>,
     body: UpdateTrackingRecordRequest,
     updates: BitableRecordUpdate[],
-  ): Promise<void> {
+  ): Promise<WorkflowNotificationResult | undefined> {
     const plan = getWorkflowNotificationPlan(body.stageId, body.targetStage, previousRecord, nextRecord);
-    if (!plan) return;
+    if (!plan) return undefined;
+
+    if (!this.notification) {
+      return {
+        planned: true,
+        configured: false,
+        recipientCount: 0,
+        sentCount: 0,
+        skippedCount: 1,
+        failedCount: 0,
+        skippedReasons: ['notification service is unavailable'],
+      };
+    }
 
     try {
       const records = await this.getNotificationScopedRecords(source, updates, { id: parseScopedRecordId(recordId).rawId, record: nextRecord });
@@ -1804,8 +1879,9 @@ export class TrackingService {
         eventNames,
         recipients,
       };
-      await this.notification.sendWorkflowTransitionNotification(notificationPayload);
+      return await this.notification.sendWorkflowTransitionNotification(notificationPayload);
     } catch (error) {
+      const runtimeStatus = this.getNotificationStatus();
       this.logger.warn(
         JSON.stringify({
           message: 'Workflow transition succeeded but notification failed',
@@ -1814,6 +1890,15 @@ export class TrackingService {
           error: error instanceof Error ? error.message : String(error),
         }),
       );
+      return {
+        planned: true,
+        configured: runtimeStatus.configured,
+        recipientCount: 0,
+        sentCount: 0,
+        skippedCount: 0,
+        failedCount: 1,
+        errors: [error instanceof Error ? error.message : String(error)],
+      };
     }
   }
 
@@ -2347,7 +2432,7 @@ function mergeNotificationIdentitySnapshots(records: BitableRecord[]): Notificat
     for (const fieldName of USER_FIELD_NAME_LIST) {
       const users = item[fieldName] || [];
       if (!users.length) continue;
-      const map = new Map((snapshot[fieldName] || []).map((user) => [user.user_id || user.larkUserId || user.email || '', user]));
+      const map = new Map((snapshot[fieldName] || []).map((user) => [primaryUserRefKey(user), user]));
       mergeUserRefsIntoMap(map, users);
       snapshot[fieldName] = Array.from(map.values());
     }
@@ -2386,7 +2471,7 @@ function toNotificationSnapshotUsers(value: unknown): TrackingUserRef[] {
   for (const item of values) {
     const user = toNotificationSnapshotUser(item);
     if (!user) continue;
-    const key = user.user_id || user.larkUserId || user.email || '';
+    const key = primaryUserRefKey(user);
     if (!key) continue;
     const current = userMap.get(key);
     userMap.set(key, {
@@ -2411,34 +2496,40 @@ function toNotificationSnapshotUser(item: unknown): TrackingUserRef | null {
   if (!item || typeof item !== 'object') return null;
 
   const user = item as Record<string, unknown>;
-  const id = [
-    user.user_id,
-    user.userId,
-    user.userID,
-    user.miaoda_user_id,
-    user.miaodaUserID,
-    user.employee_id,
-    user.employeeID,
-    user.id,
-    user.larkUserId,
-    user.larkUserID,
-    user.larkID,
-    user.open_id,
-    user.openId,
-  ].find((candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number');
-  const larkUserId = [
-    user.larkUserId,
-    user.larkUserID,
-    user.lark_user_id,
-    user.larkID,
-    user.lark_id,
-    user.open_id,
-    user.openId,
-  ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.startsWith('ou_'));
-  const email = [user.email, user.mail, user.emailAddress, user.email_address].find(
-    (candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'),
-  );
-  const name = localizedText(user.name) || localizedText(user.en_name);
+  const candidates = userObjectCandidates(user);
+  const id = firstUserCandidateValue(candidates, [
+    'user_id',
+    'userId',
+    'userID',
+    'miaoda_user_id',
+    'miaodaUserID',
+    'employee_id',
+    'employeeID',
+    'id',
+    'larkUserId',
+    'larkUserID',
+    'larkID',
+    'open_id',
+    'openId',
+  ], isNonEmptyIdCandidate);
+  const larkUserId = firstUserCandidateValue(candidates, [
+    'larkUserId',
+    'larkUserID',
+    'lark_user_id',
+    'larkID',
+    'lark_id',
+    'open_id',
+    'openId',
+    'id',
+    'user_id',
+  ], (candidate) => typeof candidate === 'string' && candidate.trim().startsWith('ou_'));
+  const email = firstUserCandidateValue(candidates, [
+    'email',
+    'mail',
+    'emailAddress',
+    'email_address',
+  ], (candidate) => typeof candidate === 'string' && candidate.includes('@'));
+  const name = firstLocalizedUserCandidateValue(candidates, ['name', 'en_name', 'display_name', 'displayName']);
   const normalizedId = id ? String(id) : larkUserId || email || '';
   if (!normalizedId) return null;
   return {
@@ -2447,6 +2538,47 @@ function toNotificationSnapshotUser(item: unknown): TrackingUserRef | null {
     ...(email ? { email } : {}),
     ...(name && name !== normalizedId ? { name } : {}),
   };
+}
+
+function primaryUserRefKey(user: TrackingUserRef): string {
+  return user.larkUserId || normalizeSnapshotEmail(user.email) || user.user_id || '';
+}
+
+function userObjectCandidates(user: Record<string, unknown>): Record<string, unknown>[] {
+  const raw = user.raw;
+  const candidates = [user];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    candidates.push(raw as Record<string, unknown>);
+  }
+  return candidates;
+}
+
+function firstUserCandidateValue(
+  candidates: Record<string, unknown>[],
+  keys: string[],
+  predicate: (value: unknown) => boolean,
+): string {
+  for (const candidate of candidates) {
+    for (const key of keys) {
+      const value = candidate[key];
+      if (predicate(value)) return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function firstLocalizedUserCandidateValue(candidates: Record<string, unknown>[], keys: string[]): string {
+  for (const candidate of candidates) {
+    for (const key of keys) {
+      const value = localizedText(candidate[key]);
+      if (value) return value;
+    }
+  }
+  return '';
+}
+
+function isNonEmptyIdCandidate(candidate: unknown): boolean {
+  return (typeof candidate === 'string' && candidate.trim().length > 0) || typeof candidate === 'number';
 }
 
 function getNotificationRoleLabel(fieldName: string): string {
@@ -3163,6 +3295,19 @@ function shouldSyncDeprecatedQueryRecord(record: Record<string, unknown>): boole
   return stage === '已废弃' || (stage === '稳定归档' && (officialStatus === '已废弃' || changeType === '废弃'));
 }
 
+function hasOfficialSyncFootprint(record: Record<string, unknown>): boolean {
+  if (shouldSyncOfficialQueryRecord(record) || shouldSyncDeprecatedQueryRecord(record)) {
+    return true;
+  }
+
+  const stage = cellText(record['流程阶段']);
+  const officialStatus = cellText(record['正式状态']);
+  const publishStatus = cellText(record['发布状态']);
+  return ['稳定归档', '已废弃'].includes(stage) ||
+    ['已上线', '已废弃'].includes(officialStatus) ||
+    publishStatus === '发布成功';
+}
+
 function getOfficialQueryStatus(record: Record<string, unknown>): string {
   const officialStatus = cellText(record['正式状态']);
   if (officialStatus && officialStatus !== '待开发' && officialStatus !== '未归档') {
@@ -3630,14 +3775,39 @@ function normalizeReviewStatus(value?: string): string {
   return ['草稿', '评审中', '已通过', '已拒绝'].includes(normalized) ? normalized : '草稿';
 }
 
+function normalizeWorkflowProgressPatch(patch: Record<string, unknown>, currentRecord: Record<string, unknown>): void {
+  const stage = cellText(patch['流程阶段']) || cellText(currentRecord['流程阶段']) || '需求录入';
+  if (stage === '已废弃') return;
+
+  const index = getStageIndex(stage);
+  if (index >= getStageIndex('评审通过')) {
+    const reviewStatus = cellText(patch['评审状态']) || cellText(currentRecord['评审状态']);
+    if (reviewStatus !== '已通过') patch['评审状态'] = '已通过';
+  }
+  if (index >= getStageIndex('数据验收')) {
+    const devStatus = cellText(patch['埋点开发状态']) || cellText(currentRecord['埋点开发状态']);
+    if (devStatus !== '已开发') patch['埋点开发状态'] = '已开发';
+  }
+  if (index >= getStageIndex('上线监控')) {
+    const acceptanceStatus = cellText(patch['DS验收状态']) || cellText(currentRecord['DS验收状态']);
+    if (!['通过', '豁免'].includes(acceptanceStatus)) patch['DS验收状态'] = '通过';
+  }
+  if (index >= getStageIndex('稳定归档')) {
+    const publishStatus = cellText(patch['发布状态']) || cellText(currentRecord['发布状态']);
+    const monitorStatus = cellText(patch['上线监控状态']) || cellText(currentRecord['上线监控状态']);
+    if (publishStatus !== '发布成功') patch['发布状态'] = '发布成功';
+    if (!['通过', '豁免'].includes(monitorStatus)) patch['上线监控状态'] = '通过';
+  }
+}
+
 const REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID: Record<string, string[]> = {
   requirement: ['流程阶段'],
   design: ['评审状态'],
   review: ['流程阶段', '评审状态', '评审意见'],
-  dev: ['流程阶段', '埋点开发状态'],
-  acceptance: ['流程阶段', 'DS验收状态', 'DS验收证据', 'DS验收时间'],
-  launch: ['流程阶段', '发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间'],
-  archive: ['流程阶段', '正式状态', '稳定归档时间'],
+  dev: ['流程阶段', '评审状态', '埋点开发状态'],
+  acceptance: ['流程阶段', '评审状态', '埋点开发状态', 'DS验收状态', 'DS验收证据', 'DS验收时间'],
+  launch: ['流程阶段', '评审状态', '埋点开发状态', 'DS验收状态', 'DS验收证据', 'DS验收时间', '发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间'],
+  archive: ['流程阶段', '评审状态', '埋点开发状态', 'DS验收状态', 'DS验收证据', 'DS验收时间', '发布门禁状态', '发布门禁失败原因', '发布状态', '发布错误', '上线监控状态', '上线监控结论', '发布时间', '正式状态', '稳定归档时间'],
 };
 
 const REQUEST_WORKFLOW_FIELD_NAMES = uniqueStrings(Object.values(REQUEST_WORKFLOW_FIELDS_BY_STAGE_ID).flat());

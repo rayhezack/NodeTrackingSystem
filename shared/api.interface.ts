@@ -218,6 +218,18 @@ export interface DeleteTrackingEventResponse {
   redirectRecordId?: string;
 }
 
+export interface DeleteTrackingRequestRequest {
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface DeleteTrackingRequestResponse {
+  success: boolean;
+  deletedRequestId?: string;
+  deletedRecordCount: number;
+  deletedParamCount: number;
+}
+
 export interface ReuseOfficialEventRequest {
   officialRecordId: string;
   officialParamKeys?: string[];
@@ -328,6 +340,25 @@ export interface UpdateTrackingRecordResponse {
   success: boolean;
   recordId: string;
   currentStage: string;
+  notification?: WorkflowNotificationResult;
+}
+
+export interface WorkflowNotificationResult {
+  planned: boolean;
+  configured: boolean;
+  recipientCount: number;
+  sentCount: number;
+  skippedCount: number;
+  failedCount: number;
+  skippedReasons?: string[];
+  errors?: string[];
+}
+
+export interface NotificationRuntimeStatus {
+  configured: boolean;
+  hasAppId: boolean;
+  hasAppSecret: boolean;
+  usingDefaultAppId: boolean;
 }
 
 // 参数明细

@@ -2,9 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
-import { getTrackingDetail } from '@client/src/api/tracking';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@client/src/components/ui/alert-dialog';
+import { deleteTrackingRequest, getTrackingDetail } from '@client/src/api/tracking';
 import type { RelatedTrackingEvent, TrackingDetail, TrackingDetailSnapshot, TrackingUserRef } from '@shared/api.interface';
 import DetailHeader from './DetailHeader';
 import ProcessFlowBar from './ProcessFlowBar';
@@ -26,6 +38,8 @@ const TrackingDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<string>('requirement');
+  const [deleteRequestOpen, setDeleteRequestOpen] = useState(false);
+  const [deletingRequest, setDeletingRequest] = useState(false);
   const detailCacheRef = useRef<Record<string, TrackingDetail>>({});
 
   const cacheKey = useCallback(
@@ -159,6 +173,26 @@ const TrackingDetailPage = () => {
     navigate('/');
   };
 
+  const handleDeleteRequest = async () => {
+    if (!detail || deletingRequest) return;
+    setDeletingRequest(true);
+    try {
+      const result = await deleteTrackingRequest(detail.recordId, {
+        actorId: actor.id,
+        actorLarkId: actor.larkId,
+      });
+      toast.success(`需求单已删除：${result.deletedRecordCount} 个事件、${result.deletedParamCount} 个参数`);
+      detailCacheRef.current = {};
+      setDeleteRequestOpen(false);
+      navigate('/');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '删除需求单失败';
+      toast.error(msg);
+    } finally {
+      setDeletingRequest(false);
+    }
+  };
+
   // 骨架屏
   if (loading) {
     return (
@@ -231,11 +265,12 @@ const TrackingDetailPage = () => {
     detail.reviewStatus,
     officialStatus,
   );
+  const canDeleteRequest = detail.permissions.canEditRequirement || detail.permissions.canEditDesign || detail.permissions.canEditArchive;
 
   return (
     <div className="space-y-4">
       {/* 返回按钮 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <Button
           variant="ghost"
           size="sm"
@@ -245,6 +280,45 @@ const TrackingDetailPage = () => {
           <ArrowLeft className="h-4 w-4" />
           返回列表
         </Button>
+        {canDeleteRequest && (
+          <AlertDialog open={deleteRequestOpen} onOpenChange={setDeleteRequestOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-sm border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={deletingRequest}
+              >
+                {deletingRequest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                删除需求单
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="rounded-sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认删除整个需求单？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  将删除「{detail.requestName || detail.eventName || detail.evtId}」下的所有埋点事件和设计参数；不会删除正式查询库。已上线、已归档或已废弃的需求会被后端拒绝。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-sm" disabled={deletingRequest}>
+                  取消
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="rounded-sm bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deletingRequest}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void handleDeleteRequest();
+                  }}
+                >
+                  {deletingRequest && <Loader2 className="h-4 w-4 animate-spin" />}
+                  确认删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       {/* 详情卡片 */}

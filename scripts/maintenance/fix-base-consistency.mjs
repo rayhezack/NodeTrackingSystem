@@ -339,7 +339,6 @@ async function fixWorkflowState(source, records, shouldExecute) {
 
   let updated = 0;
   for (const groupRecords of groups.values()) {
-    if (groupRecords.length < 2) continue;
     const workflowRecord = groupRecords
       .slice()
       .sort((a, b) => stageIndex(b.record) - stageIndex(a.record) || timestamp(b.record['更新时间']) - timestamp(a.record['更新时间']))[0];
@@ -350,16 +349,49 @@ async function fixWorkflowState(source, records, shouldExecute) {
         .filter((field) => hasValue(workflowRecord.record[field]))
         .map((field) => [field, scalarForWrite(workflowRecord.record[field])]),
     );
+    normalizeWorkflowProgressPatch(patch, workflowRecord.record);
     for (const record of groupRecords) {
-      if (record.id === workflowRecord.id) continue;
       if (stageIndex(record.record) >= targetIndex && !hasWorkflowDiff(record.record, patch)) continue;
       updated += 1;
+      if (verbose) {
+        console.error(JSON.stringify({
+          tableId: source.workbenchTable,
+          recordId: record.id,
+          requestId: text(record.record['需求ID']),
+          diff: diffFields(record.record, patch),
+        }, null, 2));
+      }
       if (shouldExecute) {
         upsertRecord(source.baseToken, source.workbenchTable, patch, record.id);
       }
     }
   }
   return updated;
+}
+
+function normalizeWorkflowProgressPatch(patch, currentRecord) {
+  const stage = text(patch['流程阶段']) || text(currentRecord['流程阶段']) || '需求录入';
+  if (stage === '已废弃') return;
+
+  const index = STAGE_ORDER.indexOf(stage);
+  if (index >= STAGE_ORDER.indexOf('评审通过')) {
+    const reviewStatus = text(patch['评审状态']) || text(currentRecord['评审状态']);
+    if (reviewStatus !== '已通过') patch['评审状态'] = '已通过';
+  }
+  if (index >= STAGE_ORDER.indexOf('数据验收')) {
+    const devStatus = text(patch['埋点开发状态']) || text(currentRecord['埋点开发状态']);
+    if (devStatus !== '已开发') patch['埋点开发状态'] = '已开发';
+  }
+  if (index >= STAGE_ORDER.indexOf('上线监控')) {
+    const acceptanceStatus = text(patch['DS验收状态']) || text(currentRecord['DS验收状态']);
+    if (!['通过', '豁免'].includes(acceptanceStatus)) patch['DS验收状态'] = '通过';
+  }
+  if (index >= STAGE_ORDER.indexOf('稳定归档')) {
+    const publishStatus = text(patch['发布状态']) || text(currentRecord['发布状态']);
+    const monitorStatus = text(patch['上线监控状态']) || text(currentRecord['上线监控状态']);
+    if (publishStatus !== '发布成功') patch['发布状态'] = '发布成功';
+    if (!['通过', '豁免'].includes(monitorStatus)) patch['上线监控状态'] = '通过';
+  }
 }
 
 async function upsertByKey(baseToken, tableId, rows, existingByKey, shouldExecute) {

@@ -60,6 +60,31 @@ describe('详情阶段表单状态', () => {
     ]);
   });
 
+  it('应保留人员选择器 raw 中的 open_id 和邮箱', () => {
+    expect(typeof utils.toTrackingUserRefs).toBe('function');
+    if (!utils.toTrackingUserRefs) return;
+
+    expect(
+      utils.toTrackingUserRefs([
+        {
+          id: '3008',
+          name: 'Joe Liu',
+          raw: {
+            open_id: 'ou_joe_owner',
+            email: 'joe@mail.pollo.ai',
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        user_id: '3008',
+        larkUserId: 'ou_joe_owner',
+        email: 'joe@mail.pollo.ai',
+        name: 'Joe Liu',
+      },
+    ]);
+  });
+
   it('只回写用户实际修改过的字段，避免空表单覆盖 Base', () => {
     expect(typeof utils.buildStageUpdateRequest).toBe('function');
     if (!utils.buildStageUpdateRequest) return;
