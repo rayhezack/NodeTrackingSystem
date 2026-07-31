@@ -210,7 +210,7 @@ export class FeishuNotificationService {
         return { sent: true };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        errors.push(`${target.receiveIdType}/${target.source}: ${errorMessage}`);
+        errors.push(formatDeliveryError(target, errorMessage));
         this.logger.warn(
           JSON.stringify({
             message: 'Failed to send workflow notification with receive target',
@@ -223,6 +223,7 @@ export class FeishuNotificationService {
             error: errorMessage,
           }),
         );
+        if (isBotAvailabilityError(errorMessage)) break;
       }
     }
 
@@ -541,37 +542,36 @@ function normalizeEmail(value?: string): string {
 }
 
 function buildDirectReceiveTargets(recipient: WorkflowNotificationRecipient): RecipientReceiveTarget[] {
-  const targets: RecipientReceiveTarget[] = [];
   const directOpenId = [recipient.larkUserId, recipient.user_id]
     .map((value) => String(value || '').trim())
     .find((value) => value.startsWith('ou_'));
   if (directOpenId) {
-    targets.push({
+    return [{
       receiveId: directOpenId,
       receiveIdType: 'open_id',
       source: 'recipient.open_id',
-    });
+    }];
   }
 
   const email = normalizeEmail(recipient.email);
   if (email) {
-    targets.push({
+    return [{
       receiveId: email,
       receiveIdType: 'email',
       source: 'recipient.email',
-    });
+    }];
   }
 
   const userId = normalizeFeishuUserId(recipient.user_id);
   if (userId) {
-    targets.push({
+    return [{
       receiveId: userId,
       receiveIdType: 'user_id',
       source: 'recipient.user_id',
-    });
+    }];
   }
 
-  return dedupeReceiveTargets(targets);
+  return [];
 }
 
 function normalizeFeishuUserId(value?: string): string {
@@ -606,6 +606,20 @@ function uniqueRoleLabels(values: Array<string | undefined>): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function formatDeliveryError(target: RecipientReceiveTarget, errorMessage: string): string {
+  if (isBotAvailabilityError(errorMessage)) {
+    return `${target.receiveIdType}/${target.source}: 机器人对该用户不可用，请在飞书开放平台把机器人应用的可用范围加入该用户或所在部门，并重新发布应用版本`;
+  }
+  if (/contact:user\.employee_id:readonly/i.test(errorMessage)) {
+    return `${target.receiveIdType}/${target.source}: 缺少通讯录权限 contact:user.employee_id:readonly；若继续使用 employee_id/user_id 投递，需要在飞书开放平台开通并发布权限`;
+  }
+  return `${target.receiveIdType}/${target.source}: ${errorMessage}`;
+}
+
+function isBotAvailabilityError(message: string): boolean {
+  return /bot has no availability/i.test(message);
 }
 
 function isRetryableFeishuError(error: unknown): boolean {

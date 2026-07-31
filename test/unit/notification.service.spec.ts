@@ -152,6 +152,27 @@ describe('FeishuNotificationService', () => {
     expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_b' }));
   });
+
+  it('机器人对邮箱用户不可用时，应给出可用范围提示且不继续尝试 user_id', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [] } }))
+      .mockResolvedValueOnce(okJson({ code: 230013, msg: 'Bot has NO availability to this user.' }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = new FeishuNotificationService();
+    const result = await service.sendWorkflowTransitionNotification({
+      ...BASE_PAYLOAD,
+      recipients: [{ user_id: '3008-F05', email: 'joe@mail.pollo.ai', name: '刘桥', role: '数据负责人' }],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ recipientCount: 1, sentCount: 0, failedCount: 1, skippedCount: 0 }));
+    expect(result.errors?.[0]).toContain('刘桥');
+    expect(result.errors?.[0]).toContain('机器人对该用户不可用');
+    expect(fetchMock.mock.calls).toHaveLength(3);
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=email');
+  });
 });
 
 function okJson(body: Record<string, unknown>): Response {
