@@ -392,6 +392,8 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
       if (!id) return null;
       const larkUserId = [
         user.larkUserId,
+        user.larkUserID,
+        user.larkID,
         user.lark_user_id,
         user.lark_id,
         user.open_id,

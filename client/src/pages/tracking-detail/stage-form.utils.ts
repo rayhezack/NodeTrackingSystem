@@ -149,7 +149,9 @@ function firstNumericId(user: Record<string, unknown>): string {
 function firstLarkUserId(user: Record<string, unknown>): string {
   for (const key of [
     'larkUserId',
+    'larkUserID',
     'lark_user_id',
+    'larkID',
     'lark_id',
     'open_id',
     'openId',

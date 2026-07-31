@@ -182,7 +182,7 @@ const StageForm = ({
         throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
       }
       if (field.type === 'user') {
-        fields[field.baseField] = toStringArray(value);
+        fields[field.baseField] = toTrackingUserRefs(value);
       } else if (field.type === 'attachment') {
         fields[field.baseField] = toAttachmentTextArray(value);
       } else {

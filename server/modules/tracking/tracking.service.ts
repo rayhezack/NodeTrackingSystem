@@ -68,6 +68,7 @@ const WORKBENCH_FIELDS = [
   '数据负责人',
   '研发负责人',
   'DS验收人',
+  '通知身份快照',
   '评审状态',
   '评审意见',
   '埋点开发状态',
@@ -165,10 +166,12 @@ type WorkflowNotificationPlan = {
   actionText: string;
   recipientFields: string[];
 };
+type NotificationIdentitySnapshot = Record<string, TrackingUserRef[]>;
 
 const USER_FIELD_NAME_LIST = ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'];
 const USER_FIELD_NAMES = new Set(USER_FIELD_NAME_LIST);
-const REQUEST_SHARED_FIELD_NAMES = ['需求名称', ...USER_FIELD_NAME_LIST];
+const NOTIFICATION_IDENTITY_FIELD = '通知身份快照';
+const REQUEST_SHARED_FIELD_NAMES = ['需求名称', ...USER_FIELD_NAME_LIST, NOTIFICATION_IDENTITY_FIELD];
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
   requirement: 'canEditRequirement',
@@ -565,6 +568,13 @@ export class TrackingService {
     const dataOwnerCells = createUserCells(body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : []);
     const devOwnerCells = createUserCells(body.devOwnerIds);
     const dsAcceptorCells = createUserCells(body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : []);
+    const notificationSnapshot = buildNotificationIdentitySnapshot({
+      需求提出人: body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : [],
+      需求录入人: body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
+      数据负责人: body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : [],
+      研发负责人: body.devOwnerIds || [],
+      DS验收人: body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : [],
+    });
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
     const requirementLink = (body.requirementLink || '').trim();
@@ -588,6 +598,7 @@ export class TrackingService {
         数据负责人: dataOwnerCells,
         研发负责人: devOwnerCells,
         DS验收人: dsAcceptorCells,
+        ...(hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD) && notificationSnapshot ? { [NOTIFICATION_IDENTITY_FIELD]: notificationSnapshot } : {}),
         评审状态: '草稿',
         评审意见: '',
         埋点开发状态: '未开始',
@@ -680,6 +691,7 @@ export class TrackingService {
       数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
       研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
       DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
+      ...(hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD) && cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) ? { [NOTIFICATION_IDENTITY_FIELD]: cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) } : {}),
       评审状态: '草稿',
       评审意见: '',
       埋点开发状态: '未开始',
@@ -867,6 +879,7 @@ export class TrackingService {
         数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
         研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
         DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
+        ...(hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD) && cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) ? { [NOTIFICATION_IDENTITY_FIELD]: cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) } : {}),
       }]);
       targetRawId = created.id;
     }
@@ -911,6 +924,7 @@ export class TrackingService {
       }
       patch['需求名称'] = requestName;
     }
+    const notificationSnapshotPatch = buildMergedNotificationIdentitySnapshot(ref.source, current.record, body.fields || {});
     for (const fieldName of USER_FIELD_NAMES) {
       if (Object.prototype.hasOwnProperty.call(patch, fieldName)) {
         const userCells = createUserCells(patch[fieldName]);
@@ -920,6 +934,9 @@ export class TrackingService {
           patch[fieldName] = userCells;
         }
       }
+    }
+    if (notificationSnapshotPatch) {
+      patch[NOTIFICATION_IDENTITY_FIELD] = notificationSnapshotPatch;
     }
     normalizeWorkbenchPatch(patch, ref.source);
     const nextRecord = { ...current.record, ...patch };
@@ -1912,6 +1929,10 @@ function mergeRequestSharedFields(records: BitableRecord[]): Record<string, unkn
       sharedFields[fieldName] = users;
     }
   }
+  const notificationSnapshot = mergeNotificationIdentitySnapshots(records);
+  if (Object.keys(notificationSnapshot).length) {
+    sharedFields[NOTIFICATION_IDENTITY_FIELD] = serializeNotificationIdentitySnapshot(notificationSnapshot);
+  }
 
   return sharedFields;
 }
@@ -1927,18 +1948,24 @@ function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: s
 function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): TrackingUserRef[] {
   const idToUser = new Map<string, TrackingUserRef>();
   for (const record of records) {
-    for (const user of cellUsers(record.record[fieldName]).items) {
-      if (!user.user_id) continue;
-      const current = idToUser.get(user.user_id);
-      idToUser.set(user.user_id, {
-        user_id: user.user_id,
-        larkUserId: current?.larkUserId || user.larkUserId,
-        email: current?.email || user.email,
-        name: current?.name || user.name,
-      });
-    }
+    mergeUserRefsIntoMap(idToUser, cellUsers(record.record[fieldName]).items);
+    mergeUserRefsIntoMap(idToUser, parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || []);
   }
   return Array.from(idToUser.values());
+}
+
+function mergeUserRefsIntoMap(idToUser: Map<string, TrackingUserRef>, users: TrackingUserRef[]): void {
+  for (const user of users) {
+    const key = user.user_id || user.larkUserId || user.email || '';
+    if (!key) continue;
+    const current = idToUser.get(key);
+    idToUser.set(key, {
+      user_id: current?.user_id || user.user_id || key,
+      larkUserId: current?.larkUserId || user.larkUserId,
+      email: current?.email || user.email,
+      name: current?.name || user.name,
+    });
+  }
 }
 
 function buildWorkflowNotificationRecipients(records: BitableRecord[], fieldNames: string[]): WorkflowNotificationRecipient[] {
@@ -1948,6 +1975,145 @@ function buildWorkflowNotificationRecipients(records: BitableRecord[], fieldName
       role: getNotificationRoleLabel(fieldName),
     })),
   );
+}
+
+function buildMergedNotificationIdentitySnapshot(
+  source: TrackingSource,
+  currentRecord: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): string | null {
+  if (!hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD)) return null;
+  const touchedUserFields = USER_FIELD_NAME_LIST.filter((fieldName) => Object.prototype.hasOwnProperty.call(fields, fieldName));
+  if (!touchedUserFields.length) return null;
+
+  const snapshot = parseNotificationIdentitySnapshot(currentRecord[NOTIFICATION_IDENTITY_FIELD]);
+  for (const fieldName of touchedUserFields) {
+    const users = toNotificationSnapshotUsers(fields[fieldName]);
+    if (users.length) {
+      snapshot[fieldName] = users;
+    }
+  }
+  return serializeNotificationIdentitySnapshot(snapshot);
+}
+
+function buildNotificationIdentitySnapshot(valueByFieldName: Record<string, unknown>): string {
+  const snapshot: NotificationIdentitySnapshot = {};
+  for (const fieldName of USER_FIELD_NAME_LIST) {
+    const users = toNotificationSnapshotUsers(valueByFieldName[fieldName]);
+    if (users.length) {
+      snapshot[fieldName] = users;
+    }
+  }
+  return serializeNotificationIdentitySnapshot(snapshot);
+}
+
+function mergeNotificationIdentitySnapshots(records: BitableRecord[]): NotificationIdentitySnapshot {
+  const snapshot: NotificationIdentitySnapshot = {};
+  for (const record of records) {
+    const item = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD]);
+    for (const fieldName of USER_FIELD_NAME_LIST) {
+      const users = item[fieldName] || [];
+      if (!users.length) continue;
+      const map = new Map((snapshot[fieldName] || []).map((user) => [user.user_id || user.larkUserId || user.email || '', user]));
+      mergeUserRefsIntoMap(map, users);
+      snapshot[fieldName] = Array.from(map.values());
+    }
+  }
+  return snapshot;
+}
+
+function parseNotificationIdentitySnapshot(value: unknown): NotificationIdentitySnapshot {
+  const text = cellText(value).trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const snapshot: NotificationIdentitySnapshot = {};
+    for (const fieldName of USER_FIELD_NAME_LIST) {
+      const users = toNotificationSnapshotUsers(parsed[fieldName]);
+      if (users.length) snapshot[fieldName] = users;
+    }
+    return snapshot;
+  } catch {
+    return {};
+  }
+}
+
+function serializeNotificationIdentitySnapshot(snapshot: NotificationIdentitySnapshot): string {
+  const normalized: NotificationIdentitySnapshot = {};
+  for (const fieldName of USER_FIELD_NAME_LIST) {
+    const users = toNotificationSnapshotUsers(snapshot[fieldName]);
+    if (users.length) normalized[fieldName] = users;
+  }
+  return Object.keys(normalized).length ? JSON.stringify(normalized) : '';
+}
+
+function toNotificationSnapshotUsers(value: unknown): TrackingUserRef[] {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  const userMap = new Map<string, TrackingUserRef>();
+  for (const item of values) {
+    const user = toNotificationSnapshotUser(item);
+    if (!user) continue;
+    const key = user.user_id || user.larkUserId || user.email || '';
+    if (!key) continue;
+    const current = userMap.get(key);
+    userMap.set(key, {
+      user_id: current?.user_id || user.user_id || key,
+      larkUserId: current?.larkUserId || user.larkUserId,
+      email: current?.email || user.email,
+      name: current?.name || user.name,
+    });
+  }
+  return Array.from(userMap.values());
+}
+
+function toNotificationSnapshotUser(item: unknown): TrackingUserRef | null {
+  if (typeof item === 'string' || typeof item === 'number') {
+    const id = String(item).trim();
+    if (!id) return null;
+    return {
+      user_id: id,
+      ...(id.startsWith('ou_') ? { larkUserId: id } : {}),
+    };
+  }
+  if (!item || typeof item !== 'object') return null;
+
+  const user = item as Record<string, unknown>;
+  const id = [
+    user.user_id,
+    user.userId,
+    user.userID,
+    user.miaoda_user_id,
+    user.miaodaUserID,
+    user.employee_id,
+    user.employeeID,
+    user.id,
+    user.larkUserId,
+    user.larkUserID,
+    user.larkID,
+    user.open_id,
+    user.openId,
+  ].find((candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number');
+  const larkUserId = [
+    user.larkUserId,
+    user.larkUserID,
+    user.lark_user_id,
+    user.larkID,
+    user.lark_id,
+    user.open_id,
+    user.openId,
+  ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.startsWith('ou_'));
+  const email = [user.email, user.mail, user.emailAddress, user.email_address].find(
+    (candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'),
+  );
+  const name = localizedText(user.name) || localizedText(user.en_name);
+  const normalizedId = id ? String(id) : larkUserId || email || '';
+  if (!normalizedId) return null;
+  return {
+    user_id: normalizedId,
+    ...(larkUserId || normalizedId.startsWith('ou_') ? { larkUserId: larkUserId || normalizedId } : {}),
+    ...(email ? { email } : {}),
+    ...(name && name !== normalizedId ? { name } : {}),
+  };
 }
 
 function getNotificationRoleLabel(fieldName: string): string {
@@ -2116,7 +2282,7 @@ function cellUsers(value: Cell): {
       if (item && typeof item === 'object') {
         const user = item as Record<string, unknown>;
         const id =
-          [user.user_id, user.userId, user.miaoda_user_id, user.miaodaUserID, user.employee_id, user.employeeID, user.id, user.open_id, user.openId, user.larkUserId, user.lark_user_id].find(
+          [user.user_id, user.userId, user.userID, user.miaoda_user_id, user.miaodaUserID, user.employee_id, user.employeeID, user.id, user.open_id, user.openId, user.larkUserId, user.larkUserID, user.larkID, user.lark_user_id].find(
             (candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number',
           ) || '';
         const name = localizedText(user.name) || localizedText(user.en_name);
@@ -2124,7 +2290,7 @@ function cellUsers(value: Cell): {
           (candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'),
         );
         const normalizedId = id ? String(id) : '';
-        const larkUserId = [user.larkUserId, user.lark_user_id, user.open_id, user.openId, user.lark_id].find(
+        const larkUserId = [user.larkUserId, user.larkUserID, user.lark_user_id, user.open_id, user.openId, user.larkID, user.lark_id].find(
           (candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0,
         );
         const resolvedLarkUserId = larkUserId || (normalizedId.startsWith('ou_') ? normalizedId : undefined);

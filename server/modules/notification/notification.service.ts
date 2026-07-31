@@ -9,6 +9,8 @@ type FeishuApiResponse<T = Record<string, unknown>> = {
   expire?: number;
 };
 
+const DEFAULT_FEISHU_APP_ID = 'cli_aaeb58a8113a9be5';
+
 export type WorkflowNotificationRecipient = TrackingUserRef & {
   role?: string;
 };
@@ -39,7 +41,17 @@ export class FeishuNotificationService {
 
   async sendWorkflowTransitionNotification(payload: WorkflowTransitionNotification): Promise<void> {
     if (!this.isConfigured()) {
-      this.logger.warn('Skip workflow notification: FEISHU_APP_ID or FEISHU_APP_SECRET is not configured');
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Skip workflow notification: Feishu bot credential is not configured',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          hasAppId: Boolean(this.appId),
+          hasAppSecret: Boolean(this.appSecret),
+          recipientCount: payload.recipients.length,
+        }),
+      );
       return;
     }
 
@@ -269,7 +281,7 @@ export class FeishuNotificationService {
   }
 
   private get appId(): string {
-    return process.env.FEISHU_APP_ID || process.env.LARK_APP_ID || '';
+    return process.env.FEISHU_APP_ID || process.env.LARK_APP_ID || DEFAULT_FEISHU_APP_ID;
   }
 
   private get appSecret(): string {
