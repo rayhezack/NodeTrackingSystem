@@ -9,10 +9,16 @@ export const BITABLE_INSTANCES = {
   lifecycle: 'feishu_bitable_buried_point_lifecycle_read_1',
   queryLibrary: 'feishu_bitable_app_buried_point_readonly_1',
   officialParamDetail: 'feishu_bitable_app_parameter_detail_1',
+  enumDictionary: 'feishu_bitable_parameter_enum_dictionary_1',
+  deprecatedEvent: 'feishu_bitable_app_deprecated_event_1',
+  deprecatedParamDetail: 'feishu_bitable_app_deprecated_parameter_detail_1',
   webWorkbench: 'feishu_bitable_web_tracking_design_workbench_1',
   webParamDetail: 'feishu_bitable_web_design_parameter_detail_1',
   webQueryLibrary: 'feishu_bitable_web_tracking_query_library_1',
   webOfficialParamDetail: 'feishu_bitable_web_parameter_detail_1',
+  webEnumDictionary: 'feishu_bitable_web_parameter_enum_dictionary_1',
+  webDeprecatedEvent: 'feishu_bitable_web_deprecated_event_1',
+  webDeprecatedParamDetail: 'feishu_bitable_web_deprecated_parameter_detail_1',
 } as const;
 
 export type BitableInstanceKey = keyof typeof BITABLE_INSTANCES;
@@ -24,10 +30,16 @@ export const BITABLE_APP_TOKENS: Record<BitableInstanceKey, string> = {
   lifecycle: APP_BITABLE_APP_TOKEN,
   queryLibrary: APP_BITABLE_APP_TOKEN,
   officialParamDetail: APP_BITABLE_APP_TOKEN,
+  enumDictionary: APP_BITABLE_APP_TOKEN,
+  deprecatedEvent: APP_BITABLE_APP_TOKEN,
+  deprecatedParamDetail: APP_BITABLE_APP_TOKEN,
   webWorkbench: WEB_BITABLE_APP_TOKEN,
   webParamDetail: WEB_BITABLE_APP_TOKEN,
   webQueryLibrary: WEB_BITABLE_APP_TOKEN,
   webOfficialParamDetail: WEB_BITABLE_APP_TOKEN,
+  webEnumDictionary: WEB_BITABLE_APP_TOKEN,
+  webDeprecatedEvent: WEB_BITABLE_APP_TOKEN,
+  webDeprecatedParamDetail: WEB_BITABLE_APP_TOKEN,
 };
 
 // 表 ID 映射
@@ -38,10 +50,16 @@ export const BITABLE_TABLE_IDS: Record<BitableInstanceKey, string> = {
   lifecycle: 'tblJ8G3X1001g9oA',
   queryLibrary: 'tblAhScEFQYAJC2g',
   officialParamDetail: 'tblEYv9lGZeenbT2',
+  enumDictionary: 'tblQ8Ph3N8GJHeVA',
+  deprecatedEvent: 'tblBioKXiaou302p',
+  deprecatedParamDetail: 'tbl3HA2sLaHuxRD1',
   webWorkbench: 'tblsFFvYkTPkabFT',
   webParamDetail: 'tblMaw89yVi68YY6',
   webQueryLibrary: 'tbly7VI4kwFz5qwR',
   webOfficialParamDetail: 'tblNAMKr5S38iXJQ',
+  webEnumDictionary: 'tbl2KEj2zyg8bOmk',
+  webDeprecatedEvent: 'tblqwh7naUc3WxNz',
+  webDeprecatedParamDetail: 'tblKjUGEx3mxICcY',
 };
 
 interface BitableFieldConfig {
@@ -53,6 +71,102 @@ interface BitableFieldConfig {
   writeable: boolean;
   enumValues?: string[];
 }
+
+const ENUM_DICTIONARY_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldqTkbQYj', name: '枚举主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldh2vniWj', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldKRoUmKT', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld2I01Jdg', name: '枚举值', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld4POoUcJ', name: '枚举中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldpEnO7Am', name: '枚举定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldotFnS12', name: '是否兜底值', type: 7, bizType: 'Checkbox', readable: true, writeable: true },
+  { id: 'flda0zRPut', name: '备注', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldPq8kSmT', name: '关联设计参数', type: 18, bizType: 'DuplexLink', readable: true, writeable: true },
+  { id: 'fldkpdNCQ2', name: '关联正式参数', type: 18, bizType: 'DuplexLink', readable: true, writeable: true },
+  { id: 'fldgFNjvnc', name: '下线版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldjUdIgWi', name: '枚举状态', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldcQLmBQ0', name: '首次版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
+
+const APP_DEPRECATED_EVENT_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldxGnn9hv', name: '废弃主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldf65fRgN', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld6W1m1to', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldx8x4fPo', name: '需求ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldJOgLpCR', name: '需求名称', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldNl5dzlg', name: '端', type: 4, bizType: 'MultiSelect', readable: true, writeable: true },
+  { id: 'fldlju0cM2', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld3PJvQ3y', name: '废弃原因', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldxQC3xgP', name: '废弃时间', type: 5, bizType: 'DateTime', readable: true, writeable: true },
+  { id: 'fldJIxzQva', name: '原流程阶段', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldwOnGR98', name: '原正式状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldCVpy1YX', name: '原工作台记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldYlYC3JW', name: '原正式记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldkYu1D3L', name: '事件定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldgj9wPXl', name: '触发时机', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldrjgqoyh', name: '指标/使用场景', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
+
+const WEB_DEPRECATED_EVENT_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldKzxpX5K', name: '废弃主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldumekcce', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldAZHQEaD', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldZ6hYh7M', name: '需求ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldBrNbcXI', name: '需求名称', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldww9RHnK', name: '端', type: 4, bizType: 'MultiSelect', readable: true, writeable: true },
+  { id: 'fldj3V4tbs', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld3oloeNj', name: '废弃原因', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldlWCkJe1', name: '废弃时间', type: 5, bizType: 'DateTime', readable: true, writeable: true },
+  { id: 'fldubGa3eN', name: '原流程阶段', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldpKonmGl', name: '原正式状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldlfxRYZO', name: '原工作台记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldVgS9oUW', name: '原正式记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldVCxwlSF', name: '事件定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldxvy0b0X', name: '触发时机', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldTARj1u9', name: '指标/使用场景', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
+
+const APP_DEPRECATED_PARAM_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldsMxnguu', name: '废弃参数主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldcdbr7bW', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldw2tX7uw', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldJJK9n57', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldv5JLHfq', name: '数据类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldTxvT0vT', name: '必传规则', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldLM1WCw5', name: '条件说明', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldhihizjy', name: '枚举/取值范围', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldWtbUsoE', name: '参数定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldTuZsiyt', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldWmW6bjr', name: '参数状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldhOMayRj', name: '事件状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldOxwb7nR', name: '废弃原因', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldDzybFgv', name: '废弃时间', type: 5, bizType: 'DateTime', readable: true, writeable: true },
+  { id: 'fldaZYG3L1', name: '原设计参数ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld2BlQrPF', name: '原正式参数ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldYpK9BLn', name: '来源表', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld65s0BS9', name: '备注', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
+
+const WEB_DEPRECATED_PARAM_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldHIJe7FB', name: '废弃参数主键', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldDQhcDv4', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldYYLvzFJ', name: '事件中文名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldsyYpKdD', name: '参数名', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldymQpzvc', name: '数据类型', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldBr6URMG', name: '必传规则', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldkoJZOzK', name: '条件说明', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldGA8Tcyc', name: '枚举/取值范围', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld2GphalL', name: '参数定义', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld4kS55G7', name: '版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldiDLI9hg', name: '参数状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldGS0zzB9', name: '事件状态', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldFnnRZND', name: '废弃原因', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldJBSMdUk', name: '废弃时间', type: 5, bizType: 'DateTime', readable: true, writeable: true },
+  { id: 'fldhyQsjrP', name: '原设计参数ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld5oZFGSM', name: '原正式参数ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldc2kt778', name: '来源表', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldzSWbViW', name: '备注', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
 
 export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = {
   workbench: [
@@ -499,6 +613,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: true,
     },
     {
+      id: 'fldhF7TDyF',
+      name: '枚举字典',
+      type: 18,
+      bizType: 'DuplexLink',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldSheG80P',
       name: '默认值/示例',
       type: 1,
@@ -831,6 +953,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       name: '枚举/取值范围',
       type: 1,
       bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
+      id: 'fldhJ8GDKY',
+      name: '枚举字典',
+      type: 18,
+      bizType: 'DuplexLink',
       readable: true,
       writeable: true,
     },
@@ -1311,6 +1441,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: true,
     },
     {
+      id: 'fldhF7TDyF',
+      name: '枚举字典',
+      type: 18,
+      bizType: 'DuplexLink',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldK4NfHfC',
       name: '参数定义',
       type: 1,
@@ -1531,6 +1669,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: true,
     },
     {
+      id: 'fldhJ8GDKY',
+      name: '枚举字典',
+      type: 18,
+      bizType: 'DuplexLink',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldHjTCw8a',
       name: '参数定义',
       type: 1,
@@ -1611,6 +1757,12 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: false,
     },
   ],
+  enumDictionary: ENUM_DICTIONARY_FIELDS,
+  deprecatedEvent: APP_DEPRECATED_EVENT_FIELDS,
+  deprecatedParamDetail: APP_DEPRECATED_PARAM_FIELDS,
+  webEnumDictionary: ENUM_DICTIONARY_FIELDS,
+  webDeprecatedEvent: WEB_DEPRECATED_EVENT_FIELDS,
+  webDeprecatedParamDetail: WEB_DEPRECATED_PARAM_FIELDS,
 };
 
 // Base 真实枚举值 → UI 业务节点映射

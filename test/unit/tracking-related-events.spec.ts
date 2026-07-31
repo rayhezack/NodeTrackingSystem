@@ -306,15 +306,15 @@ describe('同需求埋点事件', () => {
     expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
       {
         id: 'rec_1',
-        record: {
+        record: expect.objectContaining({
           研发负责人: [3001, 3002],
-        },
+        }),
       },
       {
         id: 'rec_2',
-        record: {
+        record: expect.objectContaining({
           研发负责人: [3001, 3002],
-        },
+        }),
       },
     ]);
   });
@@ -585,14 +585,14 @@ describe('同需求埋点事件', () => {
     ]);
   });
 
-  it('开发完成应按需求粒度把所有同需求事件推进到数据验收', async () => {
+  it('开发完成应按需求粒度把所有同需求事件推进到数据验收，并追平旧污染状态', async () => {
     const current = {
       id: 'rec_1',
       record: {
         需求ID: 'APP_REQ_TEST',
         evt_id: 'event_1',
         事件中文名: '主事件',
-        流程阶段: '评审通过',
+        流程阶段: '埋点设计',
         记录类型: '埋点设计',
         埋点开发状态: '开发中',
         研发负责人: [{ id: 'dev_1', name: '研发' }],

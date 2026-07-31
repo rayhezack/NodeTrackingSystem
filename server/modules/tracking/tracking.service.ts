@@ -103,6 +103,7 @@ const PARAM_BASE_FIELDS = [
   '必传规则',
   '条件说明',
   '枚举/取值范围',
+  '枚举字典',
   '参数定义',
   '默认值/示例',
   '参数状态',
@@ -125,6 +126,7 @@ const OFFICIAL_PARAM_BASE_FIELDS = [
   '必传规则',
   '条件说明',
   '枚举/取值范围',
+  '枚举字典',
   '参数定义',
   '版本',
   '参数状态',
@@ -159,6 +161,7 @@ type SourcedWorkbenchRecord = { source: TrackingSource; record: BitableRecord };
 type WorkbenchRecordGroup = { source: TrackingSource; requestId: string; records: BitableRecord[] };
 type TodoCandidate = TrackingRecord & { targetStage: string; todoRole: string };
 type BitableRecordUpdate = { id: string; record: Record<string, unknown>; nextRecord: Record<string, unknown> };
+type EnumDictionaryLinkMode = 'design' | 'official';
 type WorkflowNotificationPlan = {
   fromStage: string;
   toStage: string;
@@ -1020,11 +1023,18 @@ export class TrackingService {
 
     const paramRecord = this.toParamRecord(ref.source, ref.rawId, evtId, cellText(detail.record['版本']), body);
     const [created] = await this.bitable.batchAddRecords(paramDetailKey(ref.source), [paramRecord]);
+    const enumRecordIds = await this.syncEnumDictionaryForParam(ref.source, 'design', created.id, paramRecord);
 
     return {
       success: true,
       recordId: encodeScopedRecordId(ref.source, created.id),
-      item: this.toParamDetail({ id: created.id, record: paramRecord }, ref.source),
+      item: this.toParamDetail({
+        id: created.id,
+        record: {
+          ...paramRecord,
+          ...(enumRecordIds.length ? { 枚举字典: enumRecordIds } : {}),
+        },
+      }, ref.source),
     };
   }
 
@@ -1039,15 +1049,20 @@ export class TrackingService {
 
     const fields = body.fields || {};
     const patch = hasApiParamFields(fields) ? toParamPatch(fields as Partial<CreateParamRequest>, ref.source) : fields;
+    const nextParamRecord = { ...paramRecord.record, ...patch };
     if (Object.keys(patch).length) {
       await this.bitable.batchUpdateRecords(paramDetailKey(ref.source), [{ id: ref.rawId, record: patch }]);
+      const enumRecordIds = await this.syncEnumDictionaryForParam(ref.source, 'design', ref.rawId, nextParamRecord);
+      if (enumRecordIds.length) {
+        nextParamRecord['枚举字典'] = enumRecordIds;
+      }
     }
     return {
       success: true,
       recordId: paramRecordId,
       item: this.toParamDetail({
         id: ref.rawId,
-        record: { ...paramRecord.record, ...patch },
+        record: nextParamRecord,
       }, ref.source),
     };
   }
@@ -1129,7 +1144,14 @@ export class TrackingService {
     }
 
     for (let index = 0; index < recordsToCreate.length; index += 200) {
-      await this.bitable.batchAddRecords(paramDetailKey(source), recordsToCreate.slice(index, index + 200));
+      const chunk = recordsToCreate.slice(index, index + 200);
+      const createdRecords = await this.bitable.batchAddRecords(paramDetailKey(source), chunk);
+      for (let offset = 0; offset < createdRecords.length; offset += 1) {
+        const createdId = createdRecords[offset]?.id;
+        if (createdId) {
+          await this.syncEnumDictionaryForParam(source, 'design', createdId, chunk[offset]);
+        }
+      }
     }
 
     return {
@@ -1155,6 +1177,136 @@ export class TrackingService {
     return records;
   }
 
+  private async listEnumRecordsForParam(source: TrackingSource, evtId: string, paramName: string): Promise<BitableRecord[]> {
+    const instanceKey = enumDictionaryKey(source);
+    const fields = enumDictionaryFields();
+    const records: BitableRecord[] = [];
+    let pageToken: string | undefined;
+
+    try {
+      do {
+        const result = await this.bitable.searchRecords(instanceKey, {
+          fieldNames: [...fields],
+          filter: {
+            conjunction: 'and',
+            conditions: [
+              { fieldName: 'evt_id', operator: 'is', value: [evtId] },
+              { fieldName: '参数名', operator: 'is', value: [paramName] },
+            ],
+          },
+          pageSize: 200,
+          ...(pageToken ? { pageToken } : {}),
+        });
+        records.push(...result.records);
+        pageToken = result.hasMore ? result.pageToken : undefined;
+      } while (pageToken);
+      return records;
+    } catch {
+      return (await this.searchAllRecords(instanceKey, fields)).filter((record) =>
+        cellText(record.record['evt_id']).trim() === evtId && cellText(record.record['参数名']).trim() === paramName,
+      );
+    }
+  }
+
+  private async syncEnumDictionaryForParam(
+    source: TrackingSource,
+    mode: EnumDictionaryLinkMode,
+    paramRecordId: string,
+    paramRecord: Record<string, unknown>,
+  ): Promise<string[]> {
+    const evtId = cellText(paramRecord['evt_id']).trim();
+    const paramName = cellText(paramRecord['参数名']).trim();
+    const enumText = cellText(paramRecord['枚举/取值范围']).trim();
+    const previousLinkedIds = cellIds(paramRecord['枚举字典']);
+    if (!evtId || !paramName || (!enumText && !previousLinkedIds.length)) return [];
+
+    const instanceKey = enumDictionaryKey(source);
+    const paramInstanceKey = mode === 'design' ? paramDetailKey(source) : officialParamDetailKey(source);
+    const linkedField = mode === 'design' ? '关联设计参数' : '关联正式参数';
+    const entries = parseEnumDictionaryEntries(evtId, paramName, enumText);
+    const existingRecords = await this.listEnumRecordsForParam(source, evtId, paramName);
+    const existingByKey = new Map(
+      existingRecords
+        .map((record) => [cellText(record.record['枚举主键']).trim().toLowerCase(), record] as const)
+        .filter(([key]) => Boolean(key)),
+    );
+    const isRemoved = mode === 'design' ? isRemovedDesignParam(paramRecord) : isRemovedOfficialParam(paramRecord);
+    const enumStatus = isRemoved ? '已废弃' : mode === 'official' ? '正式' : '草稿';
+    const version = firstText(paramRecord['版本']) || '1.0.0';
+    const updates: { id: string; record: Record<string, unknown> }[] = [];
+    const inserts: Record<string, unknown>[] = [];
+    const insertKeys: string[] = [];
+
+    for (const entry of entries) {
+      const normalizedKey = entry.key.toLowerCase();
+      const existing = existingByKey.get(normalizedKey);
+      const recordPatch = {
+        evt_id: evtId,
+        参数名: paramName,
+        枚举值: entry.value,
+        枚举中文名: entry.label,
+        枚举定义: entry.definition,
+        枚举状态: enumStatus,
+        首次版本: firstText(existing?.record['首次版本'], version),
+        ...(isRemoved ? { 下线版本: version } : {}),
+        [linkedField]: uniqueStrings([
+          ...cellIds(existing?.record[linkedField]),
+          paramRecordId,
+        ]),
+      };
+
+      if (existing) {
+        updates.push({ id: existing.id, record: recordPatch });
+      } else {
+        inserts.push({
+          枚举主键: entry.key,
+          ...recordPatch,
+        });
+        insertKeys.push(normalizedKey);
+      }
+    }
+
+    const linkedEnumRecordIds: string[] = entries
+      .map((entry) => existingByKey.get(entry.key.toLowerCase())?.id || '')
+      .filter(Boolean);
+
+    for (let index = 0; index < updates.length; index += 200) {
+      await this.bitable.batchUpdateRecords(instanceKey, updates.slice(index, index + 200));
+    }
+    for (let index = 0; index < inserts.length; index += 200) {
+      const chunk = inserts.slice(index, index + 200);
+      const createdRecords = await this.bitable.batchAddRecords(instanceKey, chunk);
+      for (let offset = 0; offset < createdRecords.length; offset += 1) {
+        const createdId = createdRecords[offset]?.id;
+        const key = insertKeys[index + offset];
+        if (createdId) {
+          linkedEnumRecordIds.push(createdId);
+          if (key) existingByKey.set(key, { id: createdId, record: chunk[offset] });
+        }
+      }
+    }
+
+    const staleLinkedIds = previousLinkedIds.filter((id) => !linkedEnumRecordIds.includes(id));
+    if (isRemoved && staleLinkedIds.length) {
+      await this.bitable.batchUpdateRecords(
+        instanceKey,
+        staleLinkedIds.map((id) => ({
+          id,
+          record: {
+            枚举状态: '已废弃',
+            下线版本: version,
+          },
+        })),
+      );
+    }
+
+    await this.bitable.batchUpdateRecords(paramInstanceKey, [{
+      id: paramRecordId,
+      record: { 枚举字典: linkedEnumRecordIds },
+    }]);
+    return uniqueStrings(linkedEnumRecordIds);
+  }
+
   private async syncParamEvtId(source: TrackingSource, designRecordId: string, previousEvtId: string, nextEvtId: string): Promise<void> {
     const records = await this.listParamsForDesign(source, designRecordId, previousEvtId);
     const updates = records
@@ -1170,6 +1322,11 @@ export class TrackingService {
   }
 
   private async syncOfficialQueryLibrary(source: TrackingSource, designRecordId: string, record: Record<string, unknown>): Promise<void> {
+    if (shouldSyncDeprecatedQueryRecord(record)) {
+      await this.syncDeprecatedQueryLibrary(source, designRecordId, record);
+      return;
+    }
+
     const officialRecord = toOfficialQueryRecord(source, record);
     if (!officialRecord) return;
 
@@ -1191,13 +1348,40 @@ export class TrackingService {
     }
   }
 
+  private async syncDeprecatedQueryLibrary(source: TrackingSource, designRecordId: string, record: Record<string, unknown>): Promise<void> {
+    const evtId = cellText(record['evt_id']).trim();
+    if (!evtId) return;
+
+    const officialEventKey = queryLibraryKey(source);
+    const officialRecords = await this.searchAllRecords(officialEventKey, OFFICIAL_QUERY_FIELDS);
+    const existingOfficialEvent = officialRecords.find((item) => cellText(item.record['evt_id']).trim().toLowerCase() === evtId.toLowerCase());
+    const officialParamKey = officialParamDetailKey(source);
+    const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
+    const relatedOfficialParams = officialParams.filter((param) =>
+      isOfficialParamForEvent(param, existingOfficialEvent?.id || '', evtId),
+    );
+    const designParams = (await this.searchAllRecords(paramDetailKey(source), paramFields(source)))
+      .filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId));
+
+    await this.upsertDeprecatedEvent(source, designRecordId, record, existingOfficialEvent);
+    await this.upsertDeprecatedParams(source, record, designParams, relatedOfficialParams);
+
+    if (relatedOfficialParams.length) {
+      await this.bitable.deleteRecords(officialParamKey, relatedOfficialParams.map((param) => param.id));
+    }
+    if (existingOfficialEvent) {
+      await this.bitable.deleteRecords(officialEventKey, [existingOfficialEvent.id]);
+    }
+  }
+
   private async syncOfficialParams(source: TrackingSource, designRecordId: string, designRecord: Record<string, unknown>, officialEventRecordId: string): Promise<void> {
     const evtId = cellText(designRecord['evt_id']).trim();
     if (!evtId) return;
 
-    const designParams = (await this.searchAllRecords(paramDetailKey(source), paramFields(source)))
-      .filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId))
-      .filter((paramRecord) => !isRemovedDesignParam(paramRecord.record));
+    const designParamRecords = (await this.searchAllRecords(paramDetailKey(source), paramFields(source)))
+      .filter((paramRecord) => this.isParamForDesign(paramRecord, designRecordId, evtId));
+    const removedDesignParams = designParamRecords.filter((paramRecord) => isRemovedDesignParam(paramRecord.record));
+    const designParams = designParamRecords.filter((paramRecord) => !isRemovedDesignParam(paramRecord.record));
     const officialParamKey = officialParamDetailKey(source);
     const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
     const existingByParamKey = new Map<string, BitableRecord>();
@@ -1211,6 +1395,20 @@ export class TrackingService {
 
     const updates: { id: string; record: Record<string, unknown> }[] = [];
     const inserts: Record<string, unknown>[] = [];
+    const enumSyncTargets: Array<{ id: string; record: Record<string, unknown> }> = [];
+
+    const officialParamsToDelete = removedDesignParams
+      .map((paramRecord) => {
+        const paramKey = getDesignParamKey(paramRecord.record).toLowerCase();
+        return paramKey ? existingByParamKey.get(paramKey) : undefined;
+      })
+      .filter((record): record is BitableRecord => Boolean(record));
+    if (removedDesignParams.length || officialParamsToDelete.length) {
+      await this.upsertDeprecatedParams(source, designRecord, removedDesignParams, officialParamsToDelete);
+    }
+    if (officialParamsToDelete.length) {
+      await this.bitable.deleteRecords(officialParamKey, officialParamsToDelete.map((record) => record.id));
+    }
 
     for (const designParam of designParams) {
       const officialParam = toOfficialParamRecord(source, designRecord, designParam.record, officialEventRecordId);
@@ -1219,7 +1417,9 @@ export class TrackingService {
       const paramKey = cellText(officialParam['参数主键']).trim().toLowerCase();
       const existing = existingByParamKey.get(paramKey);
       if (existing) {
-        updates.push({ id: existing.id, record: mergeOfficialParamRecord(existing.record, officialParam) });
+        const mergedRecord = mergeOfficialParamRecord(existing.record, officialParam);
+        updates.push({ id: existing.id, record: mergedRecord });
+        enumSyncTargets.push({ id: existing.id, record: mergedRecord });
       } else {
         inserts.push(officialParam);
       }
@@ -1229,7 +1429,90 @@ export class TrackingService {
       await this.bitable.batchUpdateRecords(officialParamKey, updates.slice(index, index + 200));
     }
     for (let index = 0; index < inserts.length; index += 200) {
-      await this.bitable.batchAddRecords(officialParamKey, inserts.slice(index, index + 200));
+      const chunk = inserts.slice(index, index + 200);
+      const createdRecords = await this.bitable.batchAddRecords(officialParamKey, chunk);
+      for (let offset = 0; offset < createdRecords.length; offset += 1) {
+        const createdId = createdRecords[offset]?.id;
+        if (createdId) {
+          enumSyncTargets.push({ id: createdId, record: chunk[offset] });
+        }
+      }
+    }
+    for (const target of enumSyncTargets) {
+      await this.syncEnumDictionaryForParam(source, 'official', target.id, target.record);
+    }
+  }
+
+  private async upsertDeprecatedEvent(source: TrackingSource, designRecordId: string, record: Record<string, unknown>, officialEvent?: BitableRecord): Promise<void> {
+    const deprecatedRecord = toDeprecatedEventRecord(source, designRecordId, record, officialEvent);
+    if (!deprecatedRecord) return;
+
+    const instanceKey = deprecatedEventKey(source);
+    const records = await this.searchAllRecords(instanceKey, deprecatedEventFields());
+    const key = cellText(deprecatedRecord['废弃主键']).trim().toLowerCase();
+    const existing = records.find((item) => cellText(item.record['废弃主键']).trim().toLowerCase() === key);
+    if (existing) {
+      await this.bitable.batchUpdateRecords(instanceKey, [{ id: existing.id, record: deprecatedRecord }]);
+    } else {
+      await this.bitable.batchAddRecords(instanceKey, [deprecatedRecord]);
+    }
+  }
+
+  private async upsertDeprecatedParams(
+    source: TrackingSource,
+    designRecord: Record<string, unknown>,
+    designParams: BitableRecord[],
+    officialParams: BitableRecord[],
+  ): Promise<void> {
+    const recordsByKey = new Map<string, Record<string, unknown>>();
+
+    for (const officialParam of officialParams) {
+      const deprecatedParam = toDeprecatedParamRecord(designRecord, officialParam, '正式参数明细', {
+        officialParamId: officialParam.id,
+      });
+      if (!deprecatedParam) continue;
+      recordsByKey.set(cellText(deprecatedParam['废弃参数主键']).trim().toLowerCase(), deprecatedParam);
+    }
+    for (const designParam of designParams) {
+      const officialParam = officialParams.find((item) =>
+        getOfficialParamKey(item.record).toLowerCase() === getDesignParamKey(designParam.record).toLowerCase(),
+      );
+      const deprecatedParam = toDeprecatedParamRecord(designRecord, designParam, '设计参数明细', {
+        designParamId: designParam.id,
+        officialParamId: officialParam?.id,
+      });
+      if (!deprecatedParam) continue;
+      recordsByKey.set(cellText(deprecatedParam['废弃参数主键']).trim().toLowerCase(), deprecatedParam);
+    }
+
+    const records = Array.from(recordsByKey.values());
+    if (!records.length) return;
+
+    const instanceKey = deprecatedParamDetailKey(source);
+    const existingRecords = await this.searchAllRecords(instanceKey, deprecatedParamFields());
+    const existingByKey = new Map(
+      existingRecords
+        .map((record) => [cellText(record.record['废弃参数主键']).trim().toLowerCase(), record] as const)
+        .filter(([key]) => Boolean(key)),
+    );
+    const updates: { id: string; record: Record<string, unknown> }[] = [];
+    const inserts: Record<string, unknown>[] = [];
+
+    for (const deprecatedParam of records) {
+      const key = cellText(deprecatedParam['废弃参数主键']).trim().toLowerCase();
+      const existing = existingByKey.get(key);
+      if (existing) {
+        updates.push({ id: existing.id, record: deprecatedParam });
+      } else {
+        inserts.push(deprecatedParam);
+      }
+    }
+
+    for (let index = 0; index < updates.length; index += 200) {
+      await this.bitable.batchUpdateRecords(instanceKey, updates.slice(index, index + 200));
+    }
+    for (let index = 0; index < inserts.length; index += 200) {
+      await this.bitable.batchAddRecords(instanceKey, inserts.slice(index, index + 200));
     }
   }
 
@@ -2549,12 +2832,86 @@ function officialParamDetailKey(source: TrackingSource): BitableInstanceKey {
   return source === 'web' ? 'webOfficialParamDetail' : 'officialParamDetail';
 }
 
+function enumDictionaryKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webEnumDictionary' : 'enumDictionary';
+}
+
+function deprecatedEventKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webDeprecatedEvent' : 'deprecatedEvent';
+}
+
+function deprecatedParamDetailKey(source: TrackingSource): BitableInstanceKey {
+  return source === 'web' ? 'webDeprecatedParamDetail' : 'deprecatedParamDetail';
+}
+
 function paramFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_PARAM_FIELDS : APP_PARAM_FIELDS;
 }
 
 function officialParamFields(source: TrackingSource): readonly string[] {
   return source === 'web' ? WEB_OFFICIAL_PARAM_FIELDS : APP_OFFICIAL_PARAM_FIELDS;
+}
+
+function enumDictionaryFields(): readonly string[] {
+  return [
+    '枚举主键',
+    'evt_id',
+    '参数名',
+    '枚举值',
+    '枚举中文名',
+    '枚举定义',
+    '是否兜底值',
+    '备注',
+    '关联设计参数',
+    '关联正式参数',
+    '下线版本',
+    '枚举状态',
+    '首次版本',
+  ];
+}
+
+function deprecatedEventFields(): readonly string[] {
+  return [
+    '废弃主键',
+    'evt_id',
+    '事件中文名',
+    '需求ID',
+    '需求名称',
+    '端',
+    '版本',
+    '废弃原因',
+    '废弃时间',
+    '原流程阶段',
+    '原正式状态',
+    '原工作台记录ID',
+    '原正式记录ID',
+    '事件定义',
+    '触发时机',
+    '指标/使用场景',
+  ];
+}
+
+function deprecatedParamFields(): readonly string[] {
+  return [
+    '废弃参数主键',
+    'evt_id',
+    '事件中文名',
+    '参数名',
+    '数据类型',
+    '必传规则',
+    '条件说明',
+    '枚举/取值范围',
+    '参数定义',
+    '版本',
+    '参数状态',
+    '事件状态',
+    '废弃原因',
+    '废弃时间',
+    '原设计参数ID',
+    '原正式参数ID',
+    '来源表',
+    '备注',
+  ];
 }
 
 function officialParamBaseLink(source: TrackingSource): string {
@@ -2653,6 +3010,58 @@ function mergeEnumRangeText(existingText: string, incomingText: string): string 
   return merged.join(detectEnumDelimiter(existingText || incomingText));
 }
 
+function parseEnumDictionaryEntries(evtId: string, paramName: string, enumRange: string): Array<{ key: string; value: string; label: string; definition: string }> {
+  const text = String(enumRange || '').trim();
+  if (!text) return [];
+
+  return uniqueStrings(splitEnumRangeForDictionary(text))
+    .map((rawItem) => parseEnumDictionaryItem(rawItem))
+    .filter((entry) => isValidEnumDictionaryValue(entry.value))
+    .map((entry) => ({
+      key: `${evtId}.${paramName}.${entry.value}`,
+      value: entry.value,
+      label: entry.label,
+      definition: entry.definition,
+    }));
+}
+
+function splitEnumRangeForDictionary(value: string): string[] {
+  const normalized = value.replace(/\r/g, '\n');
+  if (normalized.includes('\n')) {
+    return normalized.split('\n').map((item) => item.trim()).filter(Boolean);
+  }
+  if (normalized.includes('//')) {
+    return [normalized.trim()];
+  }
+  return normalized.split(/[,，、/|]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseEnumDictionaryItem(rawItem: string): { value: string; label: string; definition: string } {
+  const item = rawItem.trim();
+  const commentMatch = item.match(/^(.+?)\s*(?:\/\/|#|：|:)\s*(.+)$/);
+  if (commentMatch?.[1]) {
+    const value = commentMatch[1].trim();
+    const label = (commentMatch[2] || '').trim();
+    return {
+      value,
+      label,
+      definition: label,
+    };
+  }
+  return {
+    value: item,
+    label: '',
+    definition: '',
+  };
+}
+
+function isValidEnumDictionaryValue(value: string): boolean {
+  const text = value.trim();
+  if (!text) return false;
+  if (['-', '—', '无', '暂无', '待确认', '无特殊参数'].includes(text)) return false;
+  return !/^\.{2,}$/.test(text) && !/^…+$/.test(text);
+}
+
 function splitEnumRange(value: string): string[] {
   return String(value || '')
     .split(/[\n,，、/|]+/)
@@ -2744,6 +3153,16 @@ function shouldSyncOfficialQueryRecord(record: Record<string, unknown>): boolean
   return officialStatus === '已上线' || stage === '稳定归档' || (stage === '上线监控' && publishStatus === '发布成功' && ['通过', '豁免'].includes(monitorStatus));
 }
 
+function shouldSyncDeprecatedQueryRecord(record: Record<string, unknown>): boolean {
+  if (!cellText(record['evt_id']).trim()) return false;
+  if (isValidationOnlyChange(record)) return false;
+
+  const stage = cellText(record['流程阶段']);
+  const officialStatus = cellText(record['正式状态']);
+  const changeType = normalizeChangeType(cellText(record['变更类型']));
+  return stage === '已废弃' || (stage === '稳定归档' && (officialStatus === '已废弃' || changeType === '废弃'));
+}
+
 function getOfficialQueryStatus(record: Record<string, unknown>): string {
   const officialStatus = cellText(record['正式状态']);
   if (officialStatus && officialStatus !== '待开发' && officialStatus !== '未归档') {
@@ -2754,6 +3173,86 @@ function getOfficialQueryStatus(record: Record<string, unknown>): string {
 
 function isValidationOnlyChange(record: Record<string, unknown>): boolean {
   return normalizeChangeType(cellText(record['变更类型'])) === '仅校验';
+}
+
+function toDeprecatedEventRecord(
+  source: TrackingSource,
+  designRecordId: string,
+  record: Record<string, unknown>,
+  officialEvent?: BitableRecord,
+): Record<string, unknown> | null {
+  const evtId = cellText(record['evt_id']).trim();
+  if (!evtId) return null;
+
+  return {
+    废弃主键: evtId,
+    evt_id: evtId,
+    事件中文名: cellText(record['事件中文名']),
+    需求ID: cellText(record['需求ID']),
+    需求名称: cellText(record['需求名称']),
+    端: toPlatformCell(cellText(record['端']), source),
+    版本: firstText(record['版本'], record['最低版本']) || '1.0.0',
+    废弃原因: getDeprecatedReason(record, '事件标记为废弃'),
+    废弃时间: cellTimestamp(record['稳定归档时间']) || Date.now(),
+    原流程阶段: cellText(record['流程阶段']),
+    原正式状态: firstText(officialEvent?.record['状态'], record['正式状态'], '已废弃'),
+    原工作台记录ID: designRecordId,
+    原正式记录ID: officialEvent?.id || '',
+    事件定义: cellText(record['事件定义']),
+    触发时机: cellText(record['触发时机']),
+    '指标/使用场景': cellText(record['指标/使用场景']),
+  };
+}
+
+function toDeprecatedParamRecord(
+  designRecord: Record<string, unknown>,
+  param: BitableRecord,
+  sourceTable: '设计参数明细' | '正式参数明细',
+  ids: { designParamId?: string; officialParamId?: string } = {},
+): Record<string, unknown> | null {
+  const record = param.record;
+  const evtId = firstText(record['evt_id'], designRecord['evt_id']).trim();
+  const paramName = cellText(record['参数名']).trim();
+  const paramKey = firstText(
+    record['参数主键'],
+    record['设计参数主键'],
+    buildParamKey(evtId, paramName),
+  ).trim();
+  if (!paramKey || !evtId || !paramName) return null;
+
+  const example = cellText(record['默认值/示例']).trim();
+  const remark = firstText(record['备注'], example ? `默认值/示例：${example}` : '');
+  return {
+    废弃参数主键: paramKey,
+    evt_id: evtId,
+    事件中文名: firstText(record['事件中文名'], designRecord['事件中文名']),
+    参数名: paramName,
+    数据类型: normalizeParamType(cellText(record['数据类型'])),
+    必传规则: normalizeRequiredRule(cellText(record['必传规则'])),
+    条件说明: cellText(record['条件说明']),
+    '枚举/取值范围': cellText(record['枚举/取值范围']),
+    参数定义: cellText(record['参数定义']),
+    版本: firstText(record['版本'], designRecord['版本'], designRecord['最低版本']) || '1.0.0',
+    参数状态: '已废弃',
+    事件状态: shouldSyncDeprecatedQueryRecord(designRecord) ? '已废弃' : getOfficialQueryStatus(designRecord),
+    废弃原因: getDeprecatedReason(designRecord, sourceTable === '正式参数明细' ? '事件标记为废弃' : '参数标记为废弃'),
+    废弃时间: cellTimestamp(designRecord['稳定归档时间']) || Date.now(),
+    原设计参数ID: ids.designParamId || '',
+    原正式参数ID: ids.officialParamId || '',
+    来源表: sourceTable,
+    备注: remark,
+  };
+}
+
+function getDeprecatedReason(record: Record<string, unknown>, fallback: string): string {
+  return firstText(
+    record['废弃原因'],
+    record['发布错误'],
+    record['发布门禁失败原因'],
+    record['上线监控结论'],
+    record['评审意见'],
+    fallback,
+  );
 }
 
 function encodeScopedRecordId(source: TrackingSource, rawId: string): string {
@@ -3276,7 +3775,13 @@ function shouldApplyRequestWorkflowPatch(
 ): boolean {
   const targetStage = cellText(workflowPatch['流程阶段']);
   if (targetStage) {
-    return isStageTransitionValid(cellText(record.record['流程阶段']) || '需求录入', targetStage);
+    const currentStage = cellText(record.record['流程阶段']) || '需求录入';
+    const currentIndex = getStageIndex(currentStage);
+    const targetIndex = getStageIndex(targetStage);
+    if (currentIndex >= 0 && targetIndex >= 0) {
+      return targetIndex >= currentIndex;
+    }
+    return isStageTransitionValid(currentStage, targetStage);
   }
 
   if (stageId === 'design' && cellText(workflowPatch['评审状态']) === '评审中') {

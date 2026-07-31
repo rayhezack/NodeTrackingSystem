@@ -215,8 +215,13 @@ describe('工作流 Base 回写', () => {
         ],
         hasMore: false,
       })
+      .mockResolvedValueOnce({ records: [], hasMore: false })
+      .mockResolvedValueOnce({ records: [], hasMore: false })
       .mockResolvedValueOnce({ records: [], hasMore: false });
-    const batchAddRecords = jest.fn().mockImplementation(async (instanceKey: string) => (instanceKey === 'queryLibrary' ? [{ id: 'rec_official' }] : [{ id: 'rec_official_param_1' }]));
+    const batchAddRecords = jest.fn().mockImplementation(async (instanceKey: string, records: Record<string, unknown>[]) => {
+      if (instanceKey === 'queryLibrary') return [{ id: 'rec_official' }];
+      return records.map((_, index) => ({ id: `${instanceKey}_${index + 1}` }));
+    });
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
@@ -286,6 +291,19 @@ describe('工作流 Base 回写', () => {
         备注: '默认值/示例：submit',
       }),
     ]);
+    expect(batchAddRecords).toHaveBeenCalledWith('deprecatedParamDetail', [
+      expect.objectContaining({
+        废弃参数主键: 'test_event.removed_param',
+        evt_id: 'test_event',
+        参数名: 'removed_param',
+        参数状态: '已废弃',
+        来源表: '设计参数明细',
+      }),
+    ]);
+    expect(batchAddRecords).toHaveBeenCalledWith('enumDictionary', [
+      expect.objectContaining({ 枚举主键: 'test_event.button_name.submit', 枚举值: 'submit', 枚举状态: '正式' }),
+      expect.objectContaining({ 枚举主键: 'test_event.button_name.cancel', 枚举值: 'cancel', 枚举状态: '正式' }),
+    ]);
   });
 
   it('正式查询库已有同 evt_id 时应更新而不是重复新增', async () => {
@@ -306,7 +324,9 @@ describe('工作流 Base 回写', () => {
         records: [{ id: 'rec_official', record: { evt_id: 'test_event' } }],
         hasMore: false,
       }),
-      batchAddRecords: jest.fn(),
+      batchAddRecords: jest.fn().mockImplementation(async (_instanceKey: string, records: Record<string, unknown>[]) =>
+        records.map((_, index) => ({ id: `rec_enum_${index + 1}` })),
+      ),
     };
     const service = new TrackingService(bitable as unknown as BitableService);
 
@@ -396,8 +416,14 @@ describe('工作流 Base 回写', () => {
             },
           ],
           hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [],
+          hasMore: false,
         }),
-      batchAddRecords: jest.fn(),
+      batchAddRecords: jest.fn().mockImplementation(async (_instanceKey: string, records: Record<string, unknown>[]) =>
+        records.map((_, index) => ({ id: `rec_enum_${index + 1}` })),
+      ),
     };
     const service = new TrackingService(bitable as unknown as BitableService);
 

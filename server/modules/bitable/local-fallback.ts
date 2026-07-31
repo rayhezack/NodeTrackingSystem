@@ -429,6 +429,9 @@ export class LocalBitableFallback {
         }),
       ],
     ]),
+    enumDictionary: new Map(),
+    deprecatedEvent: new Map(),
+    deprecatedParamDetail: new Map(),
     webWorkbench: new Map([
       [
         'rec_web_homepage_view',
@@ -570,6 +573,9 @@ export class LocalBitableFallback {
         }),
       ],
     ]),
+    webEnumDictionary: new Map(),
+    webDeprecatedEvent: new Map(),
+    webDeprecatedParamDetail: new Map(),
   };
 
   searchRecords(

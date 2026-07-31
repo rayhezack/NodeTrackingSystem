@@ -71,10 +71,12 @@ describe('线上 Base 字段契约', () => {
 
     expect(fieldIds('paramDetail')).toMatchObject({
       ...expectedIds,
+      枚举字典: 'fldhF7TDyF',
       App适用性: 'fldtJMMilx',
     });
     expect(fieldIds('webParamDetail')).toMatchObject({
       ...expectedIds,
+      枚举字典: 'fldhF7TDyF',
       Web适用性: 'fldtJMMilx',
     });
   });
@@ -133,6 +135,38 @@ describe('线上 Base 字段契约', () => {
         type: 18,
         writeable: true,
       });
+      expect(fieldByName(instanceKey, '枚举字典')).toMatchObject({
+        id: 'fldhJ8GDKY',
+        type: 18,
+        writeable: true,
+      });
+    }
+  });
+
+  it('枚举字典与废弃表应使用线上真实表 ID 和可写字段', () => {
+    expect(BITABLE_TABLE_IDS).toMatchObject({
+      enumDictionary: 'tblQ8Ph3N8GJHeVA',
+      deprecatedEvent: 'tblBioKXiaou302p',
+      deprecatedParamDetail: 'tbl3HA2sLaHuxRD1',
+      webEnumDictionary: 'tbl2KEj2zyg8bOmk',
+      webDeprecatedEvent: 'tblqwh7naUc3WxNz',
+      webDeprecatedParamDetail: 'tblKjUGEx3mxICcY',
+    });
+
+    for (const instanceKey of ['enumDictionary', 'webEnumDictionary'] as const) {
+      expect(fieldByName(instanceKey, '枚举主键')).toMatchObject({ id: 'fldqTkbQYj', writeable: true });
+      expect(fieldByName(instanceKey, '关联设计参数')).toMatchObject({ id: 'fldPq8kSmT', type: 18, writeable: true });
+      expect(fieldByName(instanceKey, '关联正式参数')).toMatchObject({ id: 'fldkpdNCQ2', type: 18, writeable: true });
+    }
+
+    for (const instanceKey of ['deprecatedEvent', 'webDeprecatedEvent'] as const) {
+      expect(fieldByName(instanceKey, '废弃主键')).toMatchObject({ writeable: true });
+      expect(fieldByName(instanceKey, '废弃时间')).toMatchObject({ type: 5, writeable: true });
+    }
+
+    for (const instanceKey of ['deprecatedParamDetail', 'webDeprecatedParamDetail'] as const) {
+      expect(fieldByName(instanceKey, '废弃参数主键')).toMatchObject({ writeable: true });
+      expect(fieldByName(instanceKey, '废弃时间')).toMatchObject({ type: 5, writeable: true });
     }
   });
 });
