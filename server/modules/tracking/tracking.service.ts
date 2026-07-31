@@ -2313,7 +2313,7 @@ function mergeRequestSharedFields(records: BitableRecord[]): Record<string, unkn
       sharedFields[fieldName] = users;
     }
   }
-  const notificationSnapshot = mergeNotificationIdentitySnapshots(records);
+  const notificationSnapshot = buildRequestNotificationIdentitySnapshot(records);
   if (Object.keys(notificationSnapshot).length) {
     sharedFields[NOTIFICATION_IDENTITY_FIELD] = serializeNotificationIdentitySnapshot(notificationSnapshot);
   }
@@ -2341,8 +2341,10 @@ function toUserCollection(users: TrackingUserRef[]): { ids: string[]; names: str
 function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): TrackingUserRef[] {
   const idToUser = new Map<string, TrackingUserRef>();
   for (const record of records) {
-    mergeUserRefsIntoMap(idToUser, cellUsers(record.record[fieldName]).items);
-    mergeUserRefsIntoMap(idToUser, parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || []);
+    const baseUsers = cellUsers(record.record[fieldName]).items;
+    mergeUserRefsIntoMap(idToUser, baseUsers);
+    const snapshotUsers = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || [];
+    mergeUserRefsIntoMap(idToUser, filterSnapshotUsersForBaseUsers(snapshotUsers, baseUsers));
   }
   return Array.from(idToUser.values());
 }
@@ -2425,19 +2427,24 @@ function buildNotificationIdentitySnapshot(valueByFieldName: Record<string, unkn
   return serializeNotificationIdentitySnapshot(snapshot);
 }
 
-function mergeNotificationIdentitySnapshots(records: BitableRecord[]): NotificationIdentitySnapshot {
+function buildRequestNotificationIdentitySnapshot(records: BitableRecord[]): NotificationIdentitySnapshot {
   const snapshot: NotificationIdentitySnapshot = {};
-  for (const record of records) {
-    const item = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD]);
-    for (const fieldName of USER_FIELD_NAME_LIST) {
-      const users = item[fieldName] || [];
-      if (!users.length) continue;
-      const map = new Map((snapshot[fieldName] || []).map((user) => [primaryUserRefKey(user), user]));
-      mergeUserRefsIntoMap(map, users);
-      snapshot[fieldName] = Array.from(map.values());
-    }
+  for (const fieldName of USER_FIELD_NAME_LIST) {
+    const users = mergeRecordUserRefs(records, fieldName);
+    if (users.length) snapshot[fieldName] = users;
   }
   return snapshot;
+}
+
+function filterSnapshotUsersForBaseUsers(snapshotUsers: TrackingUserRef[], baseUsers: TrackingUserRef[]): TrackingUserRef[] {
+  if (!baseUsers.length) return snapshotUsers;
+  const baseHasDeliverableIdentity = baseUsers.some(hasDeliverableUserIdentity);
+  if (!baseHasDeliverableIdentity) return snapshotUsers;
+  return snapshotUsers.filter((user) => hasDeliverableUserIdentity(user));
+}
+
+function hasDeliverableUserIdentity(user: TrackingUserRef): boolean {
+  return Boolean(user.larkUserId || normalizeSnapshotEmail(user.email) || user.user_id?.startsWith('ou_'));
 }
 
 function parseNotificationIdentitySnapshot(value: unknown): NotificationIdentitySnapshot {

@@ -15,6 +15,14 @@ type RecipientDeliveryResult = {
   error?: string;
 };
 
+type ReceiveIdType = 'open_id' | 'email' | 'user_id';
+
+type RecipientReceiveTarget = {
+  receiveId: string;
+  receiveIdType: ReceiveIdType;
+  source: string;
+};
+
 const DEFAULT_FEISHU_APP_ID = 'cli_aaeb58a8113a9be5';
 
 export type WorkflowNotificationRecipient = TrackingUserRef & {
@@ -142,11 +150,12 @@ export class FeishuNotificationService {
       };
     }
 
-    const openId = await this.resolveOpenId(token, recipient).catch((error) => {
+    const directTargets = buildDirectReceiveTargets(recipient);
+    const fallbackTargets = await this.resolveFallbackReceiveTargets(token, recipient, directTargets).catch((error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         JSON.stringify({
-          message: 'Failed to resolve workflow notification recipient',
+          message: 'Failed to resolve workflow notification recipient fallback targets',
           requestId: payload.requestId,
           recordId: payload.recordId,
           toStage: payload.toStage,
@@ -154,12 +163,13 @@ export class FeishuNotificationService {
           error: errorMessage,
         }),
       );
-      return '';
+      return [] as RecipientReceiveTarget[];
     });
-    if (!openId) {
+    const targets = dedupeReceiveTargets([...directTargets, ...fallbackTargets]);
+    if (!targets.length) {
       this.logger.warn(
         JSON.stringify({
-          message: 'Skip workflow notification: cannot resolve recipient open_id',
+          message: 'Skip workflow notification: cannot resolve recipient delivery target',
           requestId: payload.requestId,
           recordId: payload.recordId,
           toStage: payload.toStage,
@@ -168,72 +178,98 @@ export class FeishuNotificationService {
       );
       return {
         sent: false,
-        skippedReason: 'cannot resolve recipient open_id',
+        skippedReason: 'cannot resolve recipient delivery target',
       };
     }
 
     this.markSentKey(dedupeKey);
-    try {
-      await this.postFeishuApi(
-        `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id`,
-        {
-          receive_id: openId,
-          msg_type: 'interactive',
-          content: JSON.stringify(this.buildMessageCard(payload, recipient)),
-        },
-        token,
-      );
-      this.logger.log(
-        JSON.stringify({
-          message: 'Workflow notification sent',
-          requestId: payload.requestId,
-          recordId: payload.recordId,
-          toStage: payload.toStage,
-          recipient: maskRecipient(recipient),
-        }),
-      );
-      return { sent: true };
-    } catch (error) {
-      this.sentKeys.delete(dedupeKey);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        JSON.stringify({
-          message: 'Failed to send workflow notification',
-          requestId: payload.requestId,
-          recordId: payload.recordId,
-          toStage: payload.toStage,
-          recipient: maskRecipient(recipient),
-          error: errorMessage,
-        }),
-      );
-      return {
-        sent: false,
-        error: errorMessage,
-      };
+    const errors: string[] = [];
+    for (const target of targets) {
+      try {
+        await this.postFeishuApi(
+          `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${target.receiveIdType}`,
+          {
+            receive_id: target.receiveId,
+            msg_type: 'interactive',
+            content: JSON.stringify(this.buildMessageCard(payload, recipient)),
+          },
+          token,
+        );
+        this.logger.log(
+          JSON.stringify({
+            message: 'Workflow notification sent',
+            requestId: payload.requestId,
+            recordId: payload.recordId,
+            toStage: payload.toStage,
+            recipient: maskRecipient(recipient),
+            receiveIdType: target.receiveIdType,
+            receiveTargetSource: target.source,
+          }),
+        );
+        return { sent: true };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        errors.push(`${target.receiveIdType}/${target.source}: ${errorMessage}`);
+        this.logger.warn(
+          JSON.stringify({
+            message: 'Failed to send workflow notification with receive target',
+            requestId: payload.requestId,
+            recordId: payload.recordId,
+            toStage: payload.toStage,
+            recipient: maskRecipient(recipient),
+            receiveIdType: target.receiveIdType,
+            receiveTargetSource: target.source,
+            error: errorMessage,
+          }),
+        );
+      }
     }
+
+    this.sentKeys.delete(dedupeKey);
+    return {
+      sent: false,
+      error: uniqueStrings(errors).join('; ') || 'all recipient delivery targets failed',
+    };
   }
 
-  private async resolveOpenId(token: string, recipient: WorkflowNotificationRecipient): Promise<string | null> {
-    const directOpenId = [recipient.larkUserId, recipient.user_id].find((value) => typeof value === 'string' && value.startsWith('ou_'));
-    if (directOpenId) return directOpenId;
+  private async resolveFallbackReceiveTargets(
+    token: string,
+    recipient: WorkflowNotificationRecipient,
+    existingTargets: RecipientReceiveTarget[],
+  ): Promise<RecipientReceiveTarget[]> {
+    const targets: RecipientReceiveTarget[] = [];
 
     const email = normalizeEmail(recipient.email);
     if (email) {
-      const emailOpenId = await this.resolveOpenIdByEmail(token, email);
-      if (emailOpenId) return emailOpenId;
+      const emailOpenId = await this.resolveOpenIdByEmail(token, email).catch(() => null);
+      if (emailOpenId && !hasReceiveTarget(existingTargets, 'open_id', emailOpenId)) {
+        targets.push({
+          receiveId: emailOpenId,
+          receiveIdType: 'open_id',
+          source: 'contact.email',
+        });
+      }
     }
 
-    const numericUserId = normalizeNumericUserId(recipient.user_id);
-    if (numericUserId) {
-      const userOpenId = await this.resolveOpenIdByUserId(token, numericUserId);
-      if (userOpenId) return userOpenId;
+    const hasStrongerDirectTarget = existingTargets.some((target) => target.receiveIdType === 'open_id' || target.receiveIdType === 'email');
+    const userId = normalizeFeishuUserId(recipient.user_id);
+    if (userId && !hasStrongerDirectTarget) {
+      const userOpenId = await this.resolveOpenIdByUserId(token, userId).catch(() => null);
+      if (userOpenId && !hasReceiveTarget(existingTargets, 'open_id', userOpenId)) {
+        targets.push({
+          receiveId: userOpenId,
+          receiveIdType: 'open_id',
+          source: 'contact.user_id',
+        });
+      }
     }
 
-    return null;
+    return targets;
   }
 
   private async resolveOpenIdByEmail(token: string, email: string): Promise<string | null> {
-    const cached = this.openIdCache.get(email);
+    const cacheKey = `email:${email}`;
+    const cached = this.openIdCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.openId;
 
     const response = await this.postFeishuApi<{ user_list?: Array<{ user_id?: string; open_id?: string }> }>(
@@ -247,7 +283,7 @@ export class FeishuNotificationService {
     const openId = response.data?.user_list?.[0]?.user_id || response.data?.user_list?.[0]?.open_id || '';
     if (!openId) return null;
 
-    this.openIdCache.set(email, {
+    this.openIdCache.set(cacheKey, {
       openId,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
@@ -484,13 +520,68 @@ function normalizeEmail(value?: string): string {
   return email.includes('@') ? email : '';
 }
 
-function uniqueRoleLabels(values: Array<string | undefined>): string[] {
-  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+function buildDirectReceiveTargets(recipient: WorkflowNotificationRecipient): RecipientReceiveTarget[] {
+  const targets: RecipientReceiveTarget[] = [];
+  const directOpenId = [recipient.larkUserId, recipient.user_id]
+    .map((value) => String(value || '').trim())
+    .find((value) => value.startsWith('ou_'));
+  if (directOpenId) {
+    targets.push({
+      receiveId: directOpenId,
+      receiveIdType: 'open_id',
+      source: 'recipient.open_id',
+    });
+  }
+
+  const email = normalizeEmail(recipient.email);
+  if (email) {
+    targets.push({
+      receiveId: email,
+      receiveIdType: 'email',
+      source: 'recipient.email',
+    });
+  }
+
+  const userId = normalizeFeishuUserId(recipient.user_id);
+  if (userId) {
+    targets.push({
+      receiveId: userId,
+      receiveIdType: 'user_id',
+      source: 'recipient.user_id',
+    });
+  }
+
+  return dedupeReceiveTargets(targets);
 }
 
-function normalizeNumericUserId(value?: string): string {
+function normalizeFeishuUserId(value?: string): string {
   const id = String(value || '').trim();
-  return /^\d+$/.test(id) ? id : '';
+  if (!id || id.startsWith('ou_') || id.includes('@')) return '';
+  return id;
+}
+
+function hasReceiveTarget(targets: RecipientReceiveTarget[], receiveIdType: ReceiveIdType, receiveId: string): boolean {
+  return targets.some((target) => target.receiveIdType === receiveIdType && target.receiveId === receiveId);
+}
+
+function dedupeReceiveTargets(targets: RecipientReceiveTarget[]): RecipientReceiveTarget[] {
+  const map = new Map<string, RecipientReceiveTarget>();
+  for (const target of targets) {
+    const receiveId = String(target.receiveId || '').trim();
+    if (!receiveId) continue;
+    const key = `${target.receiveIdType}:${receiveId}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        ...target,
+        receiveId,
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function uniqueRoleLabels(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 }
 
 function uniqueStrings(values: string[]): string[] {
