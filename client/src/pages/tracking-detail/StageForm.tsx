@@ -523,8 +523,15 @@ function showCompletionToast(label: string, notification?: WorkflowNotificationR
     ...(notification.errors || []),
     ...(notification.skippedReasons || []),
   ][0];
-  toast.warning(
-    `${label}已标记完成，但通知未完全送达：成功 ${notification.sentCount}/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
+  if (notification.sentCount > 0) {
+    toast.warning(
+      `${label}已标记完成，通知部分送达：成功 ${notification.sentCount}/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
+    );
+    return;
+  }
+
+  toast.error(
+    `${label}已标记完成，但通知发送失败：成功 0/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
   );
 }
 

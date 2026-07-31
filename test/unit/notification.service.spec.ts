@@ -105,6 +105,53 @@ describe('FeishuNotificationService', () => {
       }),
     );
   });
+
+  it('多个负责人时，应逐个独立投递并全部计入成功', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_a' } }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_b' } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = new FeishuNotificationService();
+    const result = await service.sendWorkflowTransitionNotification({
+      ...BASE_PAYLOAD,
+      recipients: [
+        { user_id: 'ou_owner_a', larkUserId: 'ou_owner_a', name: '负责人A', role: '研发负责人' },
+        { user_id: 'ou_owner_b', larkUserId: 'ou_owner_b', name: '负责人B', role: '研发负责人' },
+      ],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ recipientCount: 2, sentCount: 2, failedCount: 0, skippedCount: 0 }));
+    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=open_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_a' }));
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_b' }));
+  });
+
+  it('多个负责人中单人失败时，不应阻断其他负责人通知', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 99991663, msg: 'invalid receive id' }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_b' } }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = new FeishuNotificationService();
+    const result = await service.sendWorkflowTransitionNotification({
+      ...BASE_PAYLOAD,
+      recipients: [
+        { user_id: 'ou_owner_a', larkUserId: 'ou_owner_a', name: '负责人A', role: '研发负责人' },
+        { user_id: 'ou_owner_b', larkUserId: 'ou_owner_b', name: '负责人B', role: '研发负责人' },
+      ],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ recipientCount: 2, sentCount: 1, failedCount: 1, skippedCount: 0 }));
+    expect(result.errors?.[0]).toContain('负责人A');
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_b' }));
+  });
 });
 
 function okJson(body: Record<string, unknown>): Response {

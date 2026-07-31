@@ -125,9 +125,10 @@ export class FeishuNotificationService {
       };
     }
 
-    const deliveries = await Promise.all(
-      recipients.map((recipient) => this.sendToRecipient(token, payload, recipient)),
-    );
+    const deliveries: RecipientDeliveryResult[] = [];
+    for (const recipient of recipients) {
+      deliveries.push(await this.sendToRecipient(token, payload, recipient));
+    }
     const skippedReasons = uniqueStrings(deliveries.map((item) => item.skippedReason || '').filter(Boolean));
     const errors = uniqueStrings(deliveries.map((item) => item.error || '').filter(Boolean));
     return {
@@ -186,7 +187,7 @@ export class FeishuNotificationService {
     const errors: string[] = [];
     for (const target of targets) {
       try {
-        await this.postFeishuApi(
+        await this.postFeishuMessageWithRetry(
           `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${target.receiveIdType}`,
           {
             receive_id: target.receiveId,
@@ -226,10 +227,29 @@ export class FeishuNotificationService {
     }
 
     this.sentKeys.delete(dedupeKey);
+    const recipientLabel = formatRecipientLabel(recipient);
     return {
       sent: false,
-      error: uniqueStrings(errors).join('; ') || 'all recipient delivery targets failed',
+      error: `${recipientLabel}: ${uniqueStrings(errors).join('; ') || 'all recipient delivery targets failed'}`,
     };
+  }
+
+  private async postFeishuMessageWithRetry(
+    url: string,
+    body: Record<string, unknown>,
+    token: string,
+  ): Promise<FeishuApiResponse> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.postFeishuApi(url, body, token);
+      } catch (error) {
+        lastError = error;
+        if (attempt >= 2 || !isRetryableFeishuError(error)) break;
+        await delay(250 * (attempt + 1));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError || 'Feishu message send failed'));
   }
 
   private async resolveFallbackReceiveTargets(
@@ -586,6 +606,21 @@ function uniqueRoleLabels(values: Array<string | undefined>): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function isRetryableFeishuError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /http=429|http=5\d\d|rate|too many|frequency|timeout|ECONNRESET|ETIMEDOUT/i.test(message);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function formatRecipientLabel(recipient: WorkflowNotificationRecipient): string {
+  return recipient.name || normalizeEmail(recipient.email) || recipient.larkUserId || recipient.user_id || 'unknown recipient';
 }
 
 function maskRecipient(recipient: WorkflowNotificationRecipient): Record<string, unknown> {
