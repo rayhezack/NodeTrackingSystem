@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
 import type {
   BatchDeleteParamsRequest,
@@ -46,6 +46,7 @@ import type {
 import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import { calculatePermissions, getBaseStageFromUi, getStageIndex, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
+import { FeishuNotificationService, type WorkflowNotificationRecipient, type WorkflowTransitionNotification } from '../notification/notification.service';
 
 const WORKBENCH_FIELDS = [
   '需求ID',
@@ -156,6 +157,14 @@ type PermissionKey = keyof StagePermissions;
 type SourcedWorkbenchRecord = { source: TrackingSource; record: BitableRecord };
 type WorkbenchRecordGroup = { source: TrackingSource; requestId: string; records: BitableRecord[] };
 type TodoCandidate = TrackingRecord & { targetStage: string; todoRole: string };
+type BitableRecordUpdate = { id: string; record: Record<string, unknown>; nextRecord: Record<string, unknown> };
+type WorkflowNotificationPlan = {
+  fromStage: string;
+  toStage: string;
+  targetStageId: string;
+  actionText: string;
+  recipientFields: string[];
+};
 
 const USER_FIELD_NAME_LIST = ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'];
 const USER_FIELD_NAMES = new Set(USER_FIELD_NAME_LIST);
@@ -247,12 +256,14 @@ const TARGET_STAGE_PERMISSION_BY_BASE_STAGE: Record<string, PermissionKey> = {
 
 @Injectable()
 export class TrackingService {
+  private readonly logger = new Logger(TrackingService.name);
   private readonly uiImagePreviewCacheTtlMs = 8 * 60 * 1000;
   private readonly uiImagePreviewCache = new Map<string, { expiresAt: number; result: ResolveUiImagePreviewResponse }>();
 
   constructor(
     private readonly bitable: BitableService,
     private readonly fileService: FileService,
+    private readonly notification: FeishuNotificationService,
   ) {}
 
   async getStageStats(params: GetStageStatsParams = {}): Promise<GetStageStatsResponse> {
@@ -956,6 +967,7 @@ export class TrackingService {
     for (const update of mergedUpdates) {
       await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
     }
+    await this.notifyWorkflowTransition(ref.source, recordId, current.record, nextRecord, body, mergedUpdates);
     return { success: true, recordId, currentStage };
   }
 
@@ -1452,6 +1464,76 @@ export class TrackingService {
       }));
   }
 
+  private async notifyWorkflowTransition(
+    source: TrackingSource,
+    recordId: string,
+    previousRecord: Record<string, unknown>,
+    nextRecord: Record<string, unknown>,
+    body: UpdateTrackingRecordRequest,
+    updates: BitableRecordUpdate[],
+  ): Promise<void> {
+    const plan = getWorkflowNotificationPlan(body.stageId, body.targetStage, previousRecord, nextRecord);
+    if (!plan) return;
+
+    try {
+      const records = await this.getNotificationScopedRecords(source, updates, { id: parseScopedRecordId(recordId).rawId, record: nextRecord });
+      const requestRecord = selectGroupRequestRecord(records);
+      const recipients = buildWorkflowNotificationRecipients(records, plan.recipientFields);
+      const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
+      const eventNames = records.map((record) => cellText(record.record['事件中文名']) || cellText(record.record['evt_id'])).filter(Boolean);
+      const requestId = cellText(requestRecord.record['需求ID']) || undefined;
+      const notificationPayload: WorkflowTransitionNotification = {
+        idempotencyKey: [
+          source,
+          requestId || requestRecord.id,
+          plan.toStage,
+          cellText(nextRecord['评审状态']),
+          cellText(nextRecord['流程阶段']),
+        ].filter(Boolean).join(':'),
+        source,
+        recordId: encodeScopedRecordId(source, requestRecord.id),
+        requestId,
+        requestName: getGroupRequestName(records, requestRecord),
+        fromStage: plan.fromStage,
+        toStage: plan.toStage,
+        actionText: plan.actionText,
+        targetStageId: plan.targetStageId,
+        priority: getHighestPriority(records),
+        platform: mergePlatforms(records),
+        eventIds,
+        eventNames,
+        recipients,
+      };
+      await this.notification.sendWorkflowTransitionNotification(notificationPayload);
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Workflow transition succeeded but notification failed',
+          recordId,
+          source,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+
+  private async getNotificationScopedRecords(
+    source: TrackingSource,
+    updates: BitableRecordUpdate[],
+    current: BitableRecord,
+  ): Promise<BitableRecord[]> {
+    const updateMap = new Map(updates.map((update) => [update.id, update.nextRecord]));
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    const scopedRecords = relatedRecords.map((record) => ({
+      id: record.id,
+      record: updateMap.get(record.id) || record.record,
+    }));
+    if (!scopedRecords.some((record) => record.id === current.id)) {
+      scopedRecords.push(current);
+    }
+    return scopedRecords.filter((record) => isBusinessWorkbenchRecord(record));
+  }
+
   private toRelatedEvents(
     source: TrackingSource,
     current: BitableRecord,
@@ -1851,11 +1933,32 @@ function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): Track
       idToUser.set(user.user_id, {
         user_id: user.user_id,
         larkUserId: current?.larkUserId || user.larkUserId,
+        email: current?.email || user.email,
         name: current?.name || user.name,
       });
     }
   }
   return Array.from(idToUser.values());
+}
+
+function buildWorkflowNotificationRecipients(records: BitableRecord[], fieldNames: string[]): WorkflowNotificationRecipient[] {
+  return fieldNames.flatMap((fieldName) =>
+    mergeRecordUserRefs(records, fieldName).map((user) => ({
+      ...user,
+      role: getNotificationRoleLabel(fieldName),
+    })),
+  );
+}
+
+function getNotificationRoleLabel(fieldName: string): string {
+  const labels: Record<string, string> = {
+    需求提出人: '需求提出人',
+    需求录入人: '需求录入人',
+    数据负责人: '数据负责人',
+    研发负责人: '研发负责人',
+    DS验收人: 'DS 验收人',
+  };
+  return labels[fieldName] || fieldName;
 }
 
 function pickFields(record: Record<string, Cell>, fields: string[]): Record<string, unknown> {
@@ -2017,6 +2120,9 @@ function cellUsers(value: Cell): {
             (candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number',
           ) || '';
         const name = localizedText(user.name) || localizedText(user.en_name);
+        const email = [user.email, user.mail, user.emailAddress, user.email_address].find(
+          (candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'),
+        );
         const normalizedId = id ? String(id) : '';
         const larkUserId = [user.larkUserId, user.lark_user_id, user.open_id, user.openId, user.lark_id].find(
           (candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0,
@@ -2028,6 +2134,7 @@ function cellUsers(value: Cell): {
           acc.items.push({
             user_id: normalizedId,
             ...(resolvedLarkUserId ? { larkUserId: resolvedLarkUserId } : {}),
+            ...(email ? { email } : {}),
             ...(name && name !== normalizedId ? { name } : {}),
           });
         }
@@ -2860,6 +2967,80 @@ function toRequestWorkflowPatch(
   const workflowPatch = pickPatchFields(patch, allowedFields);
   return Object.keys(workflowPatch).length ? workflowPatch : null;
 }
+
+function getWorkflowNotificationPlan(
+  stageId: string | undefined,
+  targetStage: string | undefined,
+  previousRecord: Record<string, unknown>,
+  nextRecord: Record<string, unknown>,
+): WorkflowNotificationPlan | null {
+  const normalizedStageId = String(stageId || '').trim();
+  const previousBaseStage = cellText(previousRecord['流程阶段']) || '需求录入';
+  const previousReviewStatus = cellText(previousRecord['评审状态']);
+  const nextReviewStatus = cellText(nextRecord['评审状态']);
+
+  if (normalizedStageId === 'design' && nextReviewStatus === '评审中' && previousReviewStatus !== '评审中') {
+    return {
+      fromStage: '埋点设计',
+      toStage: '埋点评审',
+      targetStageId: 'review',
+      actionText: '埋点设计已提交评审，请完成评审确认。',
+      recipientFields: ['数据负责人', '研发负责人'],
+    };
+  }
+
+  if (!targetStage) return null;
+
+  const targetBaseStage = getBaseStageFromUi(targetStage);
+  if (!targetBaseStage || targetBaseStage === previousBaseStage) return null;
+
+  const targetPlan = WORKFLOW_NOTIFICATION_BY_TARGET_BASE_STAGE[targetBaseStage];
+  if (!targetPlan) return null;
+
+  return {
+    fromStage: getUiStageFromBase(previousBaseStage, previousReviewStatus),
+    ...targetPlan,
+  };
+}
+
+const WORKFLOW_NOTIFICATION_BY_TARGET_BASE_STAGE: Record<string, Omit<WorkflowNotificationPlan, 'fromStage'>> = {
+  埋点设计: {
+    toStage: '埋点设计',
+    targetStageId: 'design',
+    actionText: '需求录入已完成，请开始埋点设计。',
+    recipientFields: ['数据负责人'],
+  },
+  评审通过: {
+    toStage: '埋点开发',
+    targetStageId: 'dev',
+    actionText: '埋点评审已通过，请开始埋点开发。',
+    recipientFields: ['研发负责人'],
+  },
+  数据验收: {
+    toStage: '埋点校验',
+    targetStageId: 'acceptance',
+    actionText: '埋点开发已完成，请进行数据验收。',
+    recipientFields: ['数据负责人', 'DS验收人'],
+  },
+  上线监控: {
+    toStage: '埋点上线',
+    targetStageId: 'launch',
+    actionText: '数据验收已通过，请关注上线监控。',
+    recipientFields: ['数据负责人'],
+  },
+  稳定归档: {
+    toStage: '归档',
+    targetStageId: 'archive',
+    actionText: '上线监控已完成，请进行稳定归档。',
+    recipientFields: ['数据负责人'],
+  },
+  已废弃: {
+    toStage: '归档',
+    targetStageId: 'archive',
+    actionText: '需求已标记废弃，请关注归档状态。',
+    recipientFields: ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'],
+  },
+};
 
 function pickPatchFields(patch: Record<string, unknown>, fieldNames: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};

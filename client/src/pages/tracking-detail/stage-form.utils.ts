@@ -116,10 +116,12 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
       const id = numericId || larkUserId;
       if (!id) return null;
       const name = localizedText(user.name);
+      const email = firstEmail(user);
 
       return {
         user_id: id,
         ...(larkUserId ? { larkUserId } : {}),
+        ...(email ? { email } : {}),
         ...(name ? { name } : {}),
       };
     })
@@ -158,6 +160,14 @@ function firstLarkUserId(user: Record<string, unknown>): string {
     if (typeof value === 'string' && isLarkUserId(value.trim())) {
       return value.trim();
     }
+  }
+  return '';
+}
+
+function firstEmail(user: Record<string, unknown>): string {
+  for (const key of ['email', 'mail', 'emailAddress', 'email_address']) {
+    const value = user[key];
+    if (typeof value === 'string' && value.includes('@')) return value.trim();
   }
   return '';
 }

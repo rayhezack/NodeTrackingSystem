@@ -398,9 +398,16 @@ function toParticipantRefs(value: unknown[]): TrackingUserRef[] {
         user.openId,
       ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
       const name = localizedText(user.name) || localizedText(user.en_name);
+      const email = [
+        user.email,
+        user.mail,
+        user.emailAddress,
+        user.email_address,
+      ].find((candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'));
       return {
         user_id: id,
         larkUserId,
+        ...(email ? { email } : {}),
         ...(name && name !== id ? { name } : {}),
       };
     })

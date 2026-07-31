@@ -6,6 +6,7 @@ export type TrackingSourceFilter = TrackingSource | 'all';
 export interface TrackingUserRef {
   user_id: string;
   larkUserId?: string;
+  email?: string;
   name?: string;
 }
 
