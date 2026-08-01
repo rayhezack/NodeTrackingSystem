@@ -4,8 +4,8 @@
 
 ## 当前线上版本
 
-- **上一稳定发布提交：** `0e33293`
-- **上一稳定发布：** `7668633499108412596`
+- **最新稳定发布提交：** `2cc41ac`
+- **最新稳定发布：** `7668636456882277556`
 - **线上地址：** [https://bcn0tgplxp2e.aiforce.cloud/app/app_17apvbcusvs](https://bcn0tgplxp2e.aiforce.cloud/app/app_17apvbcusvs)
 - **版本主题：** 全链路 Base 同步、需求单删除、节点通知投递和人员身份快照治理。
 
@@ -78,7 +78,15 @@
 - `626898e`：节点流转后按下一节点责任人规划飞书机器人私信，并在前端展示通知送达结果。
 - `9d3e675`：修复机器人私信 `cannot resolve openid`，通知投递不再强依赖 open_id，改为兼容 `open_id / email / user_id` 多通道投递；同时避免旧数字身份快照污染新收件人列表。
 - `0e33293`：修复多个负责人时通知失败；改为逐个串行投递，单个负责人失败不阻断其他负责人，并在前端区分全部送达、部分送达和全部失败。
-- 本次更新：优化 Bot 可用范围错误提示；有邮箱时优先按邮箱发送，不再继续尝试 employee/user_id 产生 scope 噪音；遇到 `Bot has NO availability to this user` 时直接提示配置开放平台机器人可用范围。
+- `2cc41ac`：优化 Bot 可用范围错误提示；有邮箱时优先按邮箱发送，不再继续尝试 employee/user_id 产生 scope 噪音；遇到 `Bot has NO availability to this user` 时直接提示配置开放平台机器人可用范围。
+
+### 飞书 / 妙搭开发经验沉淀
+
+**核心变化：本轮将反复出现的飞书 Base、妙搭发布和 Bot 通知问题沉淀为后续小程序开发检查清单。**
+
+- 新增 [FEISHU_APP_DEVELOPMENT_LESSONS.md](FEISHU_APP_DEVELOPMENT_LESSONS.md)，系统总结 Base 字段契约、业务粒度、人员身份、权限边界、通知可用性和发布验证中的典型错误。
+- README 增加开发复盘入口，明确后续类似项目应先完成契约审计，再进入 UI 和业务功能开发。
+- 这次更新只涉及文档，不改变线上运行时代码；当前线上稳定运行版本仍为 `2cc41ac` / Release `7668636456882277556`。
 
 ### Base 契约与字段类型治理
 
