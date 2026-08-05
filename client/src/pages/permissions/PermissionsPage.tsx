@@ -130,7 +130,7 @@ export default function PermissionsPage() {
               权限配置
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              全局权限只配置管理员和普通用户；数据负责人、研发负责人、DS 验收人等项目角色在每条需求中指定。
+              全局权限只配置管理员和普通用户；数据负责人、研发负责人、埋点校验人等项目角色在每条需求中指定。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ export default function PermissionsPage() {
                   ) : (
                     <div className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
                       普通用户无需逐个添加；如需限制哪些同事能进入应用，请在飞书 Workplace / 妙搭应用发布范围中调整。
-                      被加入某条需求的提需人、录入人、数据负责人、研发负责人或 DS 验收人，会自动获得对应项目节点权限。
+                      被加入某条需求的需求提出人、数据负责人、研发负责人或埋点校验人，会自动获得对应项目节点权限。
                     </div>
                   )}
                 </div>

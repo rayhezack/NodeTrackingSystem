@@ -85,6 +85,10 @@ export function buildStageCompletionRequest(
   }
 }
 
+export function shouldReturnToWorkbenchAfterCompletion(stageId: string): boolean {
+  return stageId === 'archive';
+}
+
 function pickDirtyFields(
   fields: Record<string, unknown>,
   dirtyFieldNames: Set<string>,

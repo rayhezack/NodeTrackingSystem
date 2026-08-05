@@ -47,6 +47,11 @@ import type {
   NotificationRuntimeStatus,
   WorkflowNotificationResult,
 } from '@shared/api.interface';
+import {
+  DEFAULT_DATA_OWNER,
+  DEFAULT_TRACKING_VALIDATOR,
+  enrichDefaultProjectUser,
+} from '../../../shared/tracking-defaults';
 import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import { calculatePermissions, getBaseStageFromUi, getStageIndex, getUiStageFromBase, isStageTransitionValid, type StagePermissions } from '../bitable/bitable.utils';
@@ -97,7 +102,28 @@ const WORKBENCH_FIELDS = [
   '创建时间',
 ] as const;
 
-const OFFICIAL_QUERY_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
+const OFFICIAL_QUERY_FIELDS = [
+  'evt_id',
+  '事件中文名',
+  '端',
+  '上线版本',
+  '最低版本',
+  '状态',
+  '生命周期状态',
+  '参数明细入口',
+  '事件定义',
+  '触发时机',
+  '指标/使用场景',
+  '优先级',
+  '数据负责人',
+  '研发负责人',
+  'DS验收人',
+  '稳定归档时间',
+  '处理方',
+  '一级分类',
+  '公共属性要求',
+  '源事件记录ID',
+] as const;
 
 const PARAM_BASE_FIELDS = [
   '设计参数主键',
@@ -179,6 +205,7 @@ const USER_FIELD_NAME_LIST = ['需求提出人', '需求录入人', '数据负�
 const USER_FIELD_NAMES = new Set(USER_FIELD_NAME_LIST);
 const NOTIFICATION_IDENTITY_FIELD = '通知身份快照';
 const REQUEST_SHARED_FIELD_NAMES = ['需求名称', ...USER_FIELD_NAME_LIST, NOTIFICATION_IDENTITY_FIELD];
+const PROJECT_PARTICIPANT_NOTIFICATION_FIELDS = ['需求提出人', '数据负责人', '研发负责人', 'DS验收人'];
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
   requirement: 'canEditRequirement',
@@ -579,17 +606,27 @@ export class TrackingService {
       : '';
 
     const actorCellId = body.actorId;
-    const requesterCells = createUserCells(body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : []);
-    const recorderCells = createUserCells(body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : []);
-    const dataOwnerCells = createUserCells(body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : []);
+    const actorUsers = actorCellId
+      ? [{
+          user_id: actorCellId,
+          ...(body.actorLarkId ? { larkUserId: body.actorLarkId } : {}),
+          ...(body.actorName ? { name: body.actorName } : {}),
+        }]
+      : [];
+    const requesterUsers = body.requesterIds?.length ? body.requesterIds : actorUsers;
+    const dataOwnerUsers = body.dataOwnerIds?.length ? body.dataOwnerIds : [{ ...DEFAULT_DATA_OWNER }];
+    const dsAcceptorUsers = body.dsAcceptorIds?.length ? body.dsAcceptorIds : [{ ...DEFAULT_TRACKING_VALIDATOR }];
+    const requesterCells = createUserCells(requesterUsers);
+    const recorderCells = requesterCells;
+    const dataOwnerCells = createUserCells(dataOwnerUsers);
     const devOwnerCells = createUserCells(body.devOwnerIds);
-    const dsAcceptorCells = createUserCells(body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : []);
+    const dsAcceptorCells = createUserCells(dsAcceptorUsers);
     const notificationSnapshot = buildNotificationIdentitySnapshot({
-      需求提出人: body.requesterIds?.length ? body.requesterIds : actorCellId ? [actorCellId] : [],
-      需求录入人: body.recorderIds?.length ? body.recorderIds : actorCellId ? [actorCellId] : [],
-      数据负责人: body.dataOwnerIds?.length ? body.dataOwnerIds : actorCellId ? [actorCellId] : [],
+      需求提出人: requesterUsers,
+      需求录入人: requesterUsers,
+      数据负责人: dataOwnerUsers,
       研发负责人: body.devOwnerIds || [],
-      DS验收人: body.dsAcceptorIds?.length ? body.dsAcceptorIds : actorCellId ? [actorCellId] : [],
+      DS验收人: dsAcceptorUsers,
     });
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
@@ -1390,7 +1427,7 @@ export class TrackingService {
       return;
     }
 
-    const officialRecord = toOfficialQueryRecord(source, record);
+    const officialRecord = toOfficialQueryRecord(source, designRecordId, record);
     if (!officialRecord) return;
 
     const evtId = cellText(officialRecord.evt_id).trim().toLowerCase();
@@ -2094,7 +2131,7 @@ export class TrackingService {
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       relatedEvents: [],
       permissions: actor
-        ? calculateRecordPermissions(actor, actorCandidates, requester.ids, recorder.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, stage)
+        ? calculateRecordPermissions(actor, actorCandidates, requester.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, stage)
         : calculatePermissions('', [], [], []),
     };
   }
@@ -2341,7 +2378,7 @@ function toUserCollection(users: TrackingUserRef[]): { ids: string[]; names: str
 function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): TrackingUserRef[] {
   const idToUser = new Map<string, TrackingUserRef>();
   for (const record of records) {
-    const baseUsers = cellUsers(record.record[fieldName]).items;
+    const baseUsers = cellUsers(record.record[fieldName]).items.map(enrichDefaultProjectUser);
     mergeUserRefsIntoMap(idToUser, baseUsers);
     const snapshotUsers = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || [];
     mergeUserRefsIntoMap(idToUser, filterSnapshotUsersForBaseUsers(snapshotUsers, baseUsers));
@@ -2355,11 +2392,14 @@ function mergeUserRefsIntoMap(idToUser: Map<string, TrackingUserRef>, users: Tra
     const key = findExistingUserRefKey(idToUser, userKeys) || userKeys[0] || '';
     if (!key) continue;
     const current = idToUser.get(key);
+    const larkUserId = current?.larkUserId || user.larkUserId;
+    const email = current?.email || user.email;
+    const name = current?.name || user.name;
     idToUser.set(key, {
       user_id: current?.user_id || user.user_id || key,
-      larkUserId: current?.larkUserId || user.larkUserId,
-      email: current?.email || user.email,
-      name: current?.name || user.name,
+      ...(larkUserId ? { larkUserId } : {}),
+      ...(email ? { email } : {}),
+      ...(name ? { name } : {}),
     });
   }
 }
@@ -2476,7 +2516,8 @@ function toNotificationSnapshotUsers(value: unknown): TrackingUserRef[] {
   const values = Array.isArray(value) ? value : value ? [value] : [];
   const userMap = new Map<string, TrackingUserRef>();
   for (const item of values) {
-    const user = toNotificationSnapshotUser(item);
+    const parsedUser = toNotificationSnapshotUser(item);
+    const user = parsedUser ? enrichDefaultProjectUser(parsedUser) : null;
     if (!user) continue;
     const key = primaryUserRefKey(user);
     if (!key) continue;
@@ -2591,10 +2632,9 @@ function isNonEmptyIdCandidate(candidate: unknown): boolean {
 function getNotificationRoleLabel(fieldName: string): string {
   const labels: Record<string, string> = {
     需求提出人: '需求提出人',
-    需求录入人: '需求录入人',
     数据负责人: '数据负责人',
     研发负责人: '研发负责人',
-    DS验收人: 'DS 验收人',
+    DS验收人: '埋点校验人',
   };
   return labels[fieldName] || fieldName;
 }
@@ -3057,25 +3097,57 @@ function officialParamBaseLink(source: TrackingSource): string {
   return source === 'web' ? WEB_OFFICIAL_PARAM_LINK : APP_OFFICIAL_PARAM_LINK;
 }
 
-function toOfficialQueryRecord(source: TrackingSource, record: Record<string, unknown>): Record<string, unknown> | null {
+function toOfficialQueryRecord(
+  source: TrackingSource,
+  designRecordId: string,
+  record: Record<string, unknown>,
+): Record<string, unknown> | null {
   if (!shouldSyncOfficialQueryRecord(record)) return null;
 
   const evtId = cellText(record['evt_id']).trim();
   const eventName = cellText(record['事件中文名']).trim();
   if (!evtId || !eventName) return null;
 
+  const minimumVersion = firstText(record['最低版本'], record['版本']);
+  const dataOwners = createOfficialUserCells(record, '数据负责人');
+  const devOwners = createOfficialUserCells(record, '研发负责人');
+  const dsAcceptors = createOfficialUserCells(record, 'DS验收人');
+  const archiveTime = cellTimestamp(record['稳定归档时间']);
+  const priority = cellText(record['优先级']).trim();
+  const handler = cellText(record['处理方']).trim();
+  const category = cellText(record['一级分类']).trim();
+  const commonProps = cellText(record['公共属性要求']).trim();
+
   return {
     evt_id: evtId,
     事件中文名: eventName,
     端: toPlatformCell(cellText(record['端']), source),
     上线版本: firstText(record['版本'], record['最低版本']) || '1.0.0',
+    ...(minimumVersion ? { 最低版本: minimumVersion } : {}),
     状态: getOfficialQueryStatus(record),
     生命周期状态: cellText(record['流程阶段']) || '上线监控',
     参数明细入口: officialParamBaseLink(source),
     事件定义: cellText(record['事件定义']),
     触发时机: cellText(record['触发时机']),
     '指标/使用场景': cellText(record['指标/使用场景']),
+    ...(priority ? { 优先级: priority } : {}),
+    ...(dataOwners.length ? { 数据负责人: dataOwners } : {}),
+    ...(devOwners.length ? { 研发负责人: devOwners } : {}),
+    ...(dsAcceptors.length ? { DS验收人: dsAcceptors } : {}),
+    ...(archiveTime ? { 稳定归档时间: archiveTime } : {}),
+    ...(handler ? { 处理方: handler } : {}),
+    ...(category ? { 一级分类: category } : {}),
+    ...(commonProps ? { 公共属性要求: commonProps } : {}),
+    ...(designRecordId ? { 源事件记录ID: designRecordId } : {}),
   };
+}
+
+function createOfficialUserCells(record: Record<string, unknown>, fieldName: string): number[] {
+  const baseUsers = cellUsers(record[fieldName]).items;
+  const snapshotUsers = parseNotificationIdentitySnapshot(record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || [];
+  return createUserCells(
+    [...baseUsers, ...snapshotUsers].map(enrichDefaultProjectUser),
+  );
 }
 
 function toOfficialParamRecord(source: TrackingSource, designRecord: Record<string, unknown>, designParam: Record<string, unknown>, officialEventRecordId: string): Record<string, unknown> | null {
@@ -3434,14 +3506,13 @@ function normalizeScopedRawId(recordId: string, source: TrackingSource): string 
 function calculateRawRecordPermissions(record: Record<string, Cell>, actorId?: string, actorLarkId?: string, permissionConfig?: PermissionConfig | null): StagePermissions {
   const currentRecord = { id: '', record };
   const requester = recordUsers(currentRecord, '需求提出人');
-  const recorder = recordUsers(currentRecord, '需求录入人');
   const dataOwner = recordUsers(currentRecord, '数据负责人');
   const devOwner = recordUsers(currentRecord, '研发负责人');
   const dsAcceptor = recordUsers(currentRecord, 'DS验收人');
   const actor = actorId || actorLarkId || '';
   const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
 
-  return calculateRecordPermissions(actor, actorCandidates, requester.ids, recorder.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, cellText(record['流程阶段']) || '需求录入');
+  return calculateRecordPermissions(actor, actorCandidates, requester.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, cellText(record['流程阶段']) || '需求录入');
 }
 
 function getRequiredPermissionsForUpdate(body: UpdateTrackingRecordRequest): PermissionKey[] {
@@ -3487,17 +3558,15 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
 function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRecord, actorCandidates: string[]): { stage: string; targetStage: string; todoRole: string } | null {
   const baseStage = cellText(workflowRecord.record['流程阶段']);
   const requesters = mergeRecordUsers(records, '需求提出人').ids;
-  const recorders = mergeRecordUsers(records, '需求录入人').ids;
   const dataOwners = mergeRecordUsers(records, '数据负责人').ids;
   const devOwners = mergeRecordUsers(records, '研发负责人').ids;
   const dsAcceptors = mergeRecordUsers(records, 'DS验收人').ids;
 
   const isRequester = intersects(actorCandidates, requesters);
-  const isRecorder = intersects(actorCandidates, recorders);
   const isDataOwner = intersects(actorCandidates, dataOwners);
   const isDevOwner = intersects(actorCandidates, devOwners);
   const isAcceptor = intersects(actorCandidates, dsAcceptors);
-  const isProjectParticipant = isRequester || isRecorder || isDataOwner || isDevOwner || isAcceptor;
+  const isProjectParticipant = isRequester || isDataOwner || isDevOwner || isAcceptor;
 
   switch (baseStage) {
     case '需求录入':
@@ -3507,10 +3576,9 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           targetStage: 'requirement',
           todoRole: getFirstRole([
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
             [isDataOwner, '数据负责人'],
             [isDevOwner, '研发负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
           ]),
         };
       }
@@ -3523,9 +3591,8 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
             [isDevOwner, '研发负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
           ]),
         };
       }
@@ -3538,9 +3605,8 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           todoRole: getFirstRole([
             [isDevOwner, '研发负责人'],
             [isDataOwner, '数据负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
           ]),
         };
       }
@@ -3553,9 +3619,8 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           todoRole: getFirstRole([
             [isDevOwner, '研发负责人'],
             [isDataOwner, '数据负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
           ]),
         };
       }
@@ -3567,10 +3632,9 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           targetStage: 'acceptance',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
             [isDevOwner, '研发负责人'],
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
           ]),
         };
       }
@@ -3582,10 +3646,9 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
           targetStage: 'launch',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
-            [isAcceptor, 'DS验收人'],
+            [isAcceptor, '埋点校验人'],
             [isDevOwner, '研发负责人'],
             [isRequester, '提需人'],
-            [isRecorder, '录入人'],
           ]),
         };
       }
@@ -3647,7 +3710,6 @@ function calculateRecordPermissions(
   actorId: string,
   actorCandidates: string[],
   requesters: string[],
-  recorders: string[],
   dataOwner: string[],
   devOwner: string[],
   dsAcceptor: string[],
@@ -3656,7 +3718,7 @@ function calculateRecordPermissions(
 ) {
   const candidates = uniqueStrings([actorId, ...actorCandidates]);
   const base = mergePermissions(candidates.map((candidate) => calculatePermissions(candidate, dataOwner, devOwner, dsAcceptor)));
-  const canEditRequirementByRequester = candidates.some((candidate) => requesters.includes(candidate) || recorders.includes(candidate)) && (!currentStage || currentStage === '需求录入');
+  const canEditRequirementByRequester = candidates.some((candidate) => requesters.includes(candidate)) && (!currentStage || currentStage === '需求录入');
   if (candidates.some((candidate) => isBootstrapAdmin(candidate))) {
     return fullStagePermissions();
   }
@@ -3924,14 +3986,14 @@ const WORKFLOW_NOTIFICATION_BY_TARGET_BASE_STAGE: Record<string, Omit<WorkflowNo
   稳定归档: {
     toStage: '归档',
     targetStageId: 'archive',
-    actionText: '上线监控已完成，请进行稳定归档。',
-    recipientFields: ['数据负责人'],
+    actionText: '埋点已上线，上线监控已完成，请关注上线结果与归档状态。',
+    recipientFields: PROJECT_PARTICIPANT_NOTIFICATION_FIELDS,
   },
   已废弃: {
     toStage: '归档',
     targetStageId: 'archive',
     actionText: '需求已标记废弃，请关注归档状态。',
-    recipientFields: ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'],
+    recipientFields: PROJECT_PARTICIPANT_NOTIFICATION_FIELDS,
   },
 };
 

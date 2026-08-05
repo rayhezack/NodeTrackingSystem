@@ -63,6 +63,7 @@ import DesignHandoffPanel from './DesignHandoffPanel';
 import {
   buildStageUpdateRequest,
   buildStageCompletionRequest,
+  shouldReturnToWorkbenchAfterCompletion,
   toTrackingUserRefs,
 } from './stage-form.utils';
 
@@ -73,6 +74,7 @@ interface StageFormProps {
   actorId?: string;
   actorLarkId?: string;
   onSaved?: () => void;
+  onArchiveCompleted?: () => void;
   onSavedPatch?: (fields: Record<string, FormValue>, currentStage: string) => void;
   onSelectEvent?: (recordId: string) => void;
   onRelatedEventsChanged?: (recordId?: string) => void | Promise<void>;
@@ -137,6 +139,7 @@ const StageForm = ({
   actorId,
   actorLarkId,
   onSaved,
+  onArchiveCompleted,
   onSavedPatch,
   onSelectEvent,
   onRelatedEventsChanged,
@@ -250,6 +253,10 @@ const StageForm = ({
         actorLarkId,
       });
       showCompletionToast(stageConfig.label, response.notification);
+      if (shouldReturnToWorkbenchAfterCompletion(stageId) && onArchiveCompleted) {
+        onArchiveCompleted();
+        return;
+      }
       await onSaved?.();
     } catch (error) {
       const msg = error instanceof Error ? error.message : '标记完成失败';
@@ -526,6 +533,13 @@ function showCompletionToast(label: string, notification?: WorkflowNotificationR
   if (notification.sentCount > 0) {
     toast.warning(
       `${label}已标记完成，通知部分送达：成功 ${notification.sentCount}/${notification.recipientCount}${issue ? `，${issue}` : ''}`,
+    );
+    return;
+  }
+
+  if (notification.failedCount === 0 && notification.skippedCount > 0) {
+    toast.warning(
+      `${label}已标记完成，通知未发送${issue ? `：${issue}` : ''}`,
     );
     return;
   }

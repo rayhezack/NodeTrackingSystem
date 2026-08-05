@@ -52,6 +52,7 @@ describe('工作流 Base 回写', () => {
     expect(result.data.requester).toEqual([
       {
         user_id: '1867390536304713',
+        larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
         name: '孙文',
       },
     ]);
@@ -231,17 +232,48 @@ describe('工作流 Base 回写', () => {
           流程阶段: '上线监控',
           端: ['iOS', 'Android'],
           版本: '2.0.0',
+          最低版本: '1.9.0',
+          优先级: 'P1',
+          处理方: '客户端',
+          一级分类: '产品功能分析',
+          公共属性要求: 'user_id、device_id',
           事件定义: '用户点击测试入口时上报',
           触发时机: '点击入口后触发',
           '指标/使用场景': '测试转化漏斗',
           正式状态: '待开发',
+          需求提出人: [{ id: '1001', name: '提需同学' }],
+          需求录入人: [{ id: '1002', name: '历史录入人' }],
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+          研发负责人: [{ id: '3002', name: '研发同学' }],
+          DS验收人: [{ id: '1855461847682347', name: '刘桥' }],
+          通知身份快照: JSON.stringify({
+            需求提出人: [{ user_id: '1001', larkUserId: 'ou_requester', name: '提需同学' }],
+            需求录入人: [{ user_id: '1002', larkUserId: 'ou_legacy_recorder', name: '历史录入人' }],
+            数据负责人: [{ user_id: '1867390536304713', larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28', name: '孙文' }],
+            研发负责人: [{ user_id: '3002', larkUserId: 'ou_developer', name: '研发同学' }],
+            DS验收人: [{ user_id: '1855461847682347', larkUserId: 'ou_baee777128714311d1a0fdd2f8304c04', name: '刘桥' }],
+          }),
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
       searchRecords,
       batchAddRecords,
     };
-    const service = new TrackingService(bitable as unknown as BitableService);
+    const notification = {
+      sendWorkflowTransitionNotification: jest.fn().mockResolvedValue({
+        planned: true,
+        configured: true,
+        recipientCount: 4,
+        sentCount: 4,
+        skippedCount: 0,
+        failedCount: 0,
+      }),
+    };
+    const service = new TrackingService(
+      bitable as unknown as BitableService,
+      undefined as never,
+      notification as never,
+    );
 
     await service.updateRecord('app:rec_1', {
       actorId: '1867390536304713',
@@ -254,7 +286,7 @@ describe('工作流 Base 回写', () => {
     });
 
     expect(bitable.searchRecords).toHaveBeenCalledWith('queryLibrary', {
-      fieldNames: ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'],
+      fieldNames: expect.arrayContaining(['evt_id', '数据负责人', '研发负责人', 'DS验收人', '稳定归档时间']),
       pageSize: 200,
     });
     expect(batchAddRecords).toHaveBeenCalledWith('queryLibrary', [
@@ -263,8 +295,17 @@ describe('工作流 Base 回写', () => {
         事件中文名: '测试事件',
         端: ['iOS', 'Android'],
         上线版本: '2.0.0',
+        最低版本: '1.9.0',
         状态: '已上线',
         生命周期状态: '稳定归档',
+        优先级: 'P1',
+        数据负责人: [1867390536304713],
+        研发负责人: [3002],
+        DS验收人: [1855461847682347],
+        处理方: '客户端',
+        一级分类: '产品功能分析',
+        公共属性要求: 'user_id、device_id',
+        源事件记录ID: 'rec_1',
         事件定义: '用户点击测试入口时上报',
         触发时机: '点击入口后触发',
         '指标/使用场景': '测试转化漏斗',
@@ -304,6 +345,22 @@ describe('工作流 Base 回写', () => {
       expect.objectContaining({ 枚举主键: 'test_event.button_name.submit', 枚举值: 'submit', 枚举状态: '正式' }),
       expect.objectContaining({ 枚举主键: 'test_event.button_name.cancel', 枚举值: 'cancel', 枚举状态: '正式' }),
     ]);
+    expect(notification.sendWorkflowTransitionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toStage: '归档',
+        recipients: expect.arrayContaining([
+          expect.objectContaining({ larkUserId: 'ou_requester', role: '需求提出人' }),
+          expect.objectContaining({ larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28', role: '数据负责人' }),
+          expect.objectContaining({ larkUserId: 'ou_developer', role: '研发负责人' }),
+          expect.objectContaining({ larkUserId: 'ou_baee777128714311d1a0fdd2f8304c04', role: '埋点校验人' }),
+        ]),
+      }),
+    );
+    const notificationPayload = notification.sendWorkflowTransitionNotification.mock.calls[0][0];
+    expect(notificationPayload.recipients).toHaveLength(4);
+    expect(notificationPayload.recipients).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ larkUserId: 'ou_legacy_recorder' })]),
+    );
   });
 
   it('正式查询库已有同 evt_id 时应更新而不是重复新增', async () => {
@@ -316,7 +373,13 @@ describe('工作流 Base 回写', () => {
           流程阶段: '稳定归档',
           端: ['iOS'],
           版本: '2.1.0',
+          最低版本: '2.0.0',
           正式状态: '已上线',
+          优先级: 'P2',
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+          研发负责人: [{ id: '3002', name: '研发同学' }],
+          DS验收人: [{ id: '1855461847682347', name: '刘桥' }],
+          稳定归档时间: '2026-08-05 14:48:32',
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
@@ -343,7 +406,14 @@ describe('工作流 Base 回写', () => {
           evt_id: 'test_event',
           事件中文名: '测试事件 v2',
           上线版本: '2.1.0',
+          最低版本: '2.0.0',
           状态: '已上线',
+          优先级: 'P2',
+          数据负责人: [1867390536304713],
+          研发负责人: [3002],
+          DS验收人: [1855461847682347],
+          稳定归档时间: new Date('2026-08-05T14:48:32').getTime(),
+          源事件记录ID: 'rec_1',
         }),
       },
     ]);

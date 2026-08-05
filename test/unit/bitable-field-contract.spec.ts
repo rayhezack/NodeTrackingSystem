@@ -82,7 +82,28 @@ describe('线上 Base 字段契约', () => {
   });
 
   it('正式查询库事件字段应允许服务端写入', () => {
-    const writableFields = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'];
+    const writableFields = [
+      'evt_id',
+      '事件中文名',
+      '端',
+      '上线版本',
+      '最低版本',
+      '状态',
+      '生命周期状态',
+      '参数明细入口',
+      '事件定义',
+      '触发时机',
+      '指标/使用场景',
+      '优先级',
+      '数据负责人',
+      '研发负责人',
+      'DS验收人',
+      '稳定归档时间',
+      '处理方',
+      '一级分类',
+      '公共属性要求',
+      '源事件记录ID',
+    ];
 
     for (const instanceKey of ['queryLibrary', 'webQueryLibrary'] as const) {
       for (const fieldName of writableFields) {
@@ -93,6 +114,10 @@ describe('线上 Base 字段契约', () => {
       expect(fieldByName(instanceKey, '关联参数明细（系统）')).toMatchObject({
         writeable: false,
       });
+      expect(fieldByName(instanceKey, '数据负责人')).toMatchObject({ id: 'fldwcdGzaq', type: 11 });
+      expect(fieldByName(instanceKey, '研发负责人')).toMatchObject({ id: 'fldD4cbDe4', type: 11 });
+      expect(fieldByName(instanceKey, 'DS验收人')).toMatchObject({ id: 'fldecUcj1V', type: 11 });
+      expect(fieldByName(instanceKey, '稳定归档时间')).toMatchObject({ id: 'fldXGUjrgs', type: 5 });
     }
   });
 

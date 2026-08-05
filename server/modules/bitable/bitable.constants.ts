@@ -88,6 +88,19 @@ const ENUM_DICTIONARY_FIELDS: BitableFieldConfig[] = [
   { id: 'fldcQLmBQ0', name: '首次版本', type: 1, bizType: 'Text', readable: true, writeable: true },
 ];
 
+const OFFICIAL_QUERY_METADATA_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldDZgMFEh', name: '最低版本', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fldr5emByK', name: '优先级', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldwcdGzaq', name: '数据负责人', type: 11, bizType: 'User', readable: true, writeable: true },
+  { id: 'fldD4cbDe4', name: '研发负责人', type: 11, bizType: 'User', readable: true, writeable: true },
+  { id: 'fldecUcj1V', name: 'DS验收人', type: 11, bizType: 'User', readable: true, writeable: true },
+  { id: 'fldXGUjrgs', name: '稳定归档时间', type: 5, bizType: 'DateTime', readable: true, writeable: true },
+  { id: 'fldTkVnra2', name: '处理方', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldkUtpat1', name: '一级分类', type: 3, bizType: 'SingleSelect', readable: true, writeable: true },
+  { id: 'fldCB80W2B', name: '公共属性要求', type: 1, bizType: 'Text', readable: true, writeable: true },
+  { id: 'fld7fobFBq', name: '源事件记录ID', type: 1, bizType: 'Text', readable: true, writeable: true },
+];
+
 const APP_DEPRECATED_EVENT_FIELDS: BitableFieldConfig[] = [
   { id: 'fldxGnn9hv', name: '废弃主键', type: 1, bizType: 'Text', readable: true, writeable: true },
   { id: 'fldf65fRgN', name: 'evt_id', type: 1, bizType: 'Text', readable: true, writeable: true },
@@ -882,6 +895,7 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       readable: true,
       writeable: true,
     },
+    ...OFFICIAL_QUERY_METADATA_FIELDS,
     {
       id: 'fld5xpsf0p',
       name: '关联参数明细（系统）',
@@ -1594,6 +1608,7 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       readable: true,
       writeable: true,
     },
+    ...OFFICIAL_QUERY_METADATA_FIELDS,
     {
       id: 'fld5xpsf0p',
       name: '关联参数明细（系统）',

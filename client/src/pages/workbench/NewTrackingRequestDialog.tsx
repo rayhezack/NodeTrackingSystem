@@ -25,6 +25,7 @@ import type {
   TrackingSource,
   TrackingUserRef,
 } from '@shared/api.interface';
+import { DEFAULT_DATA_OWNER, DEFAULT_TRACKING_VALIDATOR } from '../../../../shared/tracking-defaults';
 
 interface NewTrackingRequestDialogProps {
   open: boolean;
@@ -37,7 +38,6 @@ interface NewTrackingRequestDialogProps {
 
 interface ParticipantForm {
   requesterIds: TrackingUserRef[];
-  recorderIds: TrackingUserRef[];
   dataOwnerIds: TrackingUserRef[];
   devOwnerIds: TrackingUserRef[];
   dsAcceptorIds: TrackingUserRef[];
@@ -71,10 +71,9 @@ const defaultParticipants = (
     : [];
   return {
     requesterIds: currentUser,
-    recorderIds: currentUser,
-    dataOwnerIds: [],
+    dataOwnerIds: [{ ...DEFAULT_DATA_OWNER }],
     devOwnerIds: [],
-    dsAcceptorIds: [],
+    dsAcceptorIds: [{ ...DEFAULT_TRACKING_VALIDATOR }],
   };
 };
 
@@ -128,10 +127,6 @@ export default function NewTrackingRequestDialog({
       toast.error('请填写需求提出人');
       return;
     }
-    if (!participants.recorderIds.length) {
-      toast.error('请填写需求录入人');
-      return;
-    }
     if (!participants.dataOwnerIds.length) {
       toast.error('请填写数据负责人');
       return;
@@ -141,7 +136,7 @@ export default function NewTrackingRequestDialog({
       return;
     }
     if (!participants.dsAcceptorIds.length) {
-      toast.error('请填写 DS 验收人');
+      toast.error('请填写埋点校验人');
       return;
     }
     if (form.requirementLink.trim() && !isHttpUrl(form.requirementLink.trim())) {
@@ -163,7 +158,6 @@ export default function NewTrackingRequestDialog({
         actorLarkId,
         actorName,
         requesterIds: participants.requesterIds,
-        recorderIds: participants.recorderIds,
         dataOwnerIds: participants.dataOwnerIds,
         devOwnerIds: participants.devOwnerIds,
         dsAcceptorIds: participants.dsAcceptorIds,
@@ -242,7 +236,7 @@ export default function NewTrackingRequestDialog({
             <div className="mb-3">
               <h3 className="text-sm font-medium text-foreground">项目参与人</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                需求录入时一次性填清楚参与人：提需/录入人可维护需求信息；数据负责人和 DS 验收人可维护设计、评审、验收、上线、归档与参数；研发负责人可维护开发节点。
+                需求提出人默认为当前创建者；数据负责人和埋点校验人已预填默认人员，研发负责人需按需求指定。
               </p>
             </div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
@@ -250,13 +244,6 @@ export default function NewTrackingRequestDialog({
                 <ProjectUserSelect
                   value={participants.requesterIds}
                   onChange={(value) => updateParticipants('requesterIds', value)}
-                  disabled={saving}
-                />
-              </Field>
-              <Field label="需求录入人" required>
-                <ProjectUserSelect
-                  value={participants.recorderIds}
-                  onChange={(value) => updateParticipants('recorderIds', value)}
                   disabled={saving}
                 />
               </Field>
@@ -274,7 +261,7 @@ export default function NewTrackingRequestDialog({
                   disabled={saving}
                 />
               </Field>
-              <Field label="DS 验收人" required className="md:col-span-2">
+              <Field label="埋点校验人" required>
                 <ProjectUserSelect
                   value={participants.dsAcceptorIds}
                   onChange={(value) => updateParticipants('dsAcceptorIds', value)}

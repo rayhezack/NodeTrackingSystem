@@ -86,6 +86,43 @@ describe('Base 写入值标准化', () => {
     });
   });
 
+  it.each(['queryLibrary', 'webQueryLibrary'] as const)(
+    '%s 应标准化归档负责人和稳定归档时间',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_official' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchUpdateRecords(instanceKey, [
+        {
+          id: 'rec_official',
+          record: {
+            数据负责人: ['1867390536304713'],
+            研发负责人: ['1855461847682347'],
+            DS验收人: ['1855461847682347'],
+            稳定归档时间: '2026-08-05 14:48:32',
+          },
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchUpdateRecords', {
+        records: [
+          {
+            id: 'rec_official',
+            record: {
+              数据负责人: [1867390536304713],
+              研发负责人: [1855461847682347],
+              DS验收人: [1855461847682347],
+              稳定归档时间: new Date('2026-08-05T14:48:32').getTime(),
+            },
+          },
+        ],
+      });
+    },
+  );
+
   it.each(['workbench', 'webWorkbench'] as const)(
     '%s UI图应按文本数组写入，避免附件对象触发 Base 插件校验失败',
     async (instanceKey) => {

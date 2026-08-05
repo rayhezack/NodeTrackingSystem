@@ -15,6 +15,7 @@ type StageFormUtils = {
     larkUserId?: string;
     name?: string;
   }>;
+  shouldReturnToWorkbenchAfterCompletion?: (stageId: string) => boolean;
 };
 
 function loadStageFormUtils(): StageFormUtils {
@@ -181,5 +182,10 @@ describe('详情阶段表单状态', () => {
       '正式状态': '已上线',
       '稳定归档时间': completedAt,
     });
+  });
+
+  it('仅在归档完成后返回工作台', () => {
+    expect(utils.shouldReturnToWorkbenchAfterCompletion?.('archive')).toBe(true);
+    expect(utils.shouldReturnToWorkbenchAfterCompletion?.('launch')).toBe(false);
   });
 });

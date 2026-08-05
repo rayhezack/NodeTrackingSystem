@@ -361,6 +361,7 @@ const TrackingDetailPage = () => {
               actorId={actor.id}
               actorLarkId={actor.larkId}
               onSaved={handleSaved}
+              onArchiveCompleted={() => navigate('/', { replace: true })}
               onSavedPatch={handleLocalSavedPatch}
               onSelectEvent={handleRelatedEventSelect}
               onRelatedEventsChanged={handleSaved}
