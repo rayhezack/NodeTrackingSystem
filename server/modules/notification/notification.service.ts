@@ -16,7 +16,7 @@ type RecipientDeliveryResult = {
   error?: string;
 };
 
-type ReceiveIdType = 'open_id' | 'email';
+type ReceiveIdType = 'user_id';
 
 type RecipientReceiveTarget = {
   receiveId: string;
@@ -51,6 +51,7 @@ export type WorkflowTransitionNotification = {
 export class FeishuNotificationService {
   private readonly logger = new Logger(FeishuNotificationService.name);
   private readonly sentKeys = new Map<string, number>();
+  private readonly emailUserIdCache = new Map<string, { userId: string; expiresAt: number }>();
   private tokenCache: { token: string; expiresAt: number } | null = null;
 
   getRuntimeStatus(): NotificationRuntimeStatus {
@@ -151,8 +152,26 @@ export class FeishuNotificationService {
       };
     }
 
-    const directTargets = buildDirectReceiveTargets(recipient);
-    const targets = dedupeReceiveTargets(directTargets);
+    let targets: RecipientReceiveTarget[] = [];
+    try {
+      targets = await this.resolveReceiveTargets(token, recipient);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        JSON.stringify({
+          message: 'Failed to resolve workflow notification recipient',
+          requestId: payload.requestId,
+          recordId: payload.recordId,
+          toStage: payload.toStage,
+          recipient: maskRecipient(recipient),
+          error: errorMessage,
+        }),
+      );
+      return {
+        sent: false,
+        error: `${formatRecipientLabel(recipient)}: ${formatUserIdLookupError(errorMessage)}`,
+      };
+    }
     if (!targets.length) {
       this.logger.warn(
         JSON.stringify({
@@ -219,6 +238,49 @@ export class FeishuNotificationService {
       sent: false,
       error: `${recipientLabel}: ${uniqueStrings(errors).join('; ') || 'all recipient delivery targets failed'}`,
     };
+  }
+
+  private async resolveReceiveTargets(token: string, recipient: WorkflowNotificationRecipient): Promise<RecipientReceiveTarget[]> {
+    const email = normalizeEmail(recipient.email);
+    if (email) {
+      const userId = await this.resolveUserIdByEmail(token, email);
+      return [{
+        receiveId: userId,
+        receiveIdType: 'user_id',
+        source: 'recipient.email->contact.user_id',
+      }];
+    }
+
+    return [];
+  }
+
+  private async resolveUserIdByEmail(token: string, email: string): Promise<string> {
+    const normalizedEmail = normalizeEmail(email);
+    const cached = this.emailUserIdCache.get(normalizedEmail);
+    if (cached && cached.expiresAt > Date.now()) return cached.userId;
+
+    const response = await this.postFeishuApi<{
+      user_list?: Array<{ user_id?: string; email?: string }>;
+    }>(
+      'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=user_id',
+      {
+        emails: [normalizedEmail],
+        include_resigned: false,
+      },
+      token,
+    );
+    const users = response.data?.user_list || [];
+    const matchedUser = users.find((user) => normalizeEmail(user.email) === normalizedEmail) || users[0];
+    const userId = String(matchedUser?.user_id || '').trim();
+    if (!userId) {
+      throw new Error(`Feishu contact lookup returned no user_id for ${maskEmail(normalizedEmail)}`);
+    }
+
+    this.emailUserIdCache.set(normalizedEmail, {
+      userId,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+    return userId;
   }
 
   private async postFeishuMessageWithRetry(
@@ -444,47 +506,6 @@ function normalizeEmail(value?: string): string {
   return email.includes('@') ? email : '';
 }
 
-function buildDirectReceiveTargets(recipient: WorkflowNotificationRecipient): RecipientReceiveTarget[] {
-  const targets: RecipientReceiveTarget[] = [];
-  const email = normalizeEmail(recipient.email);
-  if (email) {
-    targets.push({
-      receiveId: email,
-      receiveIdType: 'email',
-      source: 'recipient.email',
-    });
-  }
-
-  const directOpenId = [recipient.larkUserId, recipient.user_id]
-    .map((value) => String(value || '').trim())
-    .find((value) => value.startsWith('ou_'));
-  if (directOpenId) {
-    targets.push({
-      receiveId: directOpenId,
-      receiveIdType: 'open_id',
-      source: 'recipient.open_id',
-    });
-  }
-
-  return targets;
-}
-
-function dedupeReceiveTargets(targets: RecipientReceiveTarget[]): RecipientReceiveTarget[] {
-  const map = new Map<string, RecipientReceiveTarget>();
-  for (const target of targets) {
-    const receiveId = String(target.receiveId || '').trim();
-    if (!receiveId) continue;
-    const key = `${target.receiveIdType}:${receiveId}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        ...target,
-        receiveId,
-      });
-    }
-  }
-  return Array.from(map.values());
-}
-
 function uniqueRoleLabels(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 }
@@ -494,13 +515,20 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function formatDeliveryError(target: RecipientReceiveTarget, errorMessage: string): string {
-  if (/open_id cross app/i.test(errorMessage)) {
-    return `${target.receiveIdType}/${target.source}: open_id 属于其他飞书应用；请使用深圳九瓴科技有限公司通讯录中的企业邮箱投递`;
-  }
   if (isBotAvailabilityError(errorMessage)) {
     return `${target.receiveIdType}/${target.source}: 机器人对该用户不可用，请在飞书开放平台把机器人应用的可用范围加入该用户或所在部门，并重新发布应用版本`;
   }
   return `${target.receiveIdType}/${target.source}: ${errorMessage}`;
+}
+
+function formatUserIdLookupError(errorMessage: string): string {
+  if (/99991672|contact:user\.id:readonly|permission|scope/i.test(errorMessage)) {
+    return `邮箱解析 user_id 失败：机器人应用缺少或尚未发布 contact:user.id:readonly 权限；${errorMessage}`;
+  }
+  if (/returned no user_id/i.test(errorMessage)) {
+    return `邮箱解析 user_id 失败：邮箱不存在、用户已离职或不在机器人应用的数据权限范围内；${errorMessage}`;
+  }
+  return `邮箱解析 user_id 失败：${errorMessage}`;
 }
 
 function isBotAvailabilityError(message: string): boolean {

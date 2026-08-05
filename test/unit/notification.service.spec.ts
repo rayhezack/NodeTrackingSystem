@@ -32,10 +32,11 @@ describe('FeishuNotificationService', () => {
     process.env = { ...originalEnv };
   });
 
-  it('默认项目人员只有历史数字 ID 时，应补全企业邮箱并优先投递', async () => {
+  it('默认项目人员只有历史数字 ID 时，应补全邮箱、解析 user_id 后投递', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'joe@mail.pollo.ai', user_id: 'u_joe' }] } }))
       .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_open_id' } }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -46,19 +47,25 @@ describe('FeishuNotificationService', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ sentCount: 1, failedCount: 0, skippedCount: 0 }));
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(
+    expect(fetchMock.mock.calls[1][0]).toContain('/contact/v3/users/batch_get_id?user_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      emails: ['joe@mail.pollo.ai'],
+      include_resigned: false,
+    });
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(
       expect.objectContaining({
-        receive_id: 'joe@mail.pollo.ai',
+        receive_id: 'u_joe',
         msg_type: 'interactive',
       }),
     );
   });
 
-  it('人员有邮箱时，应直接按 email 投递且不调用通讯录', async () => {
+  it('人员有邮箱时，应通过机器人通讯录查询 user_id 且不使用跨应用 open_id', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'joe@mail.pollo.ai', user_id: 'u_joe' }] } }))
       .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_email' } }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -75,22 +82,22 @@ describe('FeishuNotificationService', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ sentCount: 1, failedCount: 0, skippedCount: 0 }));
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(
+    expect(fetchMock.mock.calls[1][0]).toContain('/contact/v3/users/batch_get_id');
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(
       expect.objectContaining({
-        receive_id: 'joe@mail.pollo.ai',
+        receive_id: 'u_joe',
         msg_type: 'interactive',
       }),
     );
-    expect(fetchMock.mock.calls).toHaveLength(2);
+    expect(fetchMock.mock.calls).toHaveLength(3);
   });
 
-  it('邮箱投递失败后才应尝试 open_id，并明确标记跨应用错误', async () => {
+  it('邮箱解析 user_id 失败时，不应回退到跨应用 open_id', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
-      .mockResolvedValueOnce(okJson({ code: 99991663, msg: 'invalid email' }))
-      .mockResolvedValueOnce(okJson({ code: 99992361, msg: 'open_id cross app' }));
+      .mockResolvedValueOnce(okJson({ code: 99991672, msg: 'no permission: contact:user.id:readonly' }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const service = new FeishuNotificationService();
@@ -106,12 +113,12 @@ describe('FeishuNotificationService', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ sentCount: 0, failedCount: 1 }));
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
-    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
-    expect(result.errors?.[0]).toContain('open_id 属于其他飞书应用');
+    expect(fetchMock.mock.calls[1][0]).toContain('/contact/v3/users/batch_get_id');
+    expect(result.errors?.[0]).toContain('contact:user.id:readonly');
+    expect(fetchMock.mock.calls).toHaveLength(2);
   });
 
-  it('无法确认的数字 ID 应安全跳过，不调用通讯录或 user_id 投递', async () => {
+  it('缺少邮箱时即使存在 open_id 也应安全跳过，避免跨应用投递', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }));
@@ -120,7 +127,7 @@ describe('FeishuNotificationService', () => {
     const service = new FeishuNotificationService();
     const result = await service.sendWorkflowTransitionNotification({
       ...BASE_PAYLOAD,
-      recipients: [{ user_id: '100200300', name: '未知人员', role: '研发负责人' }],
+      recipients: [{ user_id: 'ou_cross_app', larkUserId: 'ou_cross_app', name: '未知人员', role: '研发负责人' }],
     });
 
     expect(result).toEqual(expect.objectContaining({ recipientCount: 1, sentCount: 0, failedCount: 0, skippedCount: 1 }));
@@ -132,7 +139,9 @@ describe('FeishuNotificationService', () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'owner-a@pollo.ai', user_id: 'u_owner_a' }] } }))
       .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_a' } }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'owner-b@pollo.ai', user_id: 'u_owner_b' }] } }))
       .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_b' } }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -140,23 +149,25 @@ describe('FeishuNotificationService', () => {
     const result = await service.sendWorkflowTransitionNotification({
       ...BASE_PAYLOAD,
       recipients: [
-        { user_id: 'ou_owner_a', larkUserId: 'ou_owner_a', name: '负责人A', role: '研发负责人' },
-        { user_id: 'ou_owner_b', larkUserId: 'ou_owner_b', name: '负责人B', role: '研发负责人' },
+        { user_id: '1001', email: 'owner-a@pollo.ai', name: '负责人A', role: '研发负责人' },
+        { user_id: '1002', email: 'owner-b@pollo.ai', name: '负责人B', role: '研发负责人' },
       ],
     });
 
     expect(result).toEqual(expect.objectContaining({ recipientCount: 2, sentCount: 2, failedCount: 0, skippedCount: 0 }));
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=open_id');
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_a' }));
-    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_b' }));
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'u_owner_a' }));
+    expect(fetchMock.mock.calls[4][0]).toContain('receive_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[4][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'u_owner_b' }));
   });
 
   it('多个负责人中单人失败时，不应阻断其他负责人通知', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'owner-a@pollo.ai', user_id: 'u_owner_a' }] } }))
       .mockResolvedValueOnce(okJson({ code: 99991663, msg: 'invalid receive id' }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'owner-b@pollo.ai', user_id: 'u_owner_b' }] } }))
       .mockResolvedValueOnce(okJson({ code: 0, data: { message_id: 'om_owner_b' } }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -164,21 +175,22 @@ describe('FeishuNotificationService', () => {
     const result = await service.sendWorkflowTransitionNotification({
       ...BASE_PAYLOAD,
       recipients: [
-        { user_id: 'ou_owner_a', larkUserId: 'ou_owner_a', name: '负责人A', role: '研发负责人' },
-        { user_id: 'ou_owner_b', larkUserId: 'ou_owner_b', name: '负责人B', role: '研发负责人' },
+        { user_id: '1001', email: 'owner-a@pollo.ai', name: '负责人A', role: '研发负责人' },
+        { user_id: '1002', email: 'owner-b@pollo.ai', name: '负责人B', role: '研发负责人' },
       ],
     });
 
     expect(result).toEqual(expect.objectContaining({ recipientCount: 2, sentCount: 1, failedCount: 1, skippedCount: 0 }));
     expect(result.errors?.[0]).toContain('负责人A');
-    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'ou_owner_b' }));
+    expect(fetchMock.mock.calls[4][0]).toContain('receive_id_type=user_id');
+    expect(JSON.parse(String(fetchMock.mock.calls[4][1]?.body))).toEqual(expect.objectContaining({ receive_id: 'u_owner_b' }));
   });
 
-  it('机器人对邮箱用户不可用时，应给出可用范围提示且不继续尝试 user_id', async () => {
+  it('机器人对邮箱用户不可用时，应给出可用范围提示', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 0, data: { user_list: [{ email: 'joe@mail.pollo.ai', user_id: 'u_joe' }] } }))
       .mockResolvedValueOnce(okJson({ code: 230013, msg: 'Bot has NO availability to this user.' }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -191,8 +203,8 @@ describe('FeishuNotificationService', () => {
     expect(result).toEqual(expect.objectContaining({ recipientCount: 1, sentCount: 0, failedCount: 1, skippedCount: 0 }));
     expect(result.errors?.[0]).toContain('刘桥');
     expect(result.errors?.[0]).toContain('机器人对该用户不可用');
-    expect(fetchMock.mock.calls).toHaveLength(2);
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
+    expect(fetchMock.mock.calls).toHaveLength(3);
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=user_id');
   });
 });
 
