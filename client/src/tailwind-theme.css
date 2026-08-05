@@ -151,6 +151,18 @@
 }
 
 @layer utilities {
+  [data-slot="button"].bg-primary {
+    color: var(--primary-foreground) !important;
+  }
+
+  [data-slot="button"].bg-destructive {
+    color: var(--destructive-foreground) !important;
+  }
+
+  [data-slot="button"].text-destructive {
+    color: var(--destructive) !important;
+  }
+
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }

@@ -32,7 +32,7 @@ describe('FeishuNotificationService', () => {
     process.env = { ...originalEnv };
   });
 
-  it('默认项目人员只有历史数字 ID 时，应补全 open_id 后直接投递', async () => {
+  it('默认项目人员只有历史数字 ID 时，应补全企业邮箱并优先投递', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
@@ -46,10 +46,10 @@ describe('FeishuNotificationService', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ sentCount: 1, failedCount: 0, skippedCount: 0 }));
-    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=open_id');
+    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual(
       expect.objectContaining({
-        receive_id: 'ou_baee777128714311d1a0fdd2f8304c04',
+        receive_id: 'joe@mail.pollo.ai',
         msg_type: 'interactive',
       }),
     );
@@ -65,7 +65,13 @@ describe('FeishuNotificationService', () => {
     const service = new FeishuNotificationService();
     const result = await service.sendWorkflowTransitionNotification({
       ...BASE_PAYLOAD,
-      recipients: [{ user_id: '3008', email: 'joe@mail.pollo.ai', name: 'Joe Liu', role: '数据负责人' }],
+      recipients: [{
+        user_id: '3008',
+        larkUserId: 'ou_from_another_app',
+        email: 'joe@mail.pollo.ai',
+        name: 'Joe Liu',
+        role: '数据负责人',
+      }],
     });
 
     expect(result).toEqual(expect.objectContaining({ sentCount: 1, failedCount: 0, skippedCount: 0 }));
@@ -77,6 +83,32 @@ describe('FeishuNotificationService', () => {
       }),
     );
     expect(fetchMock.mock.calls).toHaveLength(2);
+  });
+
+  it('邮箱投递失败后才应尝试 open_id，并明确标记跨应用错误', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(okJson({ code: 0, tenant_access_token: 'tenant_token', expire: 7200 }))
+      .mockResolvedValueOnce(okJson({ code: 99991663, msg: 'invalid email' }))
+      .mockResolvedValueOnce(okJson({ code: 99992361, msg: 'open_id cross app' }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const service = new FeishuNotificationService();
+    const result = await service.sendWorkflowTransitionNotification({
+      ...BASE_PAYLOAD,
+      recipients: [{
+        user_id: '3008',
+        larkUserId: 'ou_from_another_app',
+        email: 'invalid@example.com',
+        name: '测试人员',
+        role: '数据负责人',
+      }],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ sentCount: 0, failedCount: 1 }));
+    expect(fetchMock.mock.calls[1][0]).toContain('receive_id_type=email');
+    expect(fetchMock.mock.calls[2][0]).toContain('receive_id_type=open_id');
+    expect(result.errors?.[0]).toContain('open_id 属于其他飞书应用');
   });
 
   it('无法确认的数字 ID 应安全跳过，不调用通讯录或 user_id 投递', async () => {

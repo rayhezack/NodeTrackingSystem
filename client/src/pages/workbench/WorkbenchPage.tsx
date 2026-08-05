@@ -220,6 +220,7 @@ const WorkbenchPage = () => {
           open={createOpen}
           actorId={actor.id}
           actorLarkId={actor.larkId}
+          actorEmail={actor.email}
           actorName={actor.name}
           onClose={() => setCreateOpen(false)}
           onSubmit={handleCreate}

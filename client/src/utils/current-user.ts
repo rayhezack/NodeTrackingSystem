@@ -1,12 +1,14 @@
 export interface CurrentActor {
   id?: string;
   larkId?: string;
+  email?: string;
   name?: string;
 }
 
 const LOCAL_DEV_ACTOR: CurrentActor = {
   id: '7648831973842095079',
   larkId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+  email: 'ray@mail.pollo.ai',
   name: '孙文',
 };
 
@@ -54,15 +56,18 @@ function extractActor(profile: Record<string, unknown>): CurrentActor | null {
     profile.name,
     profile.userName,
     profile.user_name,
-    profile.email,
   ]
     .map(toText)
     .find((value) => value.length > 0);
+  const email = [profile.email, profile.enterprise_email, profile.enterpriseEmail]
+    .map(toText)
+    .find((value) => value.includes('@'));
 
-  if (!id && !larkId && !name) return null;
+  if (!id && !larkId && !email && !name) return null;
   return {
     id: id != null ? String(id) : undefined,
     larkId,
+    email,
     name,
   };
 }
@@ -72,6 +77,7 @@ function withFallbackActor(actor: CurrentActor | null, fallback?: CurrentActor):
   return {
     id: actor.id || fallback?.id,
     larkId: actor.larkId || fallback?.larkId,
+    email: actor.email || fallback?.email,
     name: actor.name || fallback?.name,
   };
 }

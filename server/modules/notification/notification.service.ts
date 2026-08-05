@@ -445,27 +445,28 @@ function normalizeEmail(value?: string): string {
 }
 
 function buildDirectReceiveTargets(recipient: WorkflowNotificationRecipient): RecipientReceiveTarget[] {
+  const targets: RecipientReceiveTarget[] = [];
+  const email = normalizeEmail(recipient.email);
+  if (email) {
+    targets.push({
+      receiveId: email,
+      receiveIdType: 'email',
+      source: 'recipient.email',
+    });
+  }
+
   const directOpenId = [recipient.larkUserId, recipient.user_id]
     .map((value) => String(value || '').trim())
     .find((value) => value.startsWith('ou_'));
   if (directOpenId) {
-    return [{
+    targets.push({
       receiveId: directOpenId,
       receiveIdType: 'open_id',
       source: 'recipient.open_id',
-    }];
+    });
   }
 
-  const email = normalizeEmail(recipient.email);
-  if (email) {
-    return [{
-      receiveId: email,
-      receiveIdType: 'email',
-      source: 'recipient.email',
-    }];
-  }
-
-  return [];
+  return targets;
 }
 
 function dedupeReceiveTargets(targets: RecipientReceiveTarget[]): RecipientReceiveTarget[] {
@@ -493,6 +494,9 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function formatDeliveryError(target: RecipientReceiveTarget, errorMessage: string): string {
+  if (/open_id cross app/i.test(errorMessage)) {
+    return `${target.receiveIdType}/${target.source}: open_id 属于其他飞书应用；请使用深圳九瓴科技有限公司通讯录中的企业邮箱投递`;
+  }
   if (isBotAvailabilityError(errorMessage)) {
     return `${target.receiveIdType}/${target.source}: 机器人对该用户不可用，请在飞书开放平台把机器人应用的可用范围加入该用户或所在部门，并重新发布应用版本`;
   }

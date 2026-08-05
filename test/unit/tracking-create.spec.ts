@@ -153,15 +153,27 @@ describe('提需创建记录', () => {
     expect(record['需求提出人']).toEqual([1001]);
     expect(record['需求录入人']).toEqual([1001]);
     expect(record['数据负责人']).toEqual([1867390536304713]);
-    expect(record['DS验收人']).toEqual([1855461847682347]);
+    expect(record['DS验收人']).toEqual([1867390536304713, 1855461847682347]);
     const snapshot = JSON.parse(String(record['通知身份快照'])) as Record<string, Array<Record<string, string>>>;
     expect(snapshot['需求提出人'][0]).toEqual(expect.objectContaining({
       user_id: '1001',
       larkUserId: 'ou_requester',
       name: '提需同学',
     }));
-    expect(snapshot['数据负责人'][0].larkUserId).toBe('ou_dc88ea9baf066ba2f8b0b5fbcb59ca28');
-    expect(snapshot['DS验收人'][0].larkUserId).toBe('ou_baee777128714311d1a0fdd2f8304c04');
+    expect(snapshot['数据负责人'][0]).toEqual(expect.objectContaining({
+      larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+      email: 'ray@mail.pollo.ai',
+    }));
+    expect(snapshot['DS验收人']).toEqual([
+      expect.objectContaining({
+        larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+        email: 'ray@mail.pollo.ai',
+      }),
+      expect.objectContaining({
+        larkUserId: 'ou_baee777128714311d1a0fdd2f8304c04',
+        email: 'joe@mail.pollo.ai',
+      }),
+    ]);
     expect(record['需求ID']).toMatch(/^APP_REQ_/);
   });
 

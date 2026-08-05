@@ -168,6 +168,7 @@ export interface CreateTrackingRecordRequest {
   changeType?: string;
   actorId?: string;
   actorLarkId?: string;
+  actorEmail?: string;
   actorName?: string;
   requesterIds?: TrackingUserInput[];
   recorderIds?: TrackingUserInput[];

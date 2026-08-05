@@ -59,6 +59,10 @@ export function isValidUserId(user_id: string | undefined): boolean {
   return true;
 }
 
+export function shouldFetchUserAvatar(userId?: string, avatar?: string): boolean {
+  return Boolean(userId && /^\d+$/.test(userId) && !avatar);
+}
+
 /**
  * 获取用户显示名称
  * 自动处理 I18nText 类型

@@ -9,7 +9,7 @@ import {
   userInfoToUser,
   createUnknownUser,
 } from '@client/src/components/business-ui/user-display/utils';
-import { normalizeUser, getI18nText } from '@client/src/components/business-ui/utils/user';
+import { normalizeUser, getI18nText, shouldFetchUserAvatar } from '@client/src/components/business-ui/utils/user';
 import type { User } from '@client/src/components/business-ui/types/user';
 import { useUsersByIds } from '@client/src/components/business-ui/api/users/queries';
 import { cn } from '@/lib/utils';
@@ -106,7 +106,7 @@ export function UserWithAvatar({
   const { user_id, avatar: propsAvatar, name: propsName } = user;
 
   // 判断是否需要从 API 获取用户信息
-  const needsFetch = !propsName && !propsAvatar && !!user_id;
+  const needsFetch = shouldFetchUserAvatar(user_id, propsAvatar);
 
   // 使用 react-query hook 获取用户信息
   const idsToFetch = useMemo(
@@ -126,10 +126,9 @@ export function UserWithAvatar({
   }, [response, needsFetch, user_id, accountType]);
 
   const avatar = propsAvatar || fetchedUser?.avatar;
-  const name = propsName || fetchedUser?.name;
-
-  // 直接使用已合并的 name，通过 getI18nText 处理国际化
-  const displayName = isLoading ? '' : (getI18nText(name) || '无效人员');
+  const suppliedName = getI18nText(propsName);
+  const fetchedName = isLoading ? '' : getI18nText(fetchedUser?.name);
+  const displayName = suppliedName || fetchedName || '无效人员';
   const formatSize = ['small', 'medium', 'large'].includes(size)
     ? size
     : 'medium';
@@ -145,7 +144,9 @@ export function UserWithAvatar({
         <AvatarImage className="m-0" src={avatar} alt={displayName} />
         <AvatarFallback
           className={cn(avatarFallbackVariants({ size: formatSize }))}
-        />
+        >
+          {displayName.charAt(0)}
+        </AvatarFallback>
       </Avatar>
       {showLabel && (
         <OverflowTooltipText

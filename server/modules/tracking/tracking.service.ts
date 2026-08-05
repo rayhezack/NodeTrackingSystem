@@ -49,7 +49,7 @@ import type {
 } from '@shared/api.interface';
 import {
   DEFAULT_DATA_OWNER,
-  DEFAULT_TRACKING_VALIDATOR,
+  DEFAULT_TRACKING_VALIDATORS,
   enrichDefaultProjectUser,
 } from '../../../shared/tracking-defaults';
 import { BITABLE_FIELDS, UI_STAGE_NODES, PRIORITY_WEIGHT, type BitableInstanceKey } from '../bitable/bitable.constants';
@@ -610,12 +610,15 @@ export class TrackingService {
       ? [{
           user_id: actorCellId,
           ...(body.actorLarkId ? { larkUserId: body.actorLarkId } : {}),
+          ...(body.actorEmail ? { email: body.actorEmail } : {}),
           ...(body.actorName ? { name: body.actorName } : {}),
         }]
       : [];
     const requesterUsers = body.requesterIds?.length ? body.requesterIds : actorUsers;
     const dataOwnerUsers = body.dataOwnerIds?.length ? body.dataOwnerIds : [{ ...DEFAULT_DATA_OWNER }];
-    const dsAcceptorUsers = body.dsAcceptorIds?.length ? body.dsAcceptorIds : [{ ...DEFAULT_TRACKING_VALIDATOR }];
+    const dsAcceptorUsers = body.dsAcceptorIds?.length
+      ? body.dsAcceptorIds
+      : DEFAULT_TRACKING_VALIDATORS.map((user) => ({ ...user }));
     const requesterCells = createUserCells(requesterUsers);
     const recorderCells = requesterCells;
     const dataOwnerCells = createUserCells(dataOwnerUsers);

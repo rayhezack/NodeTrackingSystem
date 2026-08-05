@@ -25,12 +25,13 @@ import type {
   TrackingSource,
   TrackingUserRef,
 } from '@shared/api.interface';
-import { DEFAULT_DATA_OWNER, DEFAULT_TRACKING_VALIDATOR } from '../../../../shared/tracking-defaults';
+import { DEFAULT_DATA_OWNER, DEFAULT_TRACKING_VALIDATORS } from '../../../../shared/tracking-defaults';
 
 interface NewTrackingRequestDialogProps {
   open: boolean;
   actorId?: string;
   actorLarkId?: string;
+  actorEmail?: string;
   actorName?: string;
   onClose: () => void;
   onSubmit: (data: CreateTrackingRecordRequest) => Promise<void>;
@@ -60,12 +61,14 @@ const defaultForm = () => ({
 const defaultParticipants = (
   actorId?: string,
   actorLarkId?: string,
+  actorEmail?: string,
   actorName?: string,
 ): ParticipantForm => {
   const currentUser = actorId || actorLarkId
     ? [{
         user_id: actorId || actorLarkId || '',
         ...(actorLarkId ? { larkUserId: actorLarkId } : {}),
+        ...(actorEmail ? { email: actorEmail } : {}),
         name: actorName || '当前用户',
       }]
     : [];
@@ -73,7 +76,7 @@ const defaultParticipants = (
     requesterIds: currentUser,
     dataOwnerIds: [{ ...DEFAULT_DATA_OWNER }],
     devOwnerIds: [],
-    dsAcceptorIds: [{ ...DEFAULT_TRACKING_VALIDATOR }],
+    dsAcceptorIds: DEFAULT_TRACKING_VALIDATORS.map((user) => ({ ...user })),
   };
 };
 
@@ -81,21 +84,22 @@ export default function NewTrackingRequestDialog({
   open,
   actorId,
   actorLarkId,
+  actorEmail,
   actorName,
   onClose,
   onSubmit,
 }: NewTrackingRequestDialogProps) {
   const [form, setForm] = useState(defaultForm);
   const [participants, setParticipants] = useState<ParticipantForm>(() =>
-    defaultParticipants(actorId, actorLarkId, actorName),
+    defaultParticipants(actorId, actorLarkId, actorEmail, actorName),
   );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setForm(defaultForm());
-    setParticipants(defaultParticipants(actorId, actorLarkId, actorName));
-  }, [open, actorId, actorLarkId, actorName]);
+    setParticipants(defaultParticipants(actorId, actorLarkId, actorEmail, actorName));
+  }, [open, actorId, actorLarkId, actorEmail, actorName]);
 
   const updateField = (key: keyof ReturnType<typeof defaultForm>, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -156,6 +160,7 @@ export default function NewTrackingRequestDialog({
         metricScenario: form.metricScenario.trim(),
         actorId,
         actorLarkId,
+        actorEmail,
         actorName,
         requesterIds: participants.requesterIds,
         dataOwnerIds: participants.dataOwnerIds,

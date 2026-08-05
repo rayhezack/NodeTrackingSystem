@@ -53,6 +53,7 @@ describe('工作流 Base 回写', () => {
       {
         user_id: '1867390536304713',
         larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+        email: 'ray@mail.pollo.ai',
         name: '孙文',
       },
     ]);
