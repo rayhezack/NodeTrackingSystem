@@ -2028,8 +2028,8 @@ export class TrackingService {
     const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
     const eventNames = uniqueStrings(records.map((record) => cellText(record.record['事件中文名']) || '未命名事件'));
     const requestName = getGroupRequestName(records, requestRecord);
-    const dataUsers = mergeRecordUsers(records, '数据负责人');
-    const devUsers = mergeRecordUsers(records, '研发负责人');
+    const dataUsers = mergeRecordDisplayUsers(records, '数据负责人');
+    const devUsers = mergeRecordDisplayUsers(records, '研发负责人');
 
     return {
       recordId: encodeScopedRecordId(group.source, representative.id),
@@ -2055,8 +2055,8 @@ export class TrackingService {
 
   private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
     const users = {
-      data: recordUsers(record, '数据负责人'),
-      dev: recordUsers(record, '研发负责人'),
+      data: recordDisplayUsers(record, '数据负责人'),
+      dev: recordDisplayUsers(record, '研发负责人'),
     };
     const stage = cellText(record.record['流程阶段']) || '需求录入';
     return {
@@ -2363,8 +2363,30 @@ function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: s
   return toUserCollection(users);
 }
 
+function mergeRecordDisplayUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
+  return toDisplayUserCollection(mergeRecordUserRefs(records, fieldName));
+}
+
 function recordUsers(record: BitableRecord, fieldName: string): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
   return toUserCollection(mergeRecordUserRefs([record], fieldName));
+}
+
+function recordDisplayUsers(record: BitableRecord, fieldName: string): { ids: string[]; names: string[] } {
+  return toDisplayUserCollection(mergeRecordUserRefs([record], fieldName));
+}
+
+function toDisplayUserCollection(users: TrackingUserRef[]): { ids: string[]; names: string[] } {
+  const entries = users
+    .map((user) => ({
+      id: String(user.user_id || user.larkUserId || user.email || '').trim(),
+      name: String(user.name || '').trim(),
+    }))
+    .filter((user) => Boolean(user.id));
+
+  return {
+    ids: entries.map((user) => user.id),
+    names: entries.map((user) => user.name),
+  };
 }
 
 function toUserCollection(users: TrackingUserRef[]): { ids: string[]; names: string[]; items: TrackingUserRef[] } {
@@ -3981,7 +4003,7 @@ const WORKFLOW_NOTIFICATION_BY_TARGET_BASE_STAGE: Record<string, Omit<WorkflowNo
     toStage: '埋点上线',
     targetStageId: 'launch',
     actionText: '数据验收已通过，请关注上线监控。',
-    recipientFields: ['数据负责人'],
+    recipientFields: PROJECT_PARTICIPANT_NOTIFICATION_FIELDS,
   },
   稳定归档: {
     toStage: '归档',

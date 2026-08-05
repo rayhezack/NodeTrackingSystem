@@ -389,9 +389,7 @@ const RecordsTable = ({
 export default RecordsTable;
 
 function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
-  const readableNames = names
-    .map((name) => name.trim())
-    .filter((name) => name && !/^\d+$/.test(name) && !name.startsWith('ou_'));
+  const readableNames = names.map(normalizeOwnerName);
 
   if (ids.length) {
     return (
@@ -407,7 +405,13 @@ function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
     );
   }
 
-  return readableNames.length ? readableNames.join('、') : '-';
+  const fallbackNames = readableNames.filter(Boolean);
+  return fallbackNames.length ? fallbackNames.join('、') : '-';
+}
+
+function normalizeOwnerName(name: string | undefined): string {
+  const value = String(name || '').trim();
+  return value && !/^\d+$/.test(value) && !value.startsWith('ou_') ? value : '';
 }
 
 function eventTitle(values: string[]): string {

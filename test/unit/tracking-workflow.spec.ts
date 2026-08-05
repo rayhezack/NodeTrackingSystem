@@ -176,6 +176,64 @@ describe('工作流 Base 回写', () => {
     expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [{ id: 'rec_1', record: { 评审状态: '已拒绝' } }]);
   });
 
+  it('进入埋点上线时应通知需求单全部参与人并排除历史录入人', async () => {
+    const currentRecord = {
+      id: 'rec_launch',
+      record: {
+        evt_id: 'launch_event',
+        事件中文名: '上线通知事件',
+        需求名称: '上线通知需求',
+        流程阶段: '数据验收',
+        需求提出人: [{ id: 'ou_requester', name: '提需同学' }],
+        需求录入人: [{ id: 'ou_recorder', name: '历史录入人' }],
+        数据负责人: [{ id: 'ou_data_owner', name: '数据负责人' }],
+        研发负责人: [{ id: 'ou_dev_owner', name: '研发负责人' }],
+        DS验收人: [{ id: 'ou_validator', name: '校验负责人' }],
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(currentRecord),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_launch' }]),
+      searchRecords: jest.fn(),
+    };
+    const notification = {
+      sendWorkflowTransitionNotification: jest.fn().mockResolvedValue({
+        planned: true,
+        configured: true,
+        recipientCount: 4,
+        sentCount: 4,
+        skippedCount: 0,
+        failedCount: 0,
+      }),
+    };
+    const service = new TrackingService(
+      bitable as unknown as BitableService,
+      undefined as never,
+      notification as never,
+    );
+
+    const result = await service.updateRecord('app:rec_launch', {
+      actorId: '1867390536304713',
+      stageId: 'acceptance',
+      fields: { DS验收状态: '通过' },
+      targetStage: '上线监控',
+    });
+
+    expect(result.notification).toEqual(expect.objectContaining({ recipientCount: 4, sentCount: 4 }));
+    const payload = notification.sendWorkflowTransitionNotification.mock.calls[0][0];
+    expect(payload).toEqual(expect.objectContaining({ toStage: '埋点上线', targetStageId: 'launch' }));
+    expect(payload.recipients).toEqual(expect.arrayContaining([
+      expect.objectContaining({ larkUserId: 'ou_requester', role: '需求提出人' }),
+      expect.objectContaining({ larkUserId: 'ou_data_owner', role: '数据负责人' }),
+      expect.objectContaining({ larkUserId: 'ou_dev_owner', role: '研发负责人' }),
+      expect.objectContaining({ larkUserId: 'ou_validator', role: '埋点校验人' }),
+    ]));
+    expect(payload.recipients).toHaveLength(4);
+    expect(payload.recipients).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ larkUserId: 'ou_recorder' })]),
+    );
+  });
+
   it('完成上线后应自动新增正式查询库事件，并将设计参数同步为正式参数', async () => {
     const searchRecords = jest
       .fn()
@@ -798,6 +856,64 @@ describe('工作流 Base 回写', () => {
     expect(firstPage.pageToken).toBe('2');
     expect(secondPage.items.map((item) => item.evtId)).toEqual(['event_3']);
     expect(secondPage.hasMore).toBe(false);
+  });
+
+  it('需求列表每位负责人只应返回一个与姓名对齐的展示 ID', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_identity_aliases',
+            record: {
+              evt_id: 'identity_alias_event',
+              事件中文名: '负责人身份去重',
+              流程阶段: '需求录入',
+              记录类型: '埋点设计',
+              数据负责人: [
+                { id: '1867390536304713', name: '孙文' },
+                { id: '2002', name: '另一负责人' },
+              ],
+              研发负责人: [{ id: '3001', name: '研发同学' }],
+              通知身份快照: JSON.stringify({
+                数据负责人: [
+                  {
+                    user_id: '1867390536304713',
+                    larkUserId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+                    email: 'sunwen@example.com',
+                    name: '孙文',
+                  },
+                  {
+                    user_id: '2002',
+                    larkUserId: 'ou_other_owner',
+                    email: 'other@example.com',
+                    name: '另一负责人',
+                  },
+                ],
+                研发负责人: [
+                  {
+                    user_id: '3001',
+                    larkUserId: 'ou_dev_owner',
+                    name: '研发同学',
+                  },
+                ],
+              }),
+              创建时间: 100,
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getRecords({ source: 'app', pageSize: 20 });
+
+    expect(result.items[0]).toEqual(expect.objectContaining({
+      dataOwner: ['孙文', '另一负责人'],
+      dataOwnerIds: ['1867390536304713', '2002'],
+      devOwner: ['研发同学'],
+      devOwnerIds: ['3001'],
+    }));
   });
 
   it('工作台待办和需求列表应按需求ID聚合多个埋点事件', async () => {
