@@ -899,8 +899,7 @@ export class TrackingService {
     }
 
     const records = await this.listWorkbenchRecords(source);
-    const currentEvtId = cellText(current.record['evt_id']).trim();
-    const shouldReuseCurrent = !currentEvtId || currentEvtId.toLowerCase() === evtId.toLowerCase();
+    const shouldReuseCurrent = this.shouldReuseOfficialEventIntoCurrentRecord(current, records, evtId);
     if (!shouldReuseCurrent) {
       await this.ensureRequestId(source, current, records);
     }
@@ -1762,7 +1761,7 @@ export class TrackingService {
       fieldNames: [...WORKBENCH_FIELDS],
       pageSize: 200,
     });
-    return result.records.filter((record) => isBusinessWorkbenchRecord(record));
+    return (result?.records || []).filter((record) => isBusinessWorkbenchRecord(record));
   }
 
   private async ensureRequestId(source: TrackingSource, current: BitableRecord, records: BitableRecord[]): Promise<string> {
@@ -1785,19 +1784,31 @@ export class TrackingService {
     const normalizedEvtId = evtId.trim().toLowerCase();
     if (!normalizedEvtId) return undefined;
     const excluded = new Set(excludedRecordIds);
-    const currentRequestId = cellText(current.record['需求ID']).trim();
 
     return records.find((record) => {
       if (excluded.has(record.id)) return false;
       if (!isBusinessWorkbenchRecord(record)) return false;
       if (cellText(record.record['evt_id']).trim().toLowerCase() !== normalizedEvtId) return false;
-      if (!currentRequestId) return record.id === current.id;
-      return record.id === current.id || cellText(record.record['需求ID']).trim() === currentRequestId;
+      return isSameRequestRecord(current, record);
     });
+  }
+
+  private shouldReuseOfficialEventIntoCurrentRecord(current: BitableRecord, records: BitableRecord[], evtId: string): boolean {
+    const currentEvtId = cellText(current.record['evt_id']).trim();
+    if (currentEvtId) {
+      return currentEvtId.toLowerCase() === evtId.trim().toLowerCase();
+    }
+    return !records.some((record) =>
+      record.id !== current.id &&
+      isBusinessWorkbenchRecord(record) &&
+      isSameRequestRecord(current, record) &&
+      Boolean(cellText(record.record['evt_id']).trim()),
+    );
   }
 
   private async listRelatedWorkbenchRecords(source: TrackingSource, current: BitableRecord): Promise<BitableRecord[]> {
     const requestId = cellText(current.record['需求ID']).trim();
+    const legacyKey = legacyRequestGroupKey(current);
     let records = [current];
     if (requestId) {
       if (hasWorkbenchField(source, '需求ID')) {
@@ -1813,6 +1824,8 @@ export class TrackingService {
       } else {
         records = (await this.listWorkbenchRecords(source)).filter((record) => cellText(record.record['需求ID']).trim() === requestId);
       }
+    } else if (legacyKey) {
+      records = (await this.listWorkbenchRecords(source)).filter((record) => isSameRequestRecord(current, record));
     }
     const uniqueByRecordId = new Map<string, BitableRecord>();
     uniqueByRecordId.set(current.id, current);
@@ -2043,7 +2056,7 @@ export class TrackingService {
       eventIds,
       eventName: cellText(representative.record['事件中文名']) || eventNames[0] || '未命名需求',
       eventNames,
-      eventCount: records.length,
+      eventCount: eventIds.length || records.length,
       stage,
       uiStage: getUiStageFromBase(stage, cellText(stageRecord.record['评审状态'])),
       priority: getHighestPriority(records),
@@ -2203,17 +2216,40 @@ function compareTrackingRecord(a: TrackingRecord, b: TrackingRecord): number {
 
 function groupWorkbenchRecords(records: SourcedWorkbenchRecord[]): WorkbenchRecordGroup[] {
   const groups = new Map<string, WorkbenchRecordGroup>();
+  const legacyRequestIds = new Map<string, Set<string>>();
 
   for (const { source, record } of records) {
     const requestId = cellText(record.record['需求ID']).trim();
-    const groupKey = `${source}:${requestId || record.id}`;
+    const legacyKey = legacyRequestGroupKey(record);
+    if (requestId && legacyKey) {
+      const scopedLegacyKey = `${source}:${legacyKey}`;
+      const ids = legacyRequestIds.get(scopedLegacyKey) || new Set<string>();
+      ids.add(requestId);
+      legacyRequestIds.set(scopedLegacyKey, ids);
+    }
+  }
+
+  for (const { source, record } of records) {
+    const requestId = cellText(record.record['需求ID']).trim();
+    const legacyKey = legacyRequestGroupKey(record);
+    const mappedRequestIds = legacyKey ? legacyRequestIds.get(`${source}:${legacyKey}`) : undefined;
+    const mappedRequestId = mappedRequestIds?.size === 1 ? Array.from(mappedRequestIds)[0] : '';
+    const effectiveRequestId = requestId || mappedRequestId;
+    const groupKey = effectiveRequestId
+      ? `${source}:request:${effectiveRequestId}`
+      : legacyKey
+        ? `${source}:legacy:${legacyKey}`
+        : `${source}:record:${record.id}`;
     const group = groups.get(groupKey);
     if (group) {
       group.records.push(record);
+      if (!group.requestId && effectiveRequestId) {
+        group.requestId = effectiveRequestId;
+      }
     } else {
       groups.set(groupKey, {
         source,
-        requestId,
+        requestId: effectiveRequestId,
         records: [record],
       });
     }
@@ -2223,6 +2259,31 @@ function groupWorkbenchRecords(records: SourcedWorkbenchRecord[]): WorkbenchReco
     ...group,
     records: [...group.records].sort(compareRecordForGroup),
   }));
+}
+
+function legacyRequestGroupKey(record: BitableRecord): string {
+  const link = normalizeLegacyRequestKey(cellText(record.record['需求链接']));
+  if (link) return `link:${link}`;
+  const requestName = normalizeLegacyRequestKey(cellText(record.record['需求名称']));
+  return requestName ? `name:${requestName}` : '';
+}
+
+function normalizeLegacyRequestKey(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function isSameRequestRecord(current: BitableRecord, candidate: BitableRecord): boolean {
+  if (candidate.id === current.id) return true;
+  const currentRequestId = cellText(current.record['需求ID']).trim();
+  const candidateRequestId = cellText(candidate.record['需求ID']).trim();
+  if (currentRequestId && candidateRequestId && currentRequestId === candidateRequestId) return true;
+
+  const currentLegacyKey = legacyRequestGroupKey(current);
+  if (!currentLegacyKey) return false;
+  return currentLegacyKey === legacyRequestGroupKey(candidate);
 }
 
 function selectGroupRepresentative(records: BitableRecord[]): BitableRecord {

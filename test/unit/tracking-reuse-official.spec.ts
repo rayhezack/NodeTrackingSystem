@@ -194,6 +194,92 @@ describe('复用正式埋点事件', () => {
     ]);
   });
 
+  it('当前为空白占位记录但同需求已有事件时，复用正式事件应新增记录而不是覆盖占位记录', async () => {
+    const currentPlaceholderRecord = {
+      id: 'rec_placeholder',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        需求名称: '全站封禁埋点补齐',
+        evt_id: '',
+        事件中文名: '待填写',
+        需求背景: '补充风控事件',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        优先级: 'P0',
+        端: ['Web'],
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        DS验收人: [{ id: '1867390536304713', name: '孙文' }],
+        版本: '1.0.0',
+      },
+    };
+    const existingDesignRecord = {
+      id: 'rec_existing',
+      record: {
+        需求ID: 'APP_REQ_TEST',
+        需求名称: '全站封禁埋点补齐',
+        evt_id: 'widget_click',
+        事件中文名: '组件点击',
+        流程阶段: '埋点设计',
+        记录类型: '埋点设计',
+        优先级: 'P0',
+        端: ['Web'],
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        创建时间: 200,
+      },
+    };
+    const officialEventRecord = {
+      id: 'rec_official',
+      record: {
+        evt_id: 'widget_view',
+        事件中文名: '组件曝光',
+        端: ['Web'],
+        上线版本: '3.12.0',
+        事件定义: '组件进入可视区域时上报',
+        触发时机: '曝光时触发',
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockImplementation(async (instanceKey: string, recordId: string) => {
+        if (instanceKey === 'webWorkbench' && recordId === 'rec_placeholder') return currentPlaceholderRecord;
+        if (instanceKey === 'webQueryLibrary' && recordId === 'rec_official') return officialEventRecord;
+        return null;
+      }),
+      searchRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'webWorkbench') {
+          return { records: [currentPlaceholderRecord, existingDesignRecord], hasMore: false };
+        }
+        return { records: [], hasMore: false };
+      }),
+      batchUpdateRecords: jest.fn(),
+      batchAddRecords: jest.fn().mockResolvedValueOnce([{ id: 'rec_reused' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.reuseOfficialEvent('web:rec_placeholder', {
+      officialRecordId: 'web:rec_official',
+      actorId: '1867390536304713',
+    });
+
+    expect(result).toEqual({
+      success: true,
+      recordId: 'web:rec_reused',
+      currentStage: '埋点设计',
+      importedParamCount: 0,
+      skippedParamCount: 0,
+    });
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('webWorkbench', [
+      expect.objectContaining({
+        需求ID: 'APP_REQ_TEST',
+        需求名称: '全站封禁埋点补齐',
+        evt_id: 'widget_view',
+        事件中文名: '组件曝光',
+        需求背景: '补充风控事件',
+        变更类型: '修改',
+      }),
+    ]);
+  });
+
   it('不同需求可以并行复用同一个正式事件，不应被全局 evt_id 拦截', async () => {
     const otherDemandRecord = {
       id: 'rec_other_demand',

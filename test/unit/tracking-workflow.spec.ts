@@ -1007,6 +1007,107 @@ describe('工作流 Base 回写', () => {
     expect(searchResult.items[0].requestId).toBe('APP_REQ_BG_REMOVE');
   });
 
+  it('历史记录缺少需求ID时，待办和需求列表应按需求名称兼容聚合', async () => {
+    const demandName = 'Web，H5，APP全站自动封禁-涉儿童色情';
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_test',
+            record: {
+              需求名称: demandName,
+              evt_id: 'test',
+              事件中文名: '测试事件',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['Web'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 500,
+            },
+          },
+          {
+            id: 'rec_click',
+            record: {
+              需求名称: demandName,
+              evt_id: 'widget_click',
+              事件中文名: '组件点击',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['Web'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 400,
+            },
+          },
+          {
+            id: 'rec_view',
+            record: {
+              需求名称: demandName,
+              evt_id: 'widget_view',
+              事件中文名: '组件曝光',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['Web'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 300,
+            },
+          },
+          {
+            id: 'rec_click_duplicate',
+            record: {
+              需求名称: demandName,
+              evt_id: 'widget_click',
+              事件中文名: '组件点击重复行',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['Web'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 200,
+            },
+          },
+          {
+            id: 'rec_view_duplicate',
+            record: {
+              需求名称: demandName,
+              evt_id: 'widget_view',
+              事件中文名: '组件曝光重复行',
+              流程阶段: '埋点设计',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              端: ['Web'],
+              数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+              创建时间: 100,
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const dashboard = await service.getWorkbenchDashboard({
+      source: 'web',
+      actorId: '1867390536304713',
+      pageSize: 20,
+      todoLimit: 10,
+    });
+
+    expect(dashboard.total).toBe(1);
+    expect(dashboard.items).toHaveLength(1);
+    expect(dashboard.todos).toHaveLength(1);
+    expect(dashboard.todos[0]).toMatchObject({
+      requestName: demandName,
+      eventCount: 3,
+      eventIds: ['test', 'widget_click', 'widget_view'],
+      stage: '埋点设计',
+      targetStage: 'design',
+    });
+    expect(dashboard.stats.find((item) => item.stage === '埋点设计')?.count).toBe(1);
+  });
+
   it('工作台平台筛选应按 App/Web 库和 iOS/Android 端过滤', async () => {
     const bitable = {
       searchRecords: jest.fn((instanceKey: string) => Promise.resolve({
