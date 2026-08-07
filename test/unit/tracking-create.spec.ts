@@ -16,6 +16,7 @@ describe('提需创建记录', () => {
       requestName: '测试需求',
       eventName: '测试需求',
       requirementLink: '   ',
+      expectedCompletionDate: '2026-08-20',
       actorId: '1867390536304713',
       requesterIds: ['1867390536304713'],
       recorderIds: ['1867390536304713'],
@@ -33,6 +34,7 @@ describe('提需创建记录', () => {
     expect(record['需求ID']).toMatch(/^APP_REQ_/);
     expect(record['需求名称']).toBe('测试需求');
     expect(record['事件中文名']).toBe('测试需求');
+    expect(record['期望完成日期']).toBe('2026-08-20');
     expect(record['需求提出人']).toEqual([1867390536304713]);
     expect(record['需求录入人']).toEqual([1867390536304713]);
     expect(record['数据负责人']).toEqual([1867390536304713]);

@@ -859,7 +859,7 @@ describe('工作流 Base 回写', () => {
     expect(secondPage.hasMore).toBe(false);
   });
 
-  it('需求列表每位负责人只应返回一个与姓名对齐的展示 ID', async () => {
+  it('需求列表项目人员只应返回一个与姓名对齐的展示 ID', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({
         records: [
@@ -870,12 +870,21 @@ describe('工作流 Base 回写', () => {
               事件中文名: '负责人身份去重',
               流程阶段: '需求录入',
               记录类型: '埋点设计',
+              需求提出人: [{ id: '1001', name: '提需同学' }],
+              期望完成日期: '2026-08-20',
               数据负责人: [
                 { id: '1867390536304713', name: '孙文' },
                 { id: '2002', name: '另一负责人' },
               ],
               研发负责人: [{ id: '3001', name: '研发同学' }],
               通知身份快照: JSON.stringify({
+                需求提出人: [
+                  {
+                    user_id: '1001',
+                    larkUserId: 'ou_requester',
+                    name: '提需同学',
+                  },
+                ],
                 数据负责人: [
                   {
                     user_id: '1867390536304713',
@@ -910,6 +919,9 @@ describe('工作流 Base 回写', () => {
     const result = await service.getRecords({ source: 'app', pageSize: 20 });
 
     expect(result.items[0]).toEqual(expect.objectContaining({
+      requester: ['提需同学'],
+      requesterIds: ['1001'],
+      expectedCompletionDate: '2026-08-20',
       dataOwner: ['孙文', '另一负责人'],
       dataOwnerIds: ['1867390536304713', '2002'],
       devOwner: ['研发同学'],

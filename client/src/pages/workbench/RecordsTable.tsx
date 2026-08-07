@@ -269,6 +269,9 @@ const RecordsTable = ({
                     平台
                   </TableHead>
                   <TableHead className="h-9 w-28 px-3 text-xs font-medium text-muted-foreground">
+                    提需人
+                  </TableHead>
+                  <TableHead className="h-9 w-28 px-3 text-xs font-medium text-muted-foreground">
                     数据负责人
                   </TableHead>
                   <TableHead className="h-9 w-28 px-3 text-xs font-medium text-muted-foreground">
@@ -338,6 +341,12 @@ const RecordsTable = ({
                         <span className="block truncate" title={rec.platform || '-'}>
                           {rec.platform || '-'}
                         </span>
+                      </TableCell>
+                      <TableCell className="px-3 py-0 text-xs text-muted-foreground">
+                        <OwnerDisplay
+                          names={rec.requester}
+                          ids={rec.requesterIds}
+                        />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         <OwnerDisplay

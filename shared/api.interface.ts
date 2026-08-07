@@ -100,10 +100,13 @@ export interface TrackingRecord {
   uiStage: string;
   priority: string;
   platform: string;
+  requester: string[];
+  requesterIds: string[];
   dataOwner: string[];
   dataOwnerIds: string[];
   devOwner: string[];
   devOwnerIds: string[];
+  expectedCompletionDate?: string;
   updatedAt: number;
 }
 
@@ -157,6 +160,7 @@ export interface CreateTrackingRecordRequest {
   requirementBackground?: string;
   requirementLink?: string;
   metricScenario?: string;
+  expectedCompletionDate?: string;
   priority?: string;
   platform?: string;
   eventDefinition?: string;

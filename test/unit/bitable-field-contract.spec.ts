@@ -23,6 +23,7 @@ describe('线上 Base 字段契约', () => {
       埋点开发状态: 'fldRUa4hOE',
       DS验收状态: 'fldBEJ4bPe',
       需求链接: 'fld3tWUeqF',
+      期望完成日期: 'flde3FIvi2',
       DS验收证据: 'fldWc2ndH9',
       DS验收时间: 'fldb2kDxmo',
       稳定归档时间: 'fldks1ggnG',
@@ -41,6 +42,7 @@ describe('线上 Base 字段契约', () => {
       需求名称: 'fldzPZpSsE',
       需求提出人: 'fld3VkDsty',
       需求录入人: 'fldmXg85mP',
+      期望完成日期: 'fldm7MiKzZ',
       UI图: 'fldhJiDfHu',
     });
     expect(fieldByName('workbench', 'DS验收证据')).toMatchObject({
@@ -51,6 +53,16 @@ describe('线上 Base 字段契约', () => {
     expect(fieldByName('webWorkbench', 'DS验收证据')).toMatchObject({
       type: 1,
       bizType: 'Text',
+      writeable: true,
+    });
+    expect(fieldByName('workbench', '期望完成日期')).toMatchObject({
+      type: 5,
+      bizType: 'DateTime',
+      writeable: true,
+    });
+    expect(fieldByName('webWorkbench', '期望完成日期')).toMatchObject({
+      type: 5,
+      bizType: 'DateTime',
       writeable: true,
     });
   });

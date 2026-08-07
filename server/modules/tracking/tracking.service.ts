@@ -68,6 +68,7 @@ const WORKBENCH_FIELDS = [
   '需求背景',
   '需求链接',
   '指标/使用场景',
+  '期望完成日期',
   '流程阶段',
   '记录类型',
   '优先级',
@@ -204,7 +205,7 @@ type NotificationIdentitySnapshot = Record<string, TrackingUserRef[]>;
 const USER_FIELD_NAME_LIST = ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'];
 const USER_FIELD_NAMES = new Set(USER_FIELD_NAME_LIST);
 const NOTIFICATION_IDENTITY_FIELD = '通知身份快照';
-const REQUEST_SHARED_FIELD_NAMES = ['需求名称', ...USER_FIELD_NAME_LIST, NOTIFICATION_IDENTITY_FIELD];
+const REQUEST_SHARED_FIELD_NAMES = ['需求名称', '期望完成日期', ...USER_FIELD_NAME_LIST, NOTIFICATION_IDENTITY_FIELD];
 const PROJECT_PARTICIPANT_NOTIFICATION_FIELDS = ['需求提出人', '数据负责人', '研发负责人', 'DS验收人'];
 const ATTACHMENT_FIELD_NAMES = new Set(['UI图']);
 const STAGE_PERMISSION_BY_STAGE_ID: Record<string, PermissionKey> = {
@@ -224,6 +225,7 @@ const FIELD_PERMISSION_BY_STAGE_ID: Record<string, Record<string, PermissionKey>
     需求背景: 'canEditRequirement',
     需求链接: 'canEditRequirement',
     '指标/使用场景': 'canEditRequirement',
+    期望完成日期: 'canEditRequirement',
     优先级: 'canEditRequirement',
     端: 'canEditRequirement',
     数据负责人: 'canEditRequirement',
@@ -634,6 +636,7 @@ export class TrackingService {
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
     const requirementLink = (body.requirementLink || '').trim();
+    const expectedCompletionDate = (body.expectedCompletionDate || '').trim();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
         ...(requestId ? { 需求ID: requestId } : {}),
@@ -645,6 +648,7 @@ export class TrackingService {
         需求背景: body.requirementBackground || '',
         ...(requirementLink ? { 需求链接: requirementLink } : {}),
         '指标/使用场景': body.metricScenario || '',
+        ...(expectedCompletionDate ? { 期望完成日期: expectedCompletionDate } : {}),
         流程阶段: '需求录入',
         记录类型: '埋点设计',
         优先级: body.priority || 'P2',
@@ -738,6 +742,7 @@ export class TrackingService {
       需求背景: cellText(currentRecord['需求背景']),
       ...(requirementLink ? { 需求链接: requirementLink } : {}),
       '指标/使用场景': cellText(currentRecord['指标/使用场景']),
+      ...nonEmptyFieldPatch(currentRecord, '期望完成日期'),
       流程阶段: '埋点设计',
       记录类型: '埋点设计',
       优先级: body.priority || cellText(currentRecord['优先级']) || 'P2',
@@ -973,6 +978,7 @@ export class TrackingService {
         ...designPatch,
         需求背景: cellText(currentRecord['需求背景']),
         ...(requirementLink ? { 需求链接: requirementLink } : {}),
+        ...nonEmptyFieldPatch(currentRecord, '期望完成日期'),
         需求提出人: createUserCells(cellUsers(currentRecord['需求提出人']).ids),
         需求录入人: createUserCells(cellUsers(currentRecord['需求录入人']).ids),
         数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
@@ -2044,8 +2050,12 @@ export class TrackingService {
     const eventIds = uniqueStrings(records.map((record) => cellText(record.record['evt_id'])));
     const eventNames = uniqueStrings(records.map((record) => cellText(record.record['事件中文名']) || '未命名事件'));
     const requestName = getGroupRequestName(records, requestRecord);
+    const requesterUsers = mergeRecordDisplayUsers(records, '需求提出人');
     const dataUsers = mergeRecordDisplayUsers(records, '数据负责人');
     const devUsers = mergeRecordDisplayUsers(records, '研发负责人');
+    const expectedCompletionDate = records
+      .map((record) => cellText(record.record['期望完成日期']).trim())
+      .find(Boolean);
 
     return {
       recordId: encodeScopedRecordId(group.source, representative.id),
@@ -2061,16 +2071,20 @@ export class TrackingService {
       uiStage: getUiStageFromBase(stage, cellText(stageRecord.record['评审状态'])),
       priority: getHighestPriority(records),
       platform: mergePlatforms(records),
+      requester: requesterUsers.names,
+      requesterIds: requesterUsers.ids,
       dataOwner: dataUsers.names,
       dataOwnerIds: dataUsers.ids,
       devOwner: devUsers.names,
       devOwnerIds: devUsers.ids,
+      ...(expectedCompletionDate ? { expectedCompletionDate } : {}),
       updatedAt: Math.max(...records.map((record) => cellTimestamp(record.record['创建时间']))),
     };
   }
 
   private toTrackingRecord(record: BitableRecord, source: TrackingSource): TrackingRecord {
     const users = {
+      requester: recordDisplayUsers(record, '需求提出人'),
       data: recordDisplayUsers(record, '数据负责人'),
       dev: recordDisplayUsers(record, '研发负责人'),
     };
@@ -2089,10 +2103,13 @@ export class TrackingService {
       uiStage: getUiStageFromBase(stage, cellText(record.record['评审状态'])),
       priority: cellText(record.record['优先级']) || 'P2',
       platform: cellText(record.record['端']) || '-',
+      requester: users.requester.names,
+      requesterIds: users.requester.ids,
       dataOwner: users.data.names,
       dataOwnerIds: users.data.ids,
       devOwner: users.dev.names,
       devOwnerIds: users.dev.ids,
+      ...(cellText(record.record['期望完成日期']).trim() ? { expectedCompletionDate: cellText(record.record['期望完成日期']).trim() } : {}),
       updatedAt: cellTimestamp(record.record['创建时间']),
     };
   }
@@ -2107,7 +2124,7 @@ export class TrackingService {
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
     const stage = cellText(record.record['流程阶段']) || '需求录入';
     const requirementFields = {
-      ...pickFields(record.record, ['需求名称', '需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
+      ...pickFields(record.record, ['需求名称', '需求提出人', '需求录入人', '需求背景', '需求链接', '指标/使用场景', '期望完成日期', '优先级', '端', '数据负责人', '研发负责人', 'DS验收人']),
       需求提出人: requester.items,
       需求录入人: recorder.items,
       数据负责人: dataOwner.items,
@@ -2413,6 +2430,12 @@ function mergeRequestSharedFields(records: BitableRecord[]): Record<string, unkn
     if (users.length) {
       sharedFields[fieldName] = users;
     }
+  }
+  const expectedCompletionDate = records
+    .map((record) => record.record['期望完成日期'])
+    .find((value) => Boolean(cellText(value).trim()));
+  if (expectedCompletionDate !== undefined) {
+    sharedFields['期望完成日期'] = expectedCompletionDate;
   }
   const notificationSnapshot = buildRequestNotificationIdentitySnapshot(records);
   if (Object.keys(notificationSnapshot).length) {
@@ -4091,6 +4114,10 @@ function pickPatchFields(patch: Record<string, unknown>, fieldNames: string[]): 
     }
   }
   return result;
+}
+
+function nonEmptyFieldPatch(record: Record<string, unknown>, fieldName: string): Record<string, unknown> {
+  return cellText(record[fieldName]).trim() ? { [fieldName]: record[fieldName] } : {};
 }
 
 function shouldApplyRequestWorkflowPatch(

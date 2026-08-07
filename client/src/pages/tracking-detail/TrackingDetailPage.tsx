@@ -528,7 +528,7 @@ const DETAIL_FIELD_GROUPS = [
   'archiveFields',
 ] as const;
 
-const REQUEST_SHARED_FIELD_NAMES = new Set(['需求名称', '需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
+const REQUEST_SHARED_FIELD_NAMES = new Set(['需求名称', '期望完成日期', '需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人']);
 
 function fieldGroupForStage(stageId: string): typeof DETAIL_FIELD_GROUPS[number] | null {
   const map: Record<string, typeof DETAIL_FIELD_GROUPS[number]> = {

@@ -53,6 +53,7 @@ const defaultForm = () => ({
   eventName: '',
   priority: 'P2',
   platform: 'iOS、Android',
+  expectedCompletionDate: '',
   requirementBackground: '',
   requirementLink: '',
   metricScenario: '',
@@ -155,6 +156,7 @@ export default function NewTrackingRequestDialog({
         evtId: '',
         requestName,
         eventName: form.eventName.trim() || requestName,
+        expectedCompletionDate: form.expectedCompletionDate,
         requirementBackground: form.requirementBackground.trim(),
         requirementLink: form.requirementLink.trim(),
         metricScenario: form.metricScenario.trim(),
@@ -227,6 +229,14 @@ export default function NewTrackingRequestDialog({
                 ))}
               </SelectContent>
             </Select>
+          </Field>
+          <Field label="期望完成日期">
+            <Input
+              type="date"
+              className={inputCls}
+              value={form.expectedCompletionDate}
+              onChange={(event) => updateField('expectedCompletionDate', event.target.value)}
+            />
           </Field>
           <Field label="需求链接" className="md:col-span-2">
             <Input
