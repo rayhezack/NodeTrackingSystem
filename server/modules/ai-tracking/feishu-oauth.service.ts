@@ -38,6 +38,13 @@ interface OAuthTokenResponse {
   scope?: string;
 }
 
+const REQUIRED_OAUTH_SCOPES = [
+  'offline_access',
+  'auth:user.id:read',
+  'docx:document:readonly',
+  'wiki:node:read',
+] as const;
+
 @Injectable()
 export class FeishuOAuthService {
   private readonly sessions = new Map<string, AuthorizationSession>();
@@ -60,12 +67,17 @@ export class FeishuOAuthService {
 
   async getStatus(actorId?: string, actorLarkId?: string) {
     const token = await this.loadToken(actorKey(actorId, actorLarkId));
+    const missingScopes = token ? missingDocumentScopes(token.scope) : [];
+    const tokenAvailable = Boolean(
+      token?.accessToken &&
+      (token.expiresAt > Date.now() || Boolean(token.refreshToken && (token.refreshExpiresAt || 0) > Date.now())),
+    );
     return {
-      authorized: Boolean(
-        token?.accessToken &&
-        (token.expiresAt > Date.now() || Boolean(token.refreshToken && (token.refreshExpiresAt || 0) > Date.now())),
-      ),
+      authorized: tokenAvailable && missingScopes.length === 0,
       ...(token ? { expiresAt: token.expiresAt, scope: token.scope } : {}),
+      ...(tokenAvailable && missingScopes.length > 0
+        ? { reauthorizationRequired: true, missingScopes }
+        : {}),
       tokenStorage: 'encrypted_base' as const,
     };
   }
@@ -165,6 +177,7 @@ export class FeishuOAuthService {
         : undefined,
       scope: response.scope,
     };
+    assertDocumentScopes(token.scope);
     const userInfo = await this.fetchUserInfo(token.accessToken);
     token.openId = typeof userInfo.open_id === 'string' ? userInfo.open_id : undefined;
     if (session.actorLarkId && token.openId && session.actorLarkId !== token.openId) {
@@ -181,6 +194,7 @@ export class FeishuOAuthService {
     if (!token) {
       throw new UnauthorizedException('请先授权飞书文档读取权限');
     }
+    assertDocumentScopes(token.scope);
     if (token.expiresAt > Date.now() + 60_000) return token.accessToken;
     if (!token.refreshToken || (token.refreshExpiresAt || 0) <= Date.now()) {
       this.tokens.delete(key);
@@ -333,8 +347,10 @@ export class FeishuOAuthService {
   }
 
   private get scopes(): string {
-    return process.env.FEISHU_OAUTH_SCOPES ||
-      'offline_access auth:user.id:read docs:document.content:read wiki:node:read wiki:node:retrieve';
+    return Array.from(new Set([
+      ...parseScopes(process.env.FEISHU_OAUTH_SCOPES),
+      ...REQUIRED_OAUTH_SCOPES,
+    ])).join(' ');
   }
 
   private signSessionActor(encodedActor: string): string {
@@ -366,4 +382,33 @@ function actorKey(actorId?: string, actorLarkId?: string): string {
 function requiredToken(value?: string): string {
   if (!value) throw new UnauthorizedException('飞书 OAuth 未返回 access_token');
   return value;
+}
+
+function parseScopes(value?: string): string[] {
+  return String(value || '').split(/[\s,]+/).map((scope) => scope.trim()).filter(Boolean);
+}
+
+function missingDocumentScopes(value?: string): string[] {
+  const granted = new Set(parseScopes(value));
+  const missing: string[] = [];
+  if (!granted.has('docx:document:readonly') && !granted.has('docx:document')) {
+    missing.push('docx:document:readonly');
+  }
+  if (
+    !granted.has('wiki:node:read') &&
+    !granted.has('wiki:wiki:readonly') &&
+    !granted.has('wiki:wiki')
+  ) {
+    missing.push('wiki:node:read');
+  }
+  return missing;
+}
+
+function assertDocumentScopes(value?: string): void {
+  const missingScopes = missingDocumentScopes(value);
+  if (missingScopes.length > 0) {
+    throw new UnauthorizedException(
+      `当前授权缺少权限：${missingScopes.join('、')}，请确认飞书应用权限已发布后重新授权`,
+    );
+  }
 }

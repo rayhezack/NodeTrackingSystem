@@ -461,6 +461,8 @@ export interface AiFeishuAuthStatus {
   authorized: boolean;
   expiresAt?: number;
   scope?: string;
+  reauthorizationRequired?: boolean;
+  missingScopes?: string[];
   tokenStorage: 'encrypted_base';
 }
 

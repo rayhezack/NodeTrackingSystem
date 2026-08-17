@@ -53,12 +53,36 @@ export class FeishuDocumentService {
   }
 
   private async get<T>(url: string, accessToken: string): Promise<T> {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(25_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch {
+      throw new BadRequestException('飞书文档服务暂时不可用，请稍后重试');
+    }
     const payload = (await response.json().catch(() => ({}))) as FeishuApiResponse<T>;
     if (!response.ok || Number(payload.code || 0) !== 0 || !payload.data) {
+      if (
+        Number(payload.code) === 99991679 &&
+        /docx:document(?::readonly)?/i.test(String(payload.msg || ''))
+      ) {
+        throw new BadRequestException(
+          '当前授权缺少新版文档只读权限（docx:document:readonly），请重新授权',
+        );
+      }
+      if (Number(payload.code) === 1770032 || Number(payload.code) === 131006) {
+        throw new BadRequestException(
+          '当前飞书账号无权读取这份 PRD，请确认该账号可在飞书中打开文档后重试',
+        );
+      }
+      if (Number(payload.code) === 99991400) {
+        throw new BadRequestException('飞书文档接口请求频率过高，请稍后重试');
+      }
+      if (response.status >= 500) {
+        throw new BadRequestException('飞书文档服务暂时不可用，请稍后重试');
+      }
       throw new BadRequestException(payload.msg || '飞书文档读取失败，请检查文档权限和 OAuth Scope');
     }
     return payload.data;

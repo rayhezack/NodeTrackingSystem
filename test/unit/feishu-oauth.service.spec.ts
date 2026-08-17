@@ -9,6 +9,7 @@ describe('Feishu OAuth token storage', () => {
     process.env.FEISHU_APP_SECRET = 'app_secret';
     process.env.FEISHU_OAUTH_REDIRECT_URI = 'https://example.com/api/tracking/ai/feishu-auth/callback';
     process.env.FEISHU_TOKEN_ENCRYPTION_KEY = 'test-only-encryption-key-with-more-than-32-bytes';
+    delete process.env.FEISHU_OAUTH_SCOPES;
   });
 
   afterEach(() => {
@@ -32,7 +33,7 @@ describe('Feishu OAuth token storage', () => {
           refresh_token: 'plain-refresh-token',
           expires_in: 7200,
           refresh_token_expires_in: 604800,
-          scope: 'offline_access docs:document.content:read',
+          scope: 'offline_access auth:user.id:read docx:document:readonly wiki:node:read',
         }),
       })
       .mockResolvedValueOnce({
@@ -72,5 +73,95 @@ describe('Feishu OAuth token storage', () => {
       authorized: true,
       tokenStorage: 'encrypted_base',
     }));
+  });
+
+  it('授权链接必须包含实际 docx 接口所需的只读权限', () => {
+    process.env.FEISHU_OAUTH_SCOPES = 'offline_access docs:document.content:read wiki:node:read';
+    const service = new FeishuOAuthService({} as never);
+
+    const started = service.startAuthorization({
+      recordId: 'app:rec_1',
+      actorId: 'actor_1',
+    });
+    const scopes = new Set(
+      (new URL(started.authorizationUrl).searchParams.get('scope') || '').split(/\s+/),
+    );
+
+    expect(scopes).toContain('docx:document:readonly');
+  });
+
+  it('OAuth 返回的用户 Token 缺少 docx 权限时不得标记授权成功', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn(),
+      batchUpdateRecords: jest.fn(),
+    };
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          access_token: 'legacy-access-token',
+          refresh_token: 'legacy-refresh-token',
+          expires_in: 7200,
+          refresh_token_expires_in: 604800,
+          scope: 'offline_access auth:user.id:read docs:document.content:read wiki:node:read',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ code: 0, data: { open_id: 'ou_test' } }),
+      }) as typeof fetch;
+
+    const service = new FeishuOAuthService(bitable as never);
+    const started = service.startAuthorization({ recordId: 'app:rec_1', actorId: 'actor_1' });
+    const state = new URL(started.authorizationUrl).searchParams.get('state') || '';
+
+    await expect(service.completeAuthorization('oauth-code', state)).rejects.toThrow(
+      'docx:document:readonly',
+    );
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
+
+  it('Base 中恢复的旧 Token 缺少 docx 权限时应显示需要重新授权', async () => {
+    const setupService = new FeishuOAuthService({} as never);
+    const encrypted = (setupService as unknown as { encrypt(value: string): string }).encrypt(JSON.stringify({
+      accessToken: 'legacy-access-token',
+      refreshToken: 'legacy-refresh-token',
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      refreshExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      scope: 'offline_access docs:document.content:read wiki:node:read',
+    }));
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [{ id: 'token_record', record: { 需求背景: encrypted } }],
+        hasMore: false,
+      }),
+    };
+    const service = new FeishuOAuthService(bitable as never);
+
+    await expect(service.getStatus('actor_1')).resolves.toEqual(expect.objectContaining({
+      authorized: false,
+      reauthorizationRequired: true,
+      missingScopes: ['docx:document:readonly'],
+    }));
+  });
+
+  it('生成前不得继续使用缺少 docx 权限的旧 Token', async () => {
+    const setupService = new FeishuOAuthService({} as never);
+    const encrypted = (setupService as unknown as { encrypt(value: string): string }).encrypt(JSON.stringify({
+      accessToken: 'legacy-access-token',
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      scope: 'offline_access docs:document.content:read wiki:node:read',
+    }));
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [{ id: 'token_record', record: { 需求背景: encrypted } }],
+        hasMore: false,
+      }),
+    };
+    const service = new FeishuOAuthService(bitable as never);
+
+    await expect(service.getAccessToken('actor_1')).rejects.toThrow('docx:document:readonly');
   });
 });

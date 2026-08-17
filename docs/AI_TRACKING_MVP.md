@@ -12,7 +12,7 @@
 | `AI_MODEL` | `kimi-k2.6` | 若账号模型列表不包含该模型，改为控制台实际可用模型 |
 | `AI_REASONING_EFFORT` | `medium` | 统一配置；切换 OpenAI Terra 时直接生效 |
 | `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | 必须与飞书开放平台安全设置完全一致 |
-| `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docs:document.content:read wiki:node:read wiki:node:retrieve` | 用户文档授权范围 |
+| `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 用户文档授权范围；服务端会强制补齐这组最小权限，避免环境配置漂移 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
 
 现有 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 继续复用，不要重复创建应用。
@@ -30,9 +30,11 @@
 ## 飞书应用配置
 
 1. 在当前自建应用的「安全设置」添加与 `FEISHU_OAUTH_REDIRECT_URI` 完全一致的重定向 URL。
-2. 在权限管理中申请文档正文、Wiki 节点、用户基础身份和离线访问权限。
+2. 在权限管理中申请并发布 `docx:document:readonly`、`wiki:node:read`、`auth:user.id:read` 和 `offline_access`。服务端调用的是 `docx/v1`，旧的 `docs:document.content:read` 不能替代新版文档只读权限。
 3. 发布新的飞书应用版本，并确保数据分析师在应用可用范围内。
 4. 回到妙搭重启服务，再在需求详情的埋点设计阶段授权。
+
+权限新增或变化后，历史 `user_access_token` 不会自动获得新权限。系统会将缺少必需 scope 的旧 Token 标记为“需要重新授权”，分析师必须重新完成一次授权。
 
 ## MVP 安全边界
 
