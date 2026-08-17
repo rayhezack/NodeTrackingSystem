@@ -7,5 +7,6 @@ import { BitableModule } from '../bitable/bitable.module';
   imports: [BitableModule],
   controllers: [QueryLibraryController],
   providers: [QueryLibraryService],
+  exports: [QueryLibraryService],
 })
 export class QueryLibraryModule {}

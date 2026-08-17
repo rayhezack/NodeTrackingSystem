@@ -8,5 +8,6 @@ import { NotificationModule } from '../notification/notification.module';
   imports: [BitableModule, NotificationModule],
   controllers: [TrackingController],
   providers: [TrackingService],
+  exports: [TrackingService],
 })
 export class TrackingModule {}

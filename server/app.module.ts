@@ -6,6 +6,7 @@ import { GlobalExceptionFilter } from './common/filters/exception.filter';
 import { ViewModule } from './modules/view/view.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { QueryLibraryModule } from './modules/query-library/query-library.module';
+import { AiTrackingModule } from './modules/ai-tracking/ai-tracking.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { QueryLibraryModule } from './modules/query-library/query-library.module
     // Place all business modules here.Do NOT add fallback modules here.
     TrackingModule,
     QueryLibraryModule,
+    AiTrackingModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

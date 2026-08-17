@@ -1,6 +1,8 @@
 import { BitableService } from '../../server/modules/bitable/bitable.service';
 import { TrackingService } from '../../server/modules/tracking/tracking.service';
 
+const TEST_PRD_LINK = 'https://example.feishu.cn/wiki/test_prd';
+
 describe('提需创建记录', () => {
   it('不应写入提需阶段尚未产生的验收和归档字段', async () => {
     const bitable = {
@@ -15,7 +17,7 @@ describe('提需创建记录', () => {
       source: 'app',
       requestName: '测试需求',
       eventName: '测试需求',
-      requirementLink: '   ',
+      requirementLink: TEST_PRD_LINK,
       expectedCompletionDate: '2026-08-20',
       actorId: '1867390536304713',
       requesterIds: ['1867390536304713'],
@@ -27,7 +29,7 @@ describe('提需创建记录', () => {
 
     const createCall = bitable.batchAddRecords.mock.calls[0];
     const record = createCall[1][0] as Record<string, unknown>;
-    expect(record).not.toHaveProperty('需求链接');
+    expect(record['需求链接']).toBe(TEST_PRD_LINK);
     expect(record).not.toHaveProperty('DS验收证据');
     expect(record).not.toHaveProperty('DS验收时间');
     expect(record).not.toHaveProperty('稳定归档时间');
@@ -71,6 +73,7 @@ describe('提需创建记录', () => {
       source: 'app',
       requestName: '产品自助提需',
       eventName: '产品自助提需',
+      requirementLink: TEST_PRD_LINK,
       actorId: '1001',
       requesterIds: ['1001'],
       recorderIds: ['1001'],
@@ -100,6 +103,7 @@ describe('提需创建记录', () => {
       source: 'app',
       requestName: '通知身份测试',
       eventName: '通知身份测试',
+      requirementLink: TEST_PRD_LINK,
       actorId: '1867390536304713',
       requesterIds: [
         {
@@ -143,6 +147,7 @@ describe('提需创建记录', () => {
       source: 'app',
       requestName: '默认提需人',
       eventName: '默认提需人',
+      requirementLink: TEST_PRD_LINK,
       actorId: '1001',
       actorLarkId: 'ou_requester',
       actorName: '提需同学',
@@ -190,6 +195,7 @@ describe('提需创建记录', () => {
       service.createRecord({
         source: 'app',
         eventName: '匿名提需',
+        requirementLink: TEST_PRD_LINK,
         requesterIds: ['1001'],
         recorderIds: ['1001'],
         dataOwnerIds: ['2001'],
@@ -197,6 +203,27 @@ describe('提需创建记录', () => {
         dsAcceptorIds: ['4001'],
       }),
     ).rejects.toThrow('无法识别当前用户');
+    expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['', 'PRD 文档链接不能为空'],
+    ['https://example.com/prd', '仅支持飞书 wiki 或 docx'],
+    ['https://example.feishu.cn/sheets/test', '仅支持飞书 wiki 或 docx'],
+  ])('应在写入 Base 前拒绝无效 PRD 链接：%s', async (requirementLink, message) => {
+    const bitable = {
+      searchRecords: jest.fn(),
+      batchAddRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(service.createRecord({
+      source: 'app',
+      requestName: '无效 PRD',
+      eventName: '无效 PRD',
+      requirementLink,
+      actorId: '1001',
+    })).rejects.toThrow(message);
     expect(bitable.batchAddRecords).not.toHaveBeenCalled();
   });
 
@@ -344,6 +371,7 @@ describe('提需创建记录', () => {
       service.createRecord({
         source: 'app',
         eventName: '人员 ID 校验',
+        requirementLink: TEST_PRD_LINK,
         actorId: '1867390536304713',
         requesterIds: ['7648831973842095079'],
       }),

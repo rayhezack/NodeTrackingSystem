@@ -60,6 +60,7 @@ import type {
 import ParamDesigner from './param-designer/ParamDesigner';
 import RelatedEventsPanel from './RelatedEventsPanel';
 import DesignHandoffPanel from './DesignHandoffPanel';
+import AiTrackingDraftPanel from './AiTrackingDraftPanel';
 import {
   buildStageUpdateRequest,
   buildStageCompletionRequest,
@@ -293,14 +294,23 @@ const StageForm = ({
       </div>
 
       {stageId === 'design' && (
-        <RelatedEventsPanel
-          detail={detail}
-          canEdit={canEdit}
-          actorId={actorId}
-          actorLarkId={actorLarkId}
-          onSelectEvent={onSelectEvent}
-          onChanged={onRelatedEventsChanged || onSaved}
-        />
+        <div className="space-y-4">
+          <AiTrackingDraftPanel
+            detail={detail}
+            canEdit={canEdit}
+            actorId={actorId}
+            actorLarkId={actorLarkId}
+            onApplied={onRelatedEventsChanged || onSaved}
+          />
+          <RelatedEventsPanel
+            detail={detail}
+            canEdit={canEdit}
+            actorId={actorId}
+            actorLarkId={actorLarkId}
+            onSelectEvent={onSelectEvent}
+            onChanged={onRelatedEventsChanged || onSaved}
+          />
+        </div>
       )}
 
       {stageId === 'dev' && (

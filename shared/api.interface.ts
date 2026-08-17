@@ -444,6 +444,130 @@ export interface BatchDeleteParamsResponse {
   deletedCount: number;
 }
 
+// AI 埋点设计草稿
+export type AiDraftParamSource = 'ai' | 'official' | 'official_modified';
+
+export interface AiTrackingConfigStatus {
+  configured: boolean;
+  missingKeys: string[];
+  provider: 'kimi' | 'openai';
+  model: string;
+  reasoningEffort: string;
+  feishuOAuthConfigured: boolean;
+  tokenStorage: 'encrypted_base';
+}
+
+export interface AiFeishuAuthStatus {
+  authorized: boolean;
+  expiresAt?: number;
+  scope?: string;
+  tokenStorage: 'encrypted_base';
+}
+
+export interface StartAiFeishuAuthRequest {
+  recordId: string;
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface StartAiFeishuAuthResponse {
+  authorizationUrl: string;
+  expiresAt: number;
+}
+
+export interface GenerateAiTrackingDraftRequest {
+  actorId?: string;
+  actorLarkId?: string;
+}
+
+export interface AiTrackingDraftParam {
+  paramName: string;
+  paramType: string;
+  requiredRule: string;
+  triggerCondition: string;
+  enumRange: string;
+  definition: string;
+  defaultValue: string;
+  platform: string;
+  source: AiDraftParamSource;
+  changeSummary?: string;
+  uncertainties: string[];
+}
+
+export interface AiTrackingDraftEvent {
+  clientId: string;
+  evtId: string;
+  eventName: string;
+  eventDefinition: string;
+  triggerTiming: string;
+  metricScenario: string;
+  priority: string;
+  platform: string;
+  handler: string;
+  commonProps: string;
+  version: string;
+  minVersion: string;
+  changeType: string;
+  evidence: string[];
+  uncertainties: string[];
+  reuseSource?: {
+    recordId: string;
+    evtId: string;
+    eventName: string;
+    modificationSummary: string;
+  };
+  params: AiTrackingDraftParam[];
+}
+
+export interface AiTrackingDraftDiff {
+  scope: 'current_event' | 'new_event';
+  eventClientId: string;
+  changedFields: string[];
+  addedParamNames: string[];
+  changedParamNames: string[];
+}
+
+export interface AiTrackingDraft {
+  id: string;
+  recordId: string;
+  requestId?: string;
+  version: number;
+  status: 'draft' | 'applying' | 'applied' | 'failed';
+  createdAt: number;
+  provider: string;
+  model: string;
+  prd: {
+    url: string;
+    title: string;
+    revision?: string;
+    truncated: boolean;
+  };
+  summary: string;
+  analystQuestions: string[];
+  events: AiTrackingDraftEvent[];
+  diffs: AiTrackingDraftDiff[];
+  appliedRecordIds?: string[];
+  failureMessage?: string;
+}
+
+export interface GenerateAiTrackingDraftResponse {
+  draft: AiTrackingDraft;
+}
+
+export interface ApplyAiTrackingDraftRequest {
+  actorId?: string;
+  actorLarkId?: string;
+  selectedEventClientIds?: string[];
+}
+
+export interface ApplyAiTrackingDraftResponse {
+  success: boolean;
+  draftId: string;
+  appliedRecordIds: string[];
+  createdEventCount: number;
+  createdParamCount: number;
+}
+
 // 正式查询库
 export interface OfficialEvent {
   recordId: string;

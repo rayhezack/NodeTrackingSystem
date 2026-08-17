@@ -598,6 +598,13 @@ export class TrackingService {
     if (!requestName) {
       throw new BadRequestException('需求名称不能为空');
     }
+    const requirementLink = (body.requirementLink || '').trim();
+    if (!requirementLink) {
+      throw new BadRequestException('PRD 文档链接不能为空；没有 PRD 文档无法进行埋点设计');
+    }
+    if (!isSupportedFeishuPrdUrl(requirementLink)) {
+      throw new BadRequestException('MVP 目前仅支持飞书 wiki 或 docx 文档链接');
+    }
 
     await this.assertCanCreateRecord(body.actorId, body.actorLarkId);
 
@@ -635,7 +642,6 @@ export class TrackingService {
     });
     const workbench = workbenchKey(source);
     const paramDetail = paramDetailKey(source);
-    const requirementLink = (body.requirementLink || '').trim();
     const expectedCompletionDate = (body.expectedCompletionDate || '').trim();
     const [created] = await this.bitable.batchAddRecords(workbench, [
       {
@@ -646,7 +652,7 @@ export class TrackingService {
         事件定义: body.eventDefinition || '',
         触发时机: body.triggerTiming || '',
         需求背景: body.requirementBackground || '',
-        ...(requirementLink ? { 需求链接: requirementLink } : {}),
+        需求链接: requirementLink,
         '指标/使用场景': body.metricScenario || '',
         ...(expectedCompletionDate ? { 期望完成日期: expectedCompletionDate } : {}),
         流程阶段: '需求录入',
@@ -4170,6 +4176,16 @@ function mergeBitableRecordUpdates<T extends { id: string; record: Record<string
 function normalizeAcceptanceStatus(value?: string): string {
   const raw = String(value || '').trim();
   return ['未开始', '验收中', '通过', '不通过', '豁免'].includes(raw) ? raw : '未开始';
+}
+
+function isSupportedFeishuPrdUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const isFeishuHost = url.hostname === 'feishu.cn' || url.hostname.endsWith('.feishu.cn');
+    return url.protocol === 'https:' && isFeishuHost && /^\/(wiki|docx)\/[A-Za-z0-9_-]+/.test(url.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function normalizeMonitorStatus(value?: string): string {

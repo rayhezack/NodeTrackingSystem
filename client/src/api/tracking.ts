@@ -35,6 +35,14 @@ import type {
   DeleteParamResponse,
   BatchDeleteParamsRequest,
   BatchDeleteParamsResponse,
+  AiTrackingConfigStatus,
+  AiFeishuAuthStatus,
+  StartAiFeishuAuthRequest,
+  StartAiFeishuAuthResponse,
+  GenerateAiTrackingDraftRequest,
+  GenerateAiTrackingDraftResponse,
+  ApplyAiTrackingDraftRequest,
+  ApplyAiTrackingDraftResponse,
   TrackingSourceFilter,
 } from '@shared/api.interface';
 
@@ -336,5 +344,70 @@ export async function batchDeleteParams(
   } catch (error) {
     logger.error('批量删除参数失败', error);
     throw toReadableError(error, '批量删除参数失败，请确认参数仍属于当前埋点设计');
+  }
+}
+
+export async function getAiTrackingConfig(): Promise<AiTrackingConfigStatus> {
+  try {
+    const response = await axiosForBackend.get('/api/tracking/ai/config');
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, '无法读取 AI 配置状态');
+  }
+}
+
+export async function getAiFeishuAuthStatus(
+  actorId?: string,
+  actorLarkId?: string,
+): Promise<AiFeishuAuthStatus> {
+  try {
+    const response = await axiosForBackend.get('/api/tracking/ai/feishu-auth/status', {
+      params: { actorId, actorLarkId },
+    });
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, '无法读取飞书文档授权状态');
+  }
+}
+
+export async function startAiFeishuAuth(
+  data: StartAiFeishuAuthRequest,
+): Promise<StartAiFeishuAuthResponse> {
+  try {
+    const response = await axiosForBackend.post('/api/tracking/ai/feishu-auth/start', data);
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, '无法发起飞书文档授权');
+  }
+}
+
+export async function generateAiTrackingDraft(
+  recordId: string,
+  data: GenerateAiTrackingDraftRequest,
+): Promise<GenerateAiTrackingDraftResponse> {
+  try {
+    const response = await axiosForBackend.post(
+      `/api/tracking/ai/records/${recordId}/drafts`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, 'AI 埋点草稿生成失败');
+  }
+}
+
+export async function applyAiTrackingDraft(
+  recordId: string,
+  draftId: string,
+  data: ApplyAiTrackingDraftRequest,
+): Promise<ApplyAiTrackingDraftResponse> {
+  try {
+    const response = await axiosForBackend.post(
+      `/api/tracking/ai/records/${recordId}/drafts/${draftId}/apply`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, 'AI 埋点草稿应用失败');
   }
 }

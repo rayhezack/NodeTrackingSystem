@@ -124,6 +124,15 @@ export default function NewTrackingRequestDialog({
       toast.error('请输入需求名称');
       return;
     }
+    const requirementLink = form.requirementLink.trim();
+    if (!requirementLink) {
+      toast.error('请粘贴 PRD 文档链接；没有 PRD 文档无法进行埋点设计');
+      return;
+    }
+    if (!isSupportedPrdUrl(requirementLink)) {
+      toast.error('MVP 目前仅支持飞书 wiki 或 docx 文档链接');
+      return;
+    }
     if (!actorId && !actorLarkId) {
       toast.error('未识别当前用户，无法创建需求');
       return;
@@ -144,11 +153,6 @@ export default function NewTrackingRequestDialog({
       toast.error('请填写埋点校验人');
       return;
     }
-    if (form.requirementLink.trim() && !isHttpUrl(form.requirementLink.trim())) {
-      toast.error('需求链接必须是有效的 http 或 https 链接');
-      return;
-    }
-
     setSaving(true);
     try {
       await onSubmit({
@@ -158,7 +162,7 @@ export default function NewTrackingRequestDialog({
         eventName: form.eventName.trim() || requestName,
         expectedCompletionDate: form.expectedCompletionDate,
         requirementBackground: form.requirementBackground.trim(),
-        requirementLink: form.requirementLink.trim(),
+        requirementLink,
         metricScenario: form.metricScenario.trim(),
         actorId,
         actorLarkId,
@@ -238,13 +242,14 @@ export default function NewTrackingRequestDialog({
               onChange={(event) => updateField('expectedCompletionDate', event.target.value)}
             />
           </Field>
-          <Field label="需求链接" className="md:col-span-2">
+          <Field label="PRD 文档链接" required className="md:col-span-2">
             <Input
               type="url"
+              required
               className={inputCls}
               value={form.requirementLink}
               onChange={(event) => updateField('requirementLink', event.target.value)}
-              placeholder="可粘贴 PRD、需求文档或飞书链接"
+              placeholder="请粘贴飞书 PRD 文档链接（wiki 或 docx）；没有 PRD 无法进行埋点设计"
             />
           </Field>
           <div className="md:col-span-2 rounded-sm border border-border bg-muted/20 p-3">
@@ -323,10 +328,11 @@ export default function NewTrackingRequestDialog({
   );
 }
 
-function isHttpUrl(value: string): boolean {
+function isSupportedPrdUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
+    const isFeishuHost = url.hostname === 'feishu.cn' || url.hostname.endsWith('.feishu.cn');
+    return url.protocol === 'https:' && isFeishuHost && /^\/(wiki|docx)\/[A-Za-z0-9_-]+/.test(url.pathname);
   } catch {
     return false;
   }
