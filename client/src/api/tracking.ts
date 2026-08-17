@@ -41,6 +41,7 @@ import type {
   StartAiFeishuAuthResponse,
   GenerateAiTrackingDraftRequest,
   GenerateAiTrackingDraftResponse,
+  GetAiTrackingDraftResponse,
   GetLatestAiTrackingDraftResponse,
   ApplyAiTrackingDraftRequest,
   ApplyAiTrackingDraftResponse,
@@ -410,6 +411,23 @@ export async function getLatestAiTrackingDraft(
     return response.data;
   } catch (error) {
     throw toReadableError(error, '无法读取最近的 AI 埋点草稿');
+  }
+}
+
+export async function getAiTrackingDraft(
+  recordId: string,
+  draftId: string,
+  actorId?: string,
+  actorLarkId?: string,
+): Promise<GetAiTrackingDraftResponse> {
+  try {
+    const response = await axiosForBackend.get(
+      `/api/tracking/ai/records/${recordId}/drafts/${draftId}`,
+      { params: { actorId, actorLarkId } },
+    );
+    return response.data;
+  } catch (error) {
+    throw toReadableError(error, '无法读取 AI 埋点草稿状态');
   }
 }
 

@@ -26,6 +26,7 @@ import {
 import {
   applyAiTrackingDraft,
   generateAiTrackingDraft,
+  getAiTrackingDraft,
   getAiFeishuAuthStatus,
   getLatestAiTrackingDraft,
   getAiTrackingConfig,
@@ -153,7 +154,31 @@ const AiTrackingDraftPanel = ({
       setActiveDraft(null);
       await onApplied?.(result.appliedRecordIds[0]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'AI 草稿应用失败');
+      const status = (error as Error & { status?: number })?.status;
+      if (status !== 504) {
+        toast.error(error instanceof Error ? error.message : 'AI 草稿应用失败');
+        return;
+      }
+
+      const recoveredDraft = await waitForDraftCompletion(
+        detail.recordId,
+        draft.id,
+        actorId,
+        actorLarkId,
+      );
+      if (recoveredDraft?.status === 'applied') {
+        const appliedRecordIds = recoveredDraft.appliedRecordIds || [];
+        toast.success(
+          `已写入 ${appliedRecordIds.length} 个事件、${recoveredDraft.appliedParamCount || 0} 个参数`,
+        );
+        setDraftDialogOpen(false);
+        setActiveDraft(null);
+        await onApplied?.(appliedRecordIds[0]);
+      } else if (recoveredDraft?.status === 'failed') {
+        toast.error(recoveredDraft.failureMessage || 'AI 草稿应用失败');
+      } else {
+        toast.warning('后台仍在录入，请稍后刷新需求单确认结果，期间请勿重复提交');
+      }
     } finally {
       setApplying(false);
     }
@@ -380,4 +405,22 @@ function Spec({ label, value }: { label: string; value: string }) {
       <div className="mt-1 whitespace-pre-wrap text-xs text-foreground">{value || '-'}</div>
     </div>
   );
+}
+
+async function waitForDraftCompletion(
+  recordId: string,
+  draftId: string,
+  actorId?: string,
+  actorLarkId?: string,
+): Promise<AiTrackingDraft | null> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+    try {
+      const { draft } = await getAiTrackingDraft(recordId, draftId, actorId, actorLarkId);
+      if (!draft || draft.status === 'applied' || draft.status === 'failed') return draft;
+    } catch {
+      // A transient status-query failure should not turn an in-flight write into a false failure.
+    }
+  }
+  return null;
 }

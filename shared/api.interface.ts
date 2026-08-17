@@ -550,6 +550,7 @@ export interface AiTrackingDraft {
   events: AiTrackingDraftEvent[];
   diffs: AiTrackingDraftDiff[];
   appliedRecordIds?: string[];
+  appliedParamCount?: number;
   failureMessage?: string;
 }
 
@@ -558,6 +559,10 @@ export interface GenerateAiTrackingDraftResponse {
 }
 
 export interface GetLatestAiTrackingDraftResponse {
+  draft: AiTrackingDraft | null;
+}
+
+export interface GetAiTrackingDraftResponse {
   draft: AiTrackingDraft | null;
 }
 

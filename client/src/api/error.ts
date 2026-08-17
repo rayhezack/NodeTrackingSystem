@@ -1,12 +1,12 @@
 export function toReadableError(error: unknown, fallbackMessage: string): Error {
-  const responseData = (error as { response?: { data?: unknown } })?.response?.data;
-  const backendMessage = extractMessage(responseData);
-  if (backendMessage) {
-    return new Error(backendMessage);
-  }
-
+  const response = (error as { response?: { data?: unknown; status?: number } })?.response;
+  const backendMessage = extractMessage(response?.data);
   const originalMessage = error instanceof Error ? error.message : '';
-  return new Error(originalMessage || fallbackMessage);
+  const readableError = new Error(backendMessage || originalMessage || fallbackMessage) as Error & {
+    status?: number;
+  };
+  if (typeof response?.status === 'number') readableError.status = response.status;
+  return readableError;
 }
 
 function extractMessage(data: unknown): string {

@@ -58,6 +58,11 @@ describe('AI 埋点草稿', () => {
       updateRecord: jest.fn().mockResolvedValue({ success: true, recordId: detail.recordId, currentStage: '埋点设计' }),
       createSiblingEvent: jest.fn().mockResolvedValue({ success: true, recordId: 'app:rec_2', currentStage: '埋点设计' }),
       createParam: jest.fn().mockResolvedValue({ success: true, recordId: 'app:param_1' }),
+      applyAiDraftEvents: jest.fn().mockResolvedValue({
+        appliedRecordIds: [detail.recordId],
+        createdEventCount: 1,
+        createdParamCount: 1,
+      }),
     };
     const queryLibrary = {
       getEvents: jest.fn().mockResolvedValue({ items: [], total: 0, hasMore: false }),
@@ -201,18 +206,33 @@ describe('AI 埋点草稿', () => {
 
     expect(first.success).toBe(true);
     expect(second.success).toBe(true);
-    expect(tracking.updateRecord).toHaveBeenCalledTimes(1);
-    expect(tracking.updateRecord).toHaveBeenCalledWith('app:rec_1', expect.objectContaining({
-      fields: expect.objectContaining({ evt_id: 'home_agent_task_submit' }),
-      targetStage: '埋点设计',
-    }));
+    expect(tracking.applyAiDraftEvents).toHaveBeenCalledTimes(1);
+    expect(tracking.applyAiDraftEvents).toHaveBeenCalledWith(
+      'app:rec_1',
+      [expect.objectContaining({ evtId: 'home_agent_task_submit' })],
+      'actor_1',
+      undefined,
+    );
+    expect(tracking.updateRecord).not.toHaveBeenCalled();
     expect(tracking.createSiblingEvent).not.toHaveBeenCalled();
-    expect(tracking.createParam).toHaveBeenCalledTimes(1);
-    expect(tracking.createParam).toHaveBeenCalledWith('app:rec_1', expect.objectContaining({
-      paramName: 'entry_source',
-      example: 'home',
-    }));
+    expect(tracking.createParam).not.toHaveBeenCalled();
     await expect(service.getLatestDraft('app:rec_1', 'actor_1')).resolves.toEqual({ draft: null });
+    const draftGetter = (service as unknown as {
+      getDraft?: (
+        recordId: string,
+        draftId: string,
+        actorId?: string,
+        actorLarkId?: string,
+      ) => Promise<{ draft: { status: string; appliedParamCount?: number } | null }>;
+    }).getDraft;
+    expect(draftGetter).toEqual(expect.any(Function));
+    await expect(draftGetter?.call(service, 'app:rec_1', draft.id, 'actor_1')).resolves.toEqual({
+      draft: expect.objectContaining({
+        status: 'applied',
+        appliedParamCount: 1,
+      }),
+    });
+    await expect(draftGetter?.call(service, 'app:rec_1', draft.id, 'actor_2')).resolves.toEqual({ draft: null });
   });
 
   it('分析师不能读取或应用其他人的 AI 草稿', async () => {
@@ -248,10 +268,13 @@ describe('AI 埋点草稿', () => {
 
     await service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' });
 
+    expect(tracking.applyAiDraftEvents).toHaveBeenCalledWith(
+      'app:rec_1',
+      [expect.objectContaining({ evtId: 'home_agent_task_submit' })],
+      'actor_1',
+      undefined,
+    );
     expect(tracking.updateRecord).not.toHaveBeenCalled();
-    expect(tracking.createSiblingEvent).toHaveBeenCalledTimes(1);
-    expect(tracking.createSiblingEvent).toHaveBeenCalledWith('app:rec_1', expect.objectContaining({
-      evtId: 'home_agent_task_submit',
-    }));
+    expect(tracking.createSiblingEvent).not.toHaveBeenCalled();
   });
 });

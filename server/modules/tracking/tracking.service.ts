@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
 import type {
   BatchDeleteParamsRequest,
@@ -46,6 +46,7 @@ import type {
   UpdateTrackingRecordResponse,
   NotificationRuntimeStatus,
   WorkflowNotificationResult,
+  AiTrackingDraftEvent,
 } from '@shared/api.interface';
 import {
   DEFAULT_DATA_OWNER,
@@ -702,6 +703,146 @@ export class TrackingService {
     };
   }
 
+  async applyAiDraftEvents(
+    recordId: string,
+    events: AiTrackingDraftEvent[],
+    actorId?: string,
+    actorLarkId?: string,
+  ): Promise<{
+    appliedRecordIds: string[];
+    createdEventCount: number;
+    createdParamCount: number;
+  }> {
+    if (!events.length) throw new BadRequestException('至少选择一个埋点事件');
+
+    const ref = parseScopedRecordId(recordId);
+    const source = ref.source;
+    const workbench = workbenchKey(source);
+    const current = await this.bitable.getRecord(workbench, ref.rawId);
+    if (!current) throw new NotFoundException('埋点需求不存在');
+
+    const permissions = await this.getActorPermissionsForRecord(
+      source,
+      current,
+      actorId,
+      actorLarkId,
+      '录入 AI 埋点草稿',
+    );
+    if (!permissions.canEditDesign || !permissions.canEditParams) {
+      throw new ForbiddenException('当前用户无权限录入 AI 埋点草稿');
+    }
+
+    const evtIds = events.map((event) => event.evtId.trim().toLowerCase());
+    if (evtIds.some((evtId) => !evtId)) throw new BadRequestException('evt_id 不能为空');
+    if (new Set(evtIds).size !== evtIds.length) throw new BadRequestException('AI 草稿内存在重复 evt_id');
+    for (const event of events) {
+      if (!event.eventName.trim()) throw new BadRequestException(`事件 ${event.evtId} 的事件名不能为空`);
+      const paramNames = event.params.map((param) => param.paramName.trim().toLowerCase());
+      if (paramNames.some((name) => !name)) throw new BadRequestException(`事件 ${event.evtId} 存在空参数名`);
+      if (new Set(paramNames).size !== paramNames.length) {
+        throw new BadRequestException(`事件 ${event.evtId} 存在重复参数名`);
+      }
+    }
+
+    const records = await this.listWorkbenchRecords(source);
+    const requestId = await this.ensureRequestId(source, current, records);
+    const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);
+    const currentRecord = {
+      ...current.record,
+      ...mergeRequestSharedFields(relatedRecords),
+      ...(requestId ? { 需求ID: requestId } : {}),
+    };
+    const currentIsBlank = !cellText(current.record['evt_id']).trim() &&
+      !relatedRecords.some((record) => record.id !== current.id && cellText(record.record['evt_id']).trim());
+
+    for (const [index, event] of events.entries()) {
+      const excluded = currentIsBlank && index === 0 ? [current.id] : [];
+      const duplicate = this.findDuplicateEvtIdInRequest(current, records, event.evtId, excluded);
+      if (duplicate) throw new BadRequestException(`当前需求内已存在 evt_id：${event.evtId}`);
+    }
+
+    const requestName = getRequestNameFromRecords(records, currentRecord);
+    const targetEvents: Array<{ event: AiTrackingDraftEvent; rawRecordId: string }> = [];
+    let siblingStartIndex = 0;
+
+    if (currentIsBlank) {
+      const first = events[0];
+      await this.updateRecord(recordId, {
+        fields: {
+          evt_id: first.evtId,
+          事件中文名: first.eventName,
+          优先级: first.priority,
+          端: first.platform,
+          事件定义: first.eventDefinition,
+          触发时机: first.triggerTiming,
+          处理方: first.handler,
+          公共属性要求: first.commonProps,
+          版本: first.version,
+          最低版本: first.minVersion,
+          变更类型: first.changeType,
+          参数拆行状态: first.params.length ? '已拆行' : '未拆行',
+        },
+        stageId: 'design',
+        targetStage: '埋点设计',
+        actorId,
+        actorLarkId,
+      });
+      targetEvents.push({ event: first, rawRecordId: current.id });
+      siblingStartIndex = 1;
+    }
+
+    const siblingEvents = events.slice(siblingStartIndex);
+    if (siblingEvents.length) {
+      const siblingRecords = siblingEvents.map((event) => ({
+        ...this.toSiblingEventRecord(source, currentRecord, requestId, requestName, event),
+        参数拆行状态: event.params.length ? '已拆行' : '未拆行',
+      }));
+      const created = await this.bitable.batchAddRecords(workbench, siblingRecords);
+      if (created.length !== siblingEvents.length) {
+        throw new InternalServerErrorException('批量新增埋点事件返回数量异常');
+      }
+      for (let index = 0; index < siblingEvents.length; index += 1) {
+        targetEvents.push({ event: siblingEvents[index], rawRecordId: created[index].id });
+      }
+    }
+
+    const paramRecords = targetEvents.flatMap(({ event, rawRecordId }) =>
+      event.params.map((param) => this.toParamRecord(
+        source,
+        rawRecordId,
+        event.evtId,
+        event.version,
+        {
+          evtId: event.evtId,
+          paramName: param.paramName,
+          paramType: param.paramType,
+          required: param.requiredRule === '必传' || param.requiredRule === '条件必传',
+          requiredRule: param.requiredRule,
+          triggerCondition: param.triggerCondition,
+          enumRange: param.enumRange,
+          definition: param.definition,
+          defaultValue: param.defaultValue,
+          example: param.example,
+          platform: param.platform,
+          status: '草稿',
+          changeType: event.changeType,
+        },
+      )),
+    );
+    if (paramRecords.length) {
+      const createdParams = await this.bitable.batchAddRecords(paramDetailKey(source), paramRecords);
+      if (createdParams.length !== paramRecords.length) {
+        throw new InternalServerErrorException('批量新增埋点参数返回数量异常');
+      }
+    }
+
+    return {
+      appliedRecordIds: targetEvents.map(({ rawRecordId }) => encodeScopedRecordId(source, rawRecordId)),
+      createdEventCount: targetEvents.length,
+      createdParamCount: paramRecords.length,
+    };
+  }
+
   async createSiblingEvent(recordId: string, body: CreateSiblingTrackingEventRequest): Promise<CreateSiblingTrackingEventResponse> {
     const ref = parseScopedRecordId(recordId);
     const source = ref.source;
@@ -734,50 +875,12 @@ export class TrackingService {
         throw new BadRequestException(`当前需求内已存在 evt_id：${evtId}`);
       }
     }
-    const requirementLink = firstText(currentRecord['需求链接']).trim();
     const requestName = getRequestNameFromRecords(records, currentRecord);
-    const version = body.version || cellText(currentRecord['版本']) || '1.0.0';
-    const platform = body.platform || cellText(currentRecord['端']);
-    const record: Record<string, unknown> = {
-      ...(requestId ? { 需求ID: requestId } : {}),
-      需求名称: requestName,
-      evt_id: evtId,
-      事件中文名: eventName,
-      事件定义: body.eventDefinition || '',
-      触发时机: body.triggerTiming || '',
-      需求背景: cellText(currentRecord['需求背景']),
-      ...(requirementLink ? { 需求链接: requirementLink } : {}),
-      '指标/使用场景': cellText(currentRecord['指标/使用场景']),
-      ...nonEmptyFieldPatch(currentRecord, '期望完成日期'),
-      流程阶段: '埋点设计',
-      记录类型: '埋点设计',
-      优先级: body.priority || cellText(currentRecord['优先级']) || 'P2',
-      端: toPlatformCell(platform, source),
-      需求提出人: createUserCells(cellUsers(currentRecord['需求提出人']).ids),
-      需求录入人: createUserCells(cellUsers(currentRecord['需求录入人']).ids),
-      数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
-      研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
-      DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
-      ...(hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD) && cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) ? { [NOTIFICATION_IDENTITY_FIELD]: cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) } : {}),
-      评审状态: '草稿',
-      评审意见: '',
-      埋点开发状态: '未开始',
-      DS验收状态: '未开始',
-      上线监控状态: '未开始',
-      上线监控结论: '',
-      发布门禁状态: '未检查',
-      发布门禁失败原因: '',
-      发布状态: '未发布',
-      发布错误: '',
-      正式状态: '待开发',
-      版本: version,
-      最低版本: body.minVersion || cellText(currentRecord['最低版本']) || version,
-      变更类型: normalizeChangeType(body.changeType || cellText(currentRecord['变更类型'])),
-      处理方: normalizeHandler(body.handler || cellText(currentRecord['处理方']), source),
-      公共属性要求: body.commonProps || cellText(currentRecord['公共属性要求']),
-      参数明细入口: source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
-      参数拆行状态: '未拆行',
-    };
+    const record = this.toSiblingEventRecord(source, currentRecord, requestId, requestName, {
+      ...body,
+      evtId,
+      eventName,
+    });
 
     const [created] = await this.bitable.batchAddRecords(workbench, [record]);
     return {
@@ -2227,6 +2330,58 @@ export class TrackingService {
       变更类型: normalizeChangeType(body.changeType),
       来源设计记录ID: recordId,
       关联设计: [recordId],
+    };
+  }
+
+  private toSiblingEventRecord(
+    source: TrackingSource,
+    currentRecord: Record<string, unknown>,
+    requestId: string,
+    requestName: string,
+    body: CreateSiblingTrackingEventRequest,
+  ): Record<string, unknown> {
+    const version = body.version || cellText(currentRecord['版本']) || '1.0.0';
+    const platform = body.platform || cellText(currentRecord['端']);
+    const requirementLink = firstText(currentRecord['需求链接']).trim();
+    return {
+      ...(requestId ? { 需求ID: requestId } : {}),
+      需求名称: requestName,
+      evt_id: (body.evtId || '').trim(),
+      事件中文名: (body.eventName || '').trim(),
+      事件定义: body.eventDefinition || '',
+      触发时机: body.triggerTiming || '',
+      需求背景: cellText(currentRecord['需求背景']),
+      ...(requirementLink ? { 需求链接: requirementLink } : {}),
+      '指标/使用场景': cellText(currentRecord['指标/使用场景']),
+      ...nonEmptyFieldPatch(currentRecord, '期望完成日期'),
+      流程阶段: '埋点设计',
+      记录类型: '埋点设计',
+      优先级: body.priority || cellText(currentRecord['优先级']) || 'P2',
+      端: toPlatformCell(platform, source),
+      需求提出人: createUserCells(cellUsers(currentRecord['需求提出人']).ids),
+      需求录入人: createUserCells(cellUsers(currentRecord['需求录入人']).ids),
+      数据负责人: createUserCells(cellUsers(currentRecord['数据负责人']).ids),
+      研发负责人: createUserCells(cellUsers(currentRecord['研发负责人']).ids),
+      DS验收人: createUserCells(cellUsers(currentRecord['DS验收人']).ids),
+      ...(hasWorkbenchField(source, NOTIFICATION_IDENTITY_FIELD) && cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) ? { [NOTIFICATION_IDENTITY_FIELD]: cellText(currentRecord[NOTIFICATION_IDENTITY_FIELD]) } : {}),
+      评审状态: '草稿',
+      评审意见: '',
+      埋点开发状态: '未开始',
+      DS验收状态: '未开始',
+      上线监控状态: '未开始',
+      上线监控结论: '',
+      发布门禁状态: '未检查',
+      发布门禁失败原因: '',
+      发布状态: '未发布',
+      发布错误: '',
+      正式状态: '待开发',
+      版本: version,
+      最低版本: body.minVersion || cellText(currentRecord['最低版本']) || version,
+      变更类型: normalizeChangeType(body.changeType || cellText(currentRecord['变更类型'])),
+      处理方: normalizeHandler(body.handler || cellText(currentRecord['处理方']), source),
+      公共属性要求: body.commonProps || cellText(currentRecord['公共属性要求']),
+      参数明细入口: source === 'web' ? WEB_DESIGN_PARAM_LINK : APP_DESIGN_PARAM_LINK,
+      参数拆行状态: '未拆行',
     };
   }
 }

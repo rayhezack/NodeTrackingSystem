@@ -15,6 +15,7 @@ import type {
   ApplyAiTrackingDraftResponse,
   GenerateAiTrackingDraftRequest,
   GenerateAiTrackingDraftResponse,
+  GetAiTrackingDraftResponse,
   GetLatestAiTrackingDraftResponse,
   OfficialEvent,
   ParamDetail,
@@ -172,6 +173,29 @@ export class AiTrackingService {
     return { draft: draft?.status === 'draft' ? draft : null };
   }
 
+  async getDraft(
+    recordId: string,
+    draftId: string,
+    actorId?: string,
+    actorLarkId?: string,
+    authenticatedActor?: string,
+  ): Promise<GetAiTrackingDraftResponse> {
+    const resolvedActorLarkId = authenticatedActor || actorLarkId;
+    const resolvedActorId = authenticatedActor ? undefined : actorId;
+    await this.authorizedDetail(recordId, resolvedActorId, resolvedActorLarkId);
+    this.pruneDrafts();
+    const ownerKey = draftOwnerKey(recordId, resolvedActorId, resolvedActorLarkId);
+    const draft = this.drafts.get(draftId);
+    if (
+      !draft ||
+      draft.recordId !== recordId ||
+      this.draftOwners.get(draftId) !== ownerKey
+    ) {
+      return { draft: null };
+    }
+    return { draft };
+  }
+
   async applyDraft(
     recordId: string,
     draftId: string,
@@ -196,7 +220,7 @@ export class AiTrackingService {
         draftId,
         appliedRecordIds: draft.appliedRecordIds || [],
         createdEventCount: draft.appliedRecordIds?.length || 0,
-        createdParamCount: 0,
+        createdParamCount: draft.appliedParamCount || 0,
       };
     }
     if (draft.status === 'applying') throw new BadRequestException('该草稿正在应用，请勿重复提交');
@@ -208,85 +232,23 @@ export class AiTrackingService {
     assertNoRequestDuplicates(detail, events);
 
     draft.status = 'applying';
-    const appliedRecordIds: string[] = [];
-    let createdParamCount = 0;
     try {
-      const currentIsBlank = !detail.evtId.trim() &&
-        !detail.relatedEvents.some((event) => event.recordId !== recordId && event.evtId.trim());
-      for (let index = 0; index < events.length; index += 1) {
-        const event = events[index];
-        let targetRecordId: string;
-        if (index === 0 && currentIsBlank) {
-          await this.tracking.updateRecord(recordId, {
-            fields: toDesignFields(event),
-            stageId: 'design',
-            targetStage: '埋点设计',
-            actorId,
-            actorLarkId,
-          });
-          targetRecordId = recordId;
-        } else {
-          const created = await this.tracking.createSiblingEvent(recordId, {
-            evtId: event.evtId,
-            eventName: event.eventName,
-            priority: event.priority,
-            platform: event.platform,
-            eventDefinition: event.eventDefinition,
-            triggerTiming: event.triggerTiming,
-            handler: event.handler,
-            commonProps: event.commonProps,
-            version: event.version,
-            minVersion: event.minVersion,
-            changeType: event.changeType,
-            actorId,
-            actorLarkId,
-          });
-          targetRecordId = created.recordId;
-        }
-        appliedRecordIds.push(targetRecordId);
-        for (const param of event.params) {
-          await this.tracking.createParam(targetRecordId, {
-            evtId: event.evtId,
-            paramName: param.paramName,
-            paramType: param.paramType,
-            required: param.requiredRule === '必传' || param.requiredRule === '条件必传',
-            requiredRule: param.requiredRule,
-            triggerCondition: param.triggerCondition,
-            enumRange: param.enumRange,
-            definition: param.definition,
-            defaultValue: param.defaultValue,
-            example: param.example,
-            platform: param.platform,
-            status: '草稿',
-            version: event.version,
-            changeType: event.changeType,
-            actorId,
-            actorLarkId,
-          });
-          createdParamCount += 1;
-        }
-      }
+      const result = await this.tracking.applyAiDraftEvents(recordId, events, actorId, actorLarkId);
       draft.status = 'applied';
-      draft.appliedRecordIds = appliedRecordIds;
+      draft.appliedRecordIds = result.appliedRecordIds;
+      draft.appliedParamCount = result.createdParamCount;
       if (this.latestDraftIds.get(ownerKey) === draftId) {
         this.latestDraftIds.delete(ownerKey);
       }
       return {
         success: true,
         draftId,
-        appliedRecordIds,
-        createdEventCount: appliedRecordIds.length,
-        createdParamCount,
+        ...result,
       };
     } catch (error) {
       draft.status = 'failed';
-      draft.appliedRecordIds = appliedRecordIds;
       draft.failureMessage = error instanceof Error ? error.message : '未知错误';
-      throw new InternalServerErrorException(
-        appliedRecordIds.length
-          ? `AI 草稿部分写入失败，已写入 ${appliedRecordIds.length} 个事件；请勿重复应用，需人工检查后重新生成`
-          : draft.failureMessage,
-      );
+      throw new InternalServerErrorException(draft.failureMessage);
     }
   }
 
@@ -485,22 +447,6 @@ function buildDraftDiffs(
       }).map((param) => param.paramName),
     };
   });
-}
-
-function toDesignFields(event: AiTrackingDraftEvent): Record<string, unknown> {
-  return {
-    evt_id: event.evtId,
-    事件中文名: event.eventName,
-    优先级: event.priority,
-    端: event.platform,
-    事件定义: event.eventDefinition,
-    触发时机: event.triggerTiming,
-    处理方: event.handler,
-    公共属性要求: event.commonProps,
-    版本: event.version,
-    最低版本: event.minVersion,
-    变更类型: event.changeType,
-  };
 }
 
 function assertUniqueEvents(events: AiTrackingDraftEvent[]) {
