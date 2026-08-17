@@ -30,11 +30,11 @@ export class ModelGatewayService {
     const body: Record<string, unknown> = {
       model: this.model,
       messages,
-      temperature: this.provider === 'kimi' ? 1 : 0.1,
+      temperature: this.provider === 'kimi' ? this.kimiTemperature : 0.1,
       response_format: { type: 'json_object' },
+      reasoning_effort: this.reasoningEffort,
     };
-    if (this.provider === 'openai') body.reasoning_effort = this.reasoningEffort;
-    if (this.provider === 'kimi') body.thinking = { type: 'enabled' };
+    if (this.provider === 'kimi') body.thinking = { type: 'disabled' };
 
     let response = await this.request(body);
     if (!response.ok && response.status === 400) {
@@ -83,7 +83,11 @@ export class ModelGatewayService {
   }
 
   private get model(): string {
-    return process.env.AI_MODEL || (this.provider === 'openai' ? 'gpt-5.6-terra' : 'kimi-k2.6');
+    return process.env.AI_MODEL || (this.provider === 'openai' ? 'gpt-5.6-terra' : 'kimi-k3');
+  }
+
+  private get kimiTemperature(): number {
+    return this.model === 'kimi-k3' ? 0.6 : 1;
   }
 
   private get reasoningEffort(): string {

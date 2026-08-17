@@ -9,13 +9,15 @@
 | `AI_PROVIDER` | `kimi` | 当前模型供应商 |
 | `KIMI_API_KEY` | 轮换后的 Kimi Key | 仅存 Secret；不要提交到 Git |
 | `AI_BASE_URL` | `https://api.moonshot.cn/v1` | 国内 Kimi 控制台使用该地址 |
-| `AI_MODEL` | `kimi-k2.6` | 若账号模型列表不包含该模型，改为控制台实际可用模型 |
-| `AI_REASONING_EFFORT` | `medium` | 统一配置；切换 OpenAI Terra 时直接生效 |
+| `AI_MODEL` | `kimi-k3` | 已通过当前 Kimi Key 的模型列表与请求接口验证 |
+| `AI_REASONING_EFFORT` | `medium` | 埋点初稿使用中等推理强度；兼顾设计质量和生成耗时 |
 | `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | 必须与飞书开放平台安全设置完全一致 |
 | `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 用户文档授权范围；服务端会强制补齐这组最小权限，避免环境配置漂移 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
 
 现有 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 继续复用，不要重复创建应用。
+
+Kimi 3 请求固定使用 `temperature=0.6` 并关闭深度思考，减少同步生成超过妙搭网关时限的风险。修改妙搭静态配置后必须重启服务才能生效。
 
 切换公司 OpenAI 配置时：
 

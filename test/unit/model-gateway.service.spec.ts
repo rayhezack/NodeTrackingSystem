@@ -6,7 +6,8 @@ describe('ModelGatewayService', () => {
 
   beforeEach(() => {
     process.env.AI_PROVIDER = 'kimi';
-    process.env.AI_MODEL = 'kimi-k2.6';
+    process.env.AI_MODEL = 'kimi-k3';
+    process.env.AI_REASONING_EFFORT = 'medium';
     process.env.KIMI_API_KEY = 'test-api-key';
   });
 
@@ -16,7 +17,7 @@ describe('ModelGatewayService', () => {
     jest.restoreAllMocks();
   });
 
-  it('Kimi K2.6 请求应使用模型唯一允许的 temperature=1', async () => {
+  it('Kimi 3 埋点设计请求应关闭深度思考并使用中等推理强度', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -28,6 +29,11 @@ describe('ModelGatewayService', () => {
 
     const request = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
     const body = JSON.parse(String(request.body)) as Record<string, unknown>;
-    expect(body.temperature).toBe(1);
+    expect(body).toMatchObject({
+      model: 'kimi-k3',
+      temperature: 0.6,
+      thinking: { type: 'disabled' },
+      reasoning_effort: 'medium',
+    });
   });
 });
