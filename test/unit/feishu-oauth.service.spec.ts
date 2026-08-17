@@ -75,6 +75,44 @@ describe('Feishu OAuth token storage', () => {
     }));
   });
 
+  it('授权回调命中另一个服务实例时也应完成，不依赖进程内会话', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'token_record' }]),
+      batchUpdateRecords: jest.fn(),
+    };
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          access_token: 'plain-access-token',
+          refresh_token: 'plain-refresh-token',
+          expires_in: 7200,
+          refresh_token_expires_in: 604800,
+          scope: 'offline_access auth:user.id:read docx:document:readonly wiki:node:read',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ code: 0, data: { open_id: 'ou_test' } }),
+      }) as typeof fetch;
+
+    const authorizationInstance = new FeishuOAuthService(bitable as never);
+    const started = authorizationInstance.startAuthorization({
+      recordId: 'app:rec_1',
+      actorId: 'actor_1',
+    });
+    const state = new URL(started.authorizationUrl).searchParams.get('state') || '';
+
+    const callbackInstance = new FeishuOAuthService(bitable as never);
+    await expect(callbackInstance.completeAuthorization('oauth-code', state)).resolves.toEqual({
+      recordId: 'app:rec_1',
+      authenticatedActor: 'actor_1',
+    });
+    expect(bitable.batchAddRecords).toHaveBeenCalledTimes(1);
+  });
+
   it('授权链接必须包含实际 docx 接口所需的只读权限', () => {
     process.env.FEISHU_OAUTH_SCOPES = 'offline_access docs:document.content:read wiki:node:read';
     const service = new FeishuOAuthService({} as never);

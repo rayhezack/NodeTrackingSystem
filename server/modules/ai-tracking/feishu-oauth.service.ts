@@ -22,7 +22,6 @@ interface AuthorizationSession {
   actorKey: string;
   actorLarkId?: string;
   recordId: string;
-  codeVerifier: string;
   expiresAt: number;
 }
 
@@ -47,7 +46,6 @@ const REQUIRED_OAUTH_SCOPES = [
 
 @Injectable()
 export class FeishuOAuthService {
-  private readonly sessions = new Map<string, AuthorizationSession>();
   private readonly tokens = new Map<string, FeishuTokenSet>();
 
   constructor(private readonly bitable: BitableService) {}
@@ -118,18 +116,15 @@ export class FeishuOAuthService {
       throw new BadRequestException('飞书 OAuth 尚未配置，请补充应用凭证、回调地址和 FEISHU_TOKEN_ENCRYPTION_KEY');
     }
     const key = actorKey(input.actorId, input.actorLarkId);
-    const state = randomBytes(24).toString('base64url');
-    const codeVerifier = randomBytes(48).toString('base64url');
-    const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
     const expiresAt = Date.now() + 10 * 60 * 1000;
-    this.sessions.set(state, {
+    const state = this.encrypt(JSON.stringify({
       actorKey: key,
       actorLarkId: input.actorLarkId,
       recordId: input.recordId,
-      codeVerifier,
       expiresAt,
-    });
-    this.pruneExpiredSessions();
+    } satisfies AuthorizationSession));
+    const codeVerifier = this.codeVerifierForState(state);
+    const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
 
     const params = new URLSearchParams({
       client_id: this.appId,
@@ -147,8 +142,7 @@ export class FeishuOAuthService {
   }
 
   async completeAuthorization(code: string, state: string, oauthError?: string) {
-    const session = this.sessions.get(state);
-    this.sessions.delete(state);
+    const session = this.readAuthorizationSession(state);
     if (!session || session.expiresAt <= Date.now()) {
       throw new BadRequestException('授权会话已失效，请返回埋点系统重新发起授权');
     }
@@ -165,7 +159,7 @@ export class FeishuOAuthService {
       client_secret: this.appSecret,
       code,
       redirect_uri: this.redirectUri,
-      code_verifier: session.codeVerifier,
+      code_verifier: this.codeVerifierForState(state),
     });
     const now = Date.now();
     const token: FeishuTokenSet = {
@@ -318,11 +312,32 @@ export class FeishuOAuthService {
     return (payload.data && typeof payload.data === 'object' ? payload.data : payload) as Record<string, unknown>;
   }
 
-  private pruneExpiredSessions() {
-    const now = Date.now();
-    for (const [state, session] of this.sessions.entries()) {
-      if (session.expiresAt <= now) this.sessions.delete(state);
+  private readAuthorizationSession(state: string): AuthorizationSession | undefined {
+    try {
+      const session = JSON.parse(this.decrypt(state)) as Partial<AuthorizationSession>;
+      if (
+        typeof session.actorKey !== 'string' || !session.actorKey.trim() ||
+        typeof session.recordId !== 'string' || !session.recordId.trim() ||
+        typeof session.expiresAt !== 'number' || !Number.isFinite(session.expiresAt)
+      ) return undefined;
+      return {
+        actorKey: session.actorKey,
+        ...(typeof session.actorLarkId === 'string' && session.actorLarkId
+          ? { actorLarkId: session.actorLarkId }
+          : {}),
+        recordId: session.recordId,
+        expiresAt: session.expiresAt,
+      };
+    } catch {
+      return undefined;
     }
+  }
+
+  private codeVerifierForState(state: string): string {
+    if (!this.encryptionSecret) throw new Error('FEISHU_TOKEN_ENCRYPTION_KEY is missing');
+    return createHmac('sha256', this.encryptionSecret)
+      .update(`oauth-pkce.${state}`)
+      .digest('base64url');
   }
 
   private get appId(): string {
