@@ -30,7 +30,7 @@ export class ModelGatewayService {
     const body: Record<string, unknown> = {
       model: this.model,
       messages,
-      temperature: 0.1,
+      temperature: this.provider === 'kimi' ? 1 : 0.1,
       response_format: { type: 'json_object' },
     };
     if (this.provider === 'openai') body.reasoning_effort = this.reasoningEffort;
