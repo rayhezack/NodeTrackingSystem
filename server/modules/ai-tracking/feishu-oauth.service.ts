@@ -170,7 +170,7 @@ export class FeishuOAuthService {
     if (session.actorLarkId && token.openId && session.actorLarkId !== token.openId) {
       throw new UnauthorizedException('扫码账号与当前埋点系统账号不一致，请使用当前账号重新授权');
     }
-    const authenticatedActor = token.openId || session.actorKey;
+    const authenticatedActor = session.actorKey;
     await this.persistToken(authenticatedActor, token);
     return { recordId: session.recordId, authenticatedActor };
   }

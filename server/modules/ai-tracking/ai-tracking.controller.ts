@@ -21,15 +21,25 @@ export class AiTrackingController {
   }
 
   @Get('feishu-auth/status')
-  getAuthStatus(@Req() request: Request) {
-    const actor = this.oauth.getSessionActor(request.headers.cookie);
+  getAuthStatus(
+    @Req() request: Request,
+    @Query('actorId') actorId?: string,
+    @Query('actorLarkId') actorLarkId?: string,
+  ) {
+    const actor = this.resolveRequestActor(request, actorId, actorLarkId);
     if (!actor) return { authorized: false, tokenStorage: 'encrypted_base' as const };
-    return this.aiTracking.getAuthStatus(undefined, actor);
+    return this.aiTracking.getAuthStatus(actor);
   }
 
   @Post('feishu-auth/start')
-  startAuth(@Body() body: StartAiFeishuAuthRequest) {
-    return this.aiTracking.startAuth(body);
+  startAuth(@Body() body: StartAiFeishuAuthRequest, @Req() request: Request) {
+    const actor = this.resolveRequestActor(request, body.actorId, body.actorLarkId);
+    if (!actor) throw new UnauthorizedException('无法识别当前妙搭用户，不能发起飞书文档授权');
+    return this.aiTracking.startAuth({
+      ...body,
+      actorId: actor,
+      actorLarkId: undefined,
+    });
   }
 
   @Get('feishu-auth/callback')
@@ -75,9 +85,20 @@ export class AiTrackingController {
   }
 
   private requireSessionActor(request: Request): string {
-    const actor = this.oauth.getSessionActor(request.headers.cookie);
+    const actor = this.resolveRequestActor(request);
     if (!actor) throw new UnauthorizedException('飞书文档授权会话不存在或已失效，请重新授权');
     return actor;
+  }
+
+  private resolveRequestActor(
+    request: Request,
+    fallbackActorId?: string,
+    fallbackActorLarkId?: string,
+  ): string | undefined {
+    return request.userContext?.userId ||
+      this.oauth.getSessionActor(request.headers.cookie) ||
+      fallbackActorLarkId ||
+      fallbackActorId;
   }
 }
 

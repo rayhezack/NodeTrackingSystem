@@ -44,13 +44,13 @@ describe('Feishu OAuth token storage', () => {
     const started = service.startAuthorization({
       recordId: 'app:rec_1',
       actorId: 'actor_1',
-      actorLarkId: 'ou_test',
     });
     const state = new URL(started.authorizationUrl).searchParams.get('state') || '';
     const completed = await service.completeAuthorization('oauth-code', state);
 
+    expect(completed.authenticatedActor).toBe('actor_1');
     const sessionCookie = service.createSessionCookie(completed.authenticatedActor);
-    expect(service.getSessionActor(`other=value; ai_tracking_session=${sessionCookie}`)).toBe('ou_test');
+    expect(service.getSessionActor(`other=value; ai_tracking_session=${sessionCookie}`)).toBe('actor_1');
     expect(service.getSessionActor(`ai_tracking_session=${sessionCookie}tampered`)).toBeUndefined();
 
     const storedRecord = bitable.batchAddRecords.mock.calls[0][1][0] as Record<string, unknown>;
@@ -68,7 +68,7 @@ describe('Feishu OAuth token storage', () => {
       }),
     };
     const restored = new FeishuOAuthService(restoredBitable as never);
-    await expect(restored.getStatus('actor_1', 'ou_test')).resolves.toEqual(expect.objectContaining({
+    await expect(restored.getStatus('actor_1')).resolves.toEqual(expect.objectContaining({
       authorized: true,
       tokenStorage: 'encrypted_base',
     }));

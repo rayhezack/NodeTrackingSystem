@@ -1,6 +1,6 @@
 import { APP_FILTER } from '@nestjs/core';
-import { Module } from '@nestjs/common';
-import { PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { CsrfMiddleware, PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
 
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
 import { ViewModule } from './modules/view/view.module';
@@ -11,7 +11,7 @@ import { AiTrackingModule } from './modules/ai-tracking/ai-tracking.module';
 @Module({
   imports: [
     // 平台 Module，提供平台能力
-    PlatformModule.forRoot(),
+    PlatformModule.forRoot({ enableCsrf: false }),
     // ====== @route-section: business-modules START ======
     // Place all business modules here.Do NOT add fallback modules here.
     TrackingModule,
@@ -30,4 +30,14 @@ import { AiTrackingModule } from './modules/ai-tracking/ai-tracking.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(CsrfMiddleware)
+      .exclude({
+        path: 'api/tracking/ai/feishu-auth/callback',
+        method: RequestMethod.GET,
+      })
+      .forRoutes('/api/*');
+  }
+}
