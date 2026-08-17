@@ -73,6 +73,83 @@ describe('正式查询库参数读取', () => {
     ]);
   });
 
+  it('AI 候选上下文应支持 App/Web 混合事件，并分别读取对应正式参数表', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockImplementation((instanceKey: string) => {
+        if (instanceKey === 'officialParamDetail') {
+          return Promise.resolve({
+            records: [{
+              id: 'rec_app_param',
+              record: {
+                参数主键: 'home_agent_entry_click.entry_source',
+                evt_id: 'home_agent_entry_click',
+                参数名: 'entry_source',
+                数据类型: 'STRING',
+                必传规则: '必传',
+                参数定义: 'App 入口来源',
+                参数状态: '正式',
+                App适用性: 'App通用',
+                关联事件: [{ id: 'rec_app_event' }],
+              },
+            }],
+            hasMore: false,
+          });
+        }
+        return Promise.resolve({
+          records: [{
+            id: 'rec_web_param',
+            record: {
+              参数主键: 'home_agent_entry_click.page_name',
+              evt_id: 'home_agent_entry_click',
+              参数名: 'page_name',
+              数据类型: 'STRING',
+              必传规则: '必传',
+              参数定义: 'Web 页面名称',
+              参数状态: '正式',
+              Web适用性: 'Web通用',
+              关联事件: [{ id: 'rec_web_event' }],
+            },
+          }],
+          hasMore: false,
+        });
+      }),
+    };
+    const service = new QueryLibraryService(bitable as unknown as BitableService);
+    const events = [
+      {
+        recordId: 'web:rec_web_event',
+        source: 'web' as const,
+        evtId: 'home_agent_entry_click',
+        eventName: '首页 Agent 入口点击',
+        platform: 'Web',
+        version: '1.0.0',
+        status: '已上线',
+        paramLink: '',
+      },
+      {
+        recordId: 'app:rec_app_event',
+        source: 'app' as const,
+        evtId: 'home_agent_entry_click',
+        eventName: '首页 Agent 入口点击',
+        platform: 'iOS、Android',
+        version: '1.0.0',
+        status: '已上线',
+        paramLink: '',
+      },
+    ];
+
+    const result = await (service as QueryLibraryService & {
+      getEventContexts: (items: typeof events) => Promise<Array<{ event: typeof events[number]; params: Array<{ paramName: string; platform: string }> }>>;
+    }).getEventContexts(events);
+
+    expect(bitable.searchRecords).toHaveBeenCalledWith('webOfficialParamDetail', expect.any(Object));
+    expect(bitable.searchRecords).toHaveBeenCalledWith('officialParamDetail', expect.any(Object));
+    expect(result).toEqual([
+      { event: events[0], params: [expect.objectContaining({ paramName: 'page_name', platform: 'Web通用' })] },
+      { event: events[1], params: [expect.objectContaining({ paramName: 'entry_source', platform: 'App通用' })] },
+    ]);
+  });
+
   it('应从正式参数表读取参数，而不是回读设计参数表', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({

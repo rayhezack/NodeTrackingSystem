@@ -82,18 +82,21 @@ export class QueryLibraryService {
 
   async getEventContexts(events: OfficialEvent[]): Promise<OfficialEventContext[]> {
     if (!events.length) return [];
-    const source = events[0].source;
-    const sourceEvents = events.filter((event) => event.source === source);
-    const records = await this.searchAllRecords(
-      officialParamDetailKey(source),
-      officialParamFields(source),
-    );
+    const sources = Array.from(new Set(events.map((event) => event.source)));
+    const recordsBySource = new Map<TrackingSource, BitableRecord[]>();
+    await Promise.all(sources.map(async (source) => {
+      const records = await this.searchAllRecords(
+        officialParamDetailKey(source),
+        officialParamFields(source),
+      );
+      recordsBySource.set(source, records);
+    }));
 
-    return sourceEvents.map((event) => {
+    return events.map((event) => {
       const rawEventId = parseScopedRecordId(event.recordId).rawId;
-      const params = records
+      const params = (recordsBySource.get(event.source) || [])
         .filter((record) => isOfficialParamForEvent(record, rawEventId, event.evtId))
-        .map((record) => this.toOfficialParam(record, source))
+        .map((record) => this.toOfficialParam(record, event.source))
         .filter((param) => (param.paramKey || param.paramName) && param.status !== '已废弃')
         .sort((left, right) => left.paramKey.localeCompare(right.paramKey));
       return { event, params };

@@ -110,12 +110,16 @@ export class AiTrackingService {
     }
 
     const accessToken = await this.oauth.getAccessToken(actorId, actorLarkId);
-    const [prd, currentParams, library] = await Promise.all([
-      this.documents.fetchPrd(requirementUrl, accessToken),
+    const prd = await this.documents.fetchPrd(requirementUrl, accessToken);
+    const [currentParams, appLibrary, webLibrary] = await Promise.all([
       this.tracking.getParams(recordId),
-      this.queryLibrary.getEvents({ source: detail.source, pageSize: 500 }),
+      this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }),
+      this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }),
     ]);
-    const candidates = selectOfficialCandidates(detail, prd.content, library.items, 12);
+    const candidates = selectOfficialAssetCandidates(detail, prd.content, {
+      app: appLibrary.items,
+      web: webLibrary.items,
+    }, 16);
     const historicalContexts = await this.queryLibrary.getEventContexts(candidates);
     const raw = await this.model.generateJson([
       { role: 'system', content: TRACKING_DESIGN_GUIDELINES },
@@ -345,7 +349,7 @@ function buildPrompt(
   const handlerOptions = isWeb ? '前端|服务端|前端/服务端' : '客户端|客户端/服务端';
   const paramPlatformOptions = isWeb
     ? 'Web通用|Web&App历史兼容|Web/App差异待拆|待确认'
-    : 'App通用|仅iOS|仅Android|待确认';
+    : 'App通用|仅iOS|仅Android|Web&App历史兼容|App/Web差异待拆|待确认';
   const currentEvents = detail.relatedEvents.map((event) => ({
     evtId: event.evtId,
     eventName: event.eventName,
@@ -367,7 +371,7 @@ ${JSON.stringify({
   currentParams,
 }, null, 2)}
 
-同端历史正式事件与参数参考（仅用于统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
+正式埋点查询 + 正式参数查询参考（App/Web 两套表都会读取；用于判断是否复用已有事件和参数，并统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
 ${JSON.stringify(historicalContexts, null, 2)}
 
 PRD 标题：${prd.title}
@@ -423,6 +427,29 @@ function selectOfficialCandidates(
     .sort((left, right) => right.score - left.score || left.item.evtId.localeCompare(right.item.evtId))
     .slice(0, limit)
     .map(({ item }) => item);
+}
+
+function selectOfficialAssetCandidates(
+  detail: TrackingDetail,
+  prdContent: string,
+  libraries: Record<'app' | 'web', OfficialEvent[]>,
+  limit: number,
+): OfficialEvent[] {
+  const primarySource = detail.source;
+  const secondarySource = primarySource === 'web' ? 'app' : 'web';
+  return uniqueOfficialCandidates([
+    ...selectOfficialCandidates(detail, prdContent, libraries[primarySource], 10),
+    ...selectOfficialCandidates(detail, prdContent, libraries[secondarySource], 8),
+  ]).slice(0, limit);
+}
+
+function uniqueOfficialCandidates(items: OfficialEvent[]): OfficialEvent[] {
+  const map = new Map<string, OfficialEvent>();
+  for (const item of items) {
+    const key = `${item.source}:${item.evtId.trim().toLowerCase() || item.recordId}`;
+    if (!map.has(key)) map.set(key, item);
+  }
+  return Array.from(map.values());
 }
 
 function textTokens(value: string): string[] {

@@ -132,7 +132,7 @@ describe('AI 埋点草稿', () => {
     return { service, tracking, queryLibrary, documents, model };
   }
 
-  it('生成时应读取需求单文档链接和同端历史正式库', async () => {
+  it('生成时应读取需求单文档链接，并同时使用 App/Web 正式埋点查询与正式参数查询', async () => {
     const prdUrl = 'https://bcn0tgplxp2e.feishu.cn/wiki/K5dewcp55iRZPskeA4gc9W1WnKd';
     const { service, documents, queryLibrary, model } = createFixture({
       source: 'web',
@@ -141,7 +141,7 @@ describe('AI 埋点草稿', () => {
         需求背景: '首页新增 Agent 入口',
       },
     });
-    const officialEvent = {
+    const webOfficialEvent = {
       recordId: 'web:rec_official_agent',
       source: 'web' as const,
       evtId: 'home_agent_entry_click',
@@ -151,13 +151,23 @@ describe('AI 埋点草稿', () => {
       status: '已上线',
       paramLink: 'https://example.feishu.cn/base/params',
     };
-    queryLibrary.getEvents.mockResolvedValue({
-      items: [officialEvent],
+    const appOfficialEvent = {
+      recordId: 'app:rec_official_agent',
+      source: 'app' as const,
+      evtId: 'home_agent_entry_click',
+      eventName: '首页 Agent 入口点击',
+      platform: 'iOS、Android',
+      version: '1.0.0',
+      status: '已上线',
+      paramLink: 'https://example.feishu.cn/base/app-params',
+    };
+    queryLibrary.getEvents.mockImplementation(({ source }: { source: 'app' | 'web' }) => Promise.resolve({
+      items: source === 'web' ? [webOfficialEvent] : [appOfficialEvent],
       total: 1,
       hasMore: false,
-    });
+    }));
     queryLibrary.getEventContexts.mockResolvedValue([{
-      event: officialEvent,
+      event: webOfficialEvent,
       params: [{
         paramKey: 'home_agent_entry_click.entry_source',
         paramName: 'entry_source',
@@ -170,15 +180,33 @@ describe('AI 埋点草稿', () => {
         platform: 'Web通用',
         status: '正式',
       }],
+    }, {
+      event: appOfficialEvent,
+      params: [{
+        paramKey: 'home_agent_entry_click.agent_entry_type',
+        paramName: 'agent_entry_type',
+        paramType: 'STRING',
+        required: false,
+        requiredRule: '非必传',
+        enumRange: 'home // 首页',
+        definition: 'App 历史入口类型',
+        example: 'home',
+        platform: 'App通用',
+        status: '正式',
+      }],
     }]);
 
     await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
 
     expect(documents.fetchPrd).toHaveBeenCalledWith(prdUrl, 'user-token');
     expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 });
-    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([officialEvent]);
+    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'app', pageSize: 500 });
+    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([webOfficialEvent, appOfficialEvent]);
     const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
-    expect(messages.find((message) => message.role === 'user')?.content).toContain('"paramName": "entry_source"');
+    const prompt = messages.find((message) => message.role === 'user')?.content || '';
+    expect(prompt).toContain('正式埋点查询 + 正式参数查询参考');
+    expect(prompt).toContain('"paramName": "entry_source"');
+    expect(prompt).toContain('"paramName": "agent_entry_type"');
   });
 
   it('Web 需求应使用 Web 端提示词并生成 Web 字段枚举', async () => {
@@ -254,6 +282,19 @@ describe('AI 埋点草稿', () => {
       service.generateDraft('app:rec_1', { actorId: 'actor_1' }),
     ).rejects.toThrow('请先提供 PRD 文档链接，再生成 AI 埋点初稿');
     expect(documents.fetchPrd).not.toHaveBeenCalled();
+    expect(model.generateJson).not.toHaveBeenCalled();
+  });
+
+  it('PRD 无读取权限时应直接失败，不继续读取历史库或调用模型', async () => {
+    const { service, tracking, documents, queryLibrary, model } = createFixture();
+    documents.fetchPrd.mockRejectedValue(new Error('当前飞书账号无权读取这份 PRD，请确认该账号可在飞书中打开文档后重试'));
+
+    await expect(
+      service.generateDraft('app:rec_1', { actorId: 'actor_1' }),
+    ).rejects.toThrow('当前飞书账号无权读取这份 PRD');
+    expect(tracking.getParams).not.toHaveBeenCalled();
+    expect(queryLibrary.getEvents).not.toHaveBeenCalled();
+    expect(queryLibrary.getEventContexts).not.toHaveBeenCalled();
     expect(model.generateJson).not.toHaveBeenCalled();
   });
 
