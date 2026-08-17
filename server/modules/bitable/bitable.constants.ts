@@ -1069,6 +1069,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
   ],
   webWorkbench: [
     {
+      id: 'fldek7LT1q',
+      name: '需求ID',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldzPZpSsE',
       name: '需求名称',
       type: 1,

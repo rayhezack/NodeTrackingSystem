@@ -39,6 +39,7 @@ describe('线上 Base 字段契约', () => {
     });
     expect(fieldIds('webWorkbench')).toMatchObject({
       ...expectedSharedIds,
+      需求ID: 'fldek7LT1q',
       需求名称: 'fldzPZpSsE',
       需求提出人: 'fld3VkDsty',
       需求录入人: 'fldmXg85mP',
