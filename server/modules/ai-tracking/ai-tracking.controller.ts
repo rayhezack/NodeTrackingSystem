@@ -74,6 +74,21 @@ export class AiTrackingController {
     return this.aiTracking.generateDraft(recordId, body, this.requireSessionActor(request));
   }
 
+  @Get('records/:recordId/drafts/latest')
+  getLatestDraft(
+    @Param('recordId') recordId: string,
+    @Query('actorId') actorId: string | undefined,
+    @Query('actorLarkId') actorLarkId: string | undefined,
+    @Req() request: Request,
+  ) {
+    return this.aiTracking.getLatestDraft(
+      recordId,
+      actorId,
+      actorLarkId,
+      this.requireSessionActor(request),
+    );
+  }
+
   @Post('records/:recordId/drafts/:draftId/apply')
   applyDraft(
     @Param('recordId') recordId: string,

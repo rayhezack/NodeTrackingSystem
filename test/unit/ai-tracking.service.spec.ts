@@ -108,6 +108,7 @@ describe('AI 埋点草稿', () => {
                 requiredRule: '必传',
                 definition: '任务发起入口',
                 enumRange: 'home // 首页',
+                example: 'home',
                 platform: 'App通用',
               },
             ],
@@ -155,6 +156,42 @@ describe('AI 埋点草稿', () => {
     expect(tracking.createParam).not.toHaveBeenCalled();
   });
 
+  it('同一分析师关闭弹窗或返回页面后仍应能读取最近草稿', async () => {
+    const { service } = createFixture();
+    const generated = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+    const latestGetter = (service as unknown as {
+      getLatestDraft?: (
+        recordId: string,
+        actorId?: string,
+        actorLarkId?: string,
+      ) => Promise<{ draft: { id: string } | null }>;
+    }).getLatestDraft;
+
+    expect(latestGetter).toEqual(expect.any(Function));
+    const latest = await latestGetter?.call(service, 'app:rec_1', 'actor_1');
+    const otherActor = await latestGetter?.call(service, 'app:rec_1', 'actor_2');
+
+    expect(latest?.draft?.id).toBe(generated.draft.id);
+    expect(otherActor?.draft).toBeNull();
+  });
+
+  it('模型只应生成埋点设计表单需要录入的字段', async () => {
+    const { service, model } = createFixture();
+
+    await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+
+    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    const promptShape = messages.find((message) => message.role === 'user')?.content.split('返回 JSON 结构：')[1] || '';
+    expect(promptShape).toContain('"evtId"');
+    expect(promptShape).toContain('"eventDefinition"');
+    expect(promptShape).toContain('"example"');
+    expect(promptShape).not.toContain('"summary"');
+    expect(promptShape).not.toContain('"analystQuestions"');
+    expect(promptShape).not.toContain('"metricScenario"');
+    expect(promptShape).not.toContain('"evidence"');
+    expect(promptShape).not.toContain('"uncertainties"');
+  });
+
   it('空白占位事件只在人工应用后写入，重复应用不应重复写入', async () => {
     const { service, tracking } = createFixture();
     const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
@@ -171,6 +208,23 @@ describe('AI 埋点草稿', () => {
     }));
     expect(tracking.createSiblingEvent).not.toHaveBeenCalled();
     expect(tracking.createParam).toHaveBeenCalledTimes(1);
+    expect(tracking.createParam).toHaveBeenCalledWith('app:rec_1', expect.objectContaining({
+      paramName: 'entry_source',
+      example: 'home',
+    }));
+    await expect(service.getLatestDraft('app:rec_1', 'actor_1')).resolves.toEqual({ draft: null });
+  });
+
+  it('分析师不能读取或应用其他人的 AI 草稿', async () => {
+    const { service, tracking } = createFixture();
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+
+    await expect(service.getLatestDraft('app:rec_1', 'actor_2')).resolves.toEqual({ draft: null });
+    await expect(
+      service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_2' }),
+    ).rejects.toThrow('AI 草稿不存在或已过期');
+    expect(tracking.updateRecord).not.toHaveBeenCalled();
+    expect(tracking.createParam).not.toHaveBeenCalled();
   });
 
   it('已有事件时必须新增同需求事件，不能覆盖当前事件', async () => {

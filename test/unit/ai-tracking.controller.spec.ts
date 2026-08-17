@@ -24,6 +24,7 @@ describe('AI 埋点控制器身份解析', () => {
       getAuthStatus: jest.fn().mockResolvedValue({ authorized: true }),
       startAuth: jest.fn().mockReturnValue({ authorizationUrl: 'https://example.com/auth' }),
       generateDraft: jest.fn().mockResolvedValue({ draft: {} }),
+      getLatestDraft: jest.fn().mockResolvedValue({ draft: {} }),
     };
     const oauth = {
       getSessionActor: jest.fn().mockReturnValue(undefined),
@@ -72,6 +73,28 @@ describe('AI 埋点控制器身份解析', () => {
     expect(aiTracking.generateDraft).toHaveBeenCalledWith(
       'web:rec_1',
       body,
+      'platform_user_1',
+    );
+  });
+
+  it('读取最近草稿应使用妙搭可信用户身份', async () => {
+    const { controller, aiTracking, request } = createFixture();
+    const latestGetter = (controller as unknown as {
+      getLatestDraft?: (
+        recordId: string,
+        actorId: string | undefined,
+        actorLarkId: string | undefined,
+        request: Request,
+      ) => Promise<unknown>;
+    }).getLatestDraft;
+
+    expect(latestGetter).toEqual(expect.any(Function));
+    await latestGetter?.call(controller, 'web:rec_1', 'client_actor', 'ou_client', request);
+
+    expect(aiTracking.getLatestDraft).toHaveBeenCalledWith(
+      'web:rec_1',
+      'client_actor',
+      'ou_client',
       'platform_user_1',
     );
   });

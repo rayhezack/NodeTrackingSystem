@@ -490,6 +490,7 @@ export interface AiTrackingDraftParam {
   enumRange: string;
   definition: string;
   defaultValue: string;
+  example: string;
   platform: string;
   source: AiDraftParamSource;
   changeSummary?: string;
@@ -554,6 +555,10 @@ export interface AiTrackingDraft {
 
 export interface GenerateAiTrackingDraftResponse {
   draft: AiTrackingDraft;
+}
+
+export interface GetLatestAiTrackingDraftResponse {
+  draft: AiTrackingDraft | null;
 }
 
 export interface ApplyAiTrackingDraftRequest {

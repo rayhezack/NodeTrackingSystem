@@ -15,8 +15,8 @@ import type {
   ApplyAiTrackingDraftResponse,
   GenerateAiTrackingDraftRequest,
   GenerateAiTrackingDraftResponse,
+  GetLatestAiTrackingDraftResponse,
   OfficialEvent,
-  OfficialParam,
   ParamDetail,
   TrackingDetail,
 } from '@shared/api.interface';
@@ -31,12 +31,11 @@ const modelParamSchema = z.object({
   paramName: z.string().default(''),
   paramType: z.string().default('UNKNOWN'),
   requiredRule: z.string().default('非必传'),
-  triggerCondition: z.string().default(''),
   enumRange: z.string().default(''),
   definition: z.string().default(''),
   defaultValue: z.string().default(''),
+  example: z.string().default(''),
   platform: z.string().default('App通用'),
-  uncertainties: z.array(z.string()).default([]),
 });
 
 const modelEventSchema = z.object({
@@ -44,7 +43,6 @@ const modelEventSchema = z.object({
   eventName: z.string().default(''),
   eventDefinition: z.string().default(''),
   triggerTiming: z.string().default(''),
-  metricScenario: z.string().default(''),
   priority: z.string().default('P1'),
   platform: z.string().default('iOS、Android'),
   handler: z.string().default('客户端'),
@@ -52,16 +50,10 @@ const modelEventSchema = z.object({
   version: z.string().default('待人工确认'),
   minVersion: z.string().default('待人工确认'),
   changeType: z.string().default('新增'),
-  evidence: z.array(z.string()).default([]),
-  uncertainties: z.array(z.string()).default([]),
-  reuseSourceEvtId: z.string().optional(),
-  reuseModificationSummary: z.string().default(''),
   params: z.array(modelParamSchema).default([]),
 });
 
 const modelResponseSchema = z.object({
-  summary: z.string().default(''),
-  analystQuestions: z.array(z.string()).default([]),
   events: z.array(modelEventSchema).min(1),
 });
 
@@ -69,6 +61,8 @@ const modelResponseSchema = z.object({
 export class AiTrackingService {
   private readonly drafts = new Map<string, AiTrackingDraft>();
   private readonly versions = new Map<string, number>();
+  private readonly latestDraftIds = new Map<string, string>();
+  private readonly draftOwners = new Map<string, string>();
 
   constructor(
     private readonly tracking: TrackingService,
@@ -130,9 +124,7 @@ export class AiTrackingService {
       throw new BadRequestException(`AI 草稿结构校验失败：${parsed.error.issues[0]?.message || '未知错误'}`);
     }
 
-    const events = await Promise.all(
-      parsed.data.events.map((event, index) => this.normalizeEvent(event, index, candidates)),
-    );
+    const events = parsed.data.events.map((event, index) => this.normalizeEvent(event, index));
     assertUniqueEvents(events);
     const draftKey = draftOwnerKey(recordId, actorId, actorLarkId);
     const version = (this.versions.get(draftKey) || 0) + 1;
@@ -152,17 +144,32 @@ export class AiTrackingService {
         revision: prd.revision,
         truncated: prd.truncated,
       },
-      summary: parsed.data.summary || `共生成 ${events.length} 个埋点事件初稿`,
-      analystQuestions: uniqueStrings([
-        ...parsed.data.analystQuestions,
-        ...events.flatMap((event) => event.uncertainties),
-      ]),
+      summary: `共生成 ${events.length} 个埋点事件初稿`,
+      analystQuestions: uniqueStrings(events.flatMap((event) => event.uncertainties)),
       events,
       diffs: buildDraftDiffs(detail, currentParams.items, events),
     };
     this.drafts.set(draft.id, draft);
+    this.draftOwners.set(draft.id, draftKey);
+    this.latestDraftIds.set(draftKey, draft.id);
     this.pruneDrafts();
     return { draft };
+  }
+
+  async getLatestDraft(
+    recordId: string,
+    actorId?: string,
+    actorLarkId?: string,
+    authenticatedActor?: string,
+  ): Promise<GetLatestAiTrackingDraftResponse> {
+    const resolvedActorLarkId = authenticatedActor || actorLarkId;
+    const resolvedActorId = authenticatedActor ? undefined : actorId;
+    await this.authorizedDetail(recordId, resolvedActorId, resolvedActorLarkId);
+    this.pruneDrafts();
+    const ownerKey = draftOwnerKey(recordId, resolvedActorId, resolvedActorLarkId);
+    const draftId = this.latestDraftIds.get(ownerKey);
+    const draft = draftId ? this.drafts.get(draftId) : undefined;
+    return { draft: draft?.status === 'draft' ? draft : null };
   }
 
   async applyDraft(
@@ -175,7 +182,14 @@ export class AiTrackingService {
     const actorId = authenticatedActor ? undefined : body.actorId;
     const detail = await this.authorizedDetail(recordId, actorId, actorLarkId);
     const draft = this.drafts.get(draftId);
-    if (!draft || draft.recordId !== recordId) throw new NotFoundException('AI 草稿不存在或已过期');
+    const ownerKey = draftOwnerKey(recordId, actorId, actorLarkId);
+    if (
+      !draft ||
+      draft.recordId !== recordId ||
+      this.draftOwners.get(draftId) !== ownerKey
+    ) {
+      throw new NotFoundException('AI 草稿不存在或已过期');
+    }
     if (draft.status === 'applied') {
       return {
         success: true,
@@ -241,7 +255,7 @@ export class AiTrackingService {
             enumRange: param.enumRange,
             definition: param.definition,
             defaultValue: param.defaultValue,
-            example: param.defaultValue,
+            example: param.example,
             platform: param.platform,
             status: '草稿',
             version: event.version,
@@ -254,6 +268,9 @@ export class AiTrackingService {
       }
       draft.status = 'applied';
       draft.appliedRecordIds = appliedRecordIds;
+      if (this.latestDraftIds.get(ownerKey) === draftId) {
+        this.latestDraftIds.delete(ownerKey);
+      }
       return {
         success: true,
         draftId,
@@ -281,15 +298,13 @@ export class AiTrackingService {
     return result.data;
   }
 
-  private async normalizeEvent(
+  private normalizeEvent(
     input: z.infer<typeof modelEventSchema>,
     index: number,
-    candidates: OfficialEvent[],
-  ): Promise<AiTrackingDraftEvent> {
+  ): AiTrackingDraftEvent {
     const normalizedEvtId = snakeCase(input.evtId);
     const evtId = normalizedEvtId || `pending_event_${index + 1}`;
     const uncertainties = uniqueStrings([
-      ...input.uncertainties,
       ...(!normalizedEvtId ? ['evt_id 待人工确认'] : []),
       ...(!input.eventName.trim() ? ['事件中文名待人工确认'] : []),
       ...(!input.eventDefinition.trim() ? ['事件定义待人工确认'] : []),
@@ -302,34 +317,22 @@ export class AiTrackingService {
         paramName: snakeCase(param.paramName),
         paramType: normalizeParamType(param.paramType),
         requiredRule: normalizeRequiredRule(param.requiredRule),
-        triggerCondition: param.triggerCondition.trim(),
+        triggerCondition: '',
         enumRange: param.enumRange.trim(),
         definition: param.definition.trim() || '待人工确认',
         defaultValue: param.defaultValue.trim(),
+        example: param.example.trim(),
         platform: normalizeParamPlatform(param.platform),
         source: 'ai' as const,
-        uncertainties: uniqueStrings(param.uncertainties),
+        uncertainties: [],
       }));
-    const candidate = candidates.find((item) => item.evtId === input.reuseSourceEvtId);
-    let params = generatedParams;
-    let reuseSource: AiTrackingDraftEvent['reuseSource'];
-    if (candidate) {
-      const official = await this.queryLibrary.getParams(candidate.recordId);
-      params = mergeOfficialParams(official.items, generatedParams);
-      reuseSource = {
-        recordId: candidate.recordId,
-        evtId: candidate.evtId,
-        eventName: candidate.eventName,
-        modificationSummary: input.reuseModificationSummary || '待人工确认复用范围',
-      };
-    }
     return {
       clientId: randomUUID(),
       evtId,
       eventName: input.eventName.trim() || '待人工确认',
       eventDefinition: input.eventDefinition.trim() || '待人工确认',
       triggerTiming: input.triggerTiming.trim() || '待人工确认',
-      metricScenario: input.metricScenario.trim() || '待人工确认',
+      metricScenario: '',
       priority: ['P0', 'P1', 'P2'].includes(input.priority) ? input.priority : 'P1',
       platform: input.platform.trim() || 'iOS、Android',
       handler: ['客户端', '客户端/服务端'].includes(input.handler) ? input.handler : '客户端',
@@ -337,17 +340,22 @@ export class AiTrackingService {
       version: input.version.trim() || '待人工确认',
       minVersion: input.minVersion.trim() || '待人工确认',
       changeType: ['新增', '修改', '废弃', '口径调整'].includes(input.changeType) ? input.changeType : '新增',
-      evidence: uniqueStrings(input.evidence),
+      evidence: [],
       uncertainties,
-      ...(reuseSource ? { reuseSource } : {}),
-      params,
+      params: generatedParams,
     };
   }
 
   private pruneDrafts() {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     for (const [id, draft] of this.drafts.entries()) {
-      if (draft.createdAt < cutoff) this.drafts.delete(id);
+      if (draft.createdAt >= cutoff) continue;
+      this.drafts.delete(id);
+      const ownerKey = this.draftOwners.get(id);
+      this.draftOwners.delete(id);
+      if (ownerKey && this.latestDraftIds.get(ownerKey) === id) {
+        this.latestDraftIds.delete(ownerKey);
+      }
     }
   }
 }
@@ -377,7 +385,7 @@ ${JSON.stringify({
   currentParams,
 }, null, 2)}
 
-正式事件候选（只有这些可以作为 reuseSourceEvtId；没有合适候选就留空）：
+同端历史正式事件参考（仅用于统一 evt_id、参数命名与统计口径，不要输出复用说明）：
 ${JSON.stringify(candidates, null, 2)}
 
 PRD 标题：${prd.title}
@@ -389,14 +397,11 @@ ${prd.content}
 
 返回 JSON 结构：
 {
-  "summary": "设计摘要",
-  "analystQuestions": ["需要分析师确认的问题"],
   "events": [{
     "evtId": "snake_case",
     "eventName": "中文事件名",
     "eventDefinition": "可判定定义",
     "triggerTiming": "明确触发条件与边界",
-    "metricScenario": "指标/分析用途",
     "priority": "P0|P1|P2",
     "platform": "iOS、Android",
     "handler": "客户端|客户端/服务端",
@@ -404,20 +409,15 @@ ${prd.content}
     "version": "PRD未给则待人工确认",
     "minVersion": "PRD未给则待人工确认",
     "changeType": "新增|修改|废弃|口径调整",
-    "evidence": ["PRD 中支持该设计的章节或事实摘要"],
-    "uncertainties": ["待确认项"],
-    "reuseSourceEvtId": "正式候选 evt_id 或空",
-    "reuseModificationSummary": "相对正式事件的修改内容",
     "params": [{
       "paramName": "snake_case",
       "paramType": "STRING|INTEGER|NUMBER|BOOLEAN|ARRAY|OBJECT|UNKNOWN",
       "requiredRule": "必传|非必传|条件必传",
-      "triggerCondition": "条件必传时写清条件",
       "enumRange": "value // 含义；PRD未给不得补造",
       "definition": "参数定义",
-      "defaultValue": "默认值或示例",
-      "platform": "App通用|仅iOS|仅Android|待确认",
-      "uncertainties": ["待确认项"]
+      "defaultValue": "默认值；没有则留空",
+      "example": "示例值；没有则留空",
+      "platform": "App通用|仅iOS|仅Android|待确认"
     }]
   }]
 }`.trim();
@@ -450,43 +450,6 @@ function textTokens(value: string): string[] {
     Array.from({ length: Math.max(0, run.length - 1) }, (_, index) => run.slice(index, index + 2)),
   );
   return uniqueStrings([...ascii, ...chinese]).slice(0, 300);
-}
-
-function mergeOfficialParams(
-  officialParams: OfficialParam[],
-  generatedParams: AiTrackingDraftParam[],
-): AiTrackingDraftParam[] {
-  const generated = new Map(generatedParams.map((param) => [param.paramName, param]));
-  const merged = officialParams.map((official) => {
-    const next = generated.get(official.paramName);
-    generated.delete(official.paramName);
-    if (!next) {
-      return {
-        paramName: official.paramName,
-        paramType: normalizeParamType(official.paramType),
-        requiredRule: normalizeRequiredRule(official.requiredRule),
-        triggerCondition: '',
-        enumRange: official.enumRange || '',
-        definition: official.definition || '待人工确认',
-        defaultValue: official.example || '',
-        platform: official.platform || 'App通用',
-        source: 'official' as const,
-        uncertainties: [],
-      };
-    }
-    const changed = [
-      next.paramType !== normalizeParamType(official.paramType) ? '数据类型' : '',
-      next.requiredRule !== normalizeRequiredRule(official.requiredRule) ? '必传规则' : '',
-      next.enumRange !== (official.enumRange || '') ? '枚举范围' : '',
-      next.definition !== (official.definition || '') ? '参数定义' : '',
-    ].filter(Boolean);
-    return {
-      ...next,
-      source: changed.length ? 'official_modified' as const : 'official' as const,
-      changeSummary: changed.length ? `修改：${changed.join('、')}` : '沿用正式参数',
-    };
-  });
-  return [...merged, ...generated.values()];
 }
 
 function buildDraftDiffs(

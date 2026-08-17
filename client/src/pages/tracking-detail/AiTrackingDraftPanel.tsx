@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Bot,
   Check,
   FileCheck2,
+  FileSearch,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -26,6 +27,7 @@ import {
   applyAiTrackingDraft,
   generateAiTrackingDraft,
   getAiFeishuAuthStatus,
+  getLatestAiTrackingDraft,
   getAiTrackingConfig,
   startAiFeishuAuth,
 } from '@client/src/api/tracking';
@@ -61,6 +63,11 @@ const AiTrackingDraftPanel = ({
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
 
+  const setActiveDraft = useCallback((nextDraft: AiTrackingDraft | null) => {
+    setDraft(nextDraft);
+    setSelectedIds(new Set(nextDraft?.events.map((event) => event.clientId) || []));
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     const [nextConfig, nextAuth] = await Promise.all([
       getAiTrackingConfig(),
@@ -74,6 +81,18 @@ const AiTrackingDraftPanel = ({
   useEffect(() => {
     void refreshStatus().catch(() => undefined);
   }, [refreshStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setActiveDraft(null);
+    if (!canEdit) return () => { cancelled = true; };
+    void getLatestAiTrackingDraft(detail.recordId, actorId, actorLarkId)
+      .then(({ draft: latestDraft }) => {
+        if (!cancelled && latestDraft) setActiveDraft(latestDraft);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [actorId, actorLarkId, canEdit, detail.recordId, setActiveDraft]);
 
   useEffect(() => {
     if (!authUrl || auth?.authorized || !authDialogOpen) return;
@@ -111,8 +130,7 @@ const AiTrackingDraftPanel = ({
     setLoading(true);
     try {
       const result = await generateAiTrackingDraft(detail.recordId, { actorId, actorLarkId });
-      setDraft(result.draft);
-      setSelectedIds(new Set(result.draft.events.map((event) => event.clientId)));
+      setActiveDraft(result.draft);
       setDraftDialogOpen(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI 埋点草稿生成失败');
@@ -132,6 +150,7 @@ const AiTrackingDraftPanel = ({
       });
       toast.success(`已写入 ${result.createdEventCount} 个事件、${result.createdParamCount} 个参数`);
       setDraftDialogOpen(false);
+      setActiveDraft(null);
       await onApplied?.(result.appliedRecordIds[0]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI 草稿应用失败');
@@ -184,6 +203,18 @@ const AiTrackingDraftPanel = ({
                 授权文档
               </Button>
             )}
+            {draft && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-sm"
+                onClick={() => setDraftDialogOpen(true)}
+              >
+                <FileSearch className="h-3.5 w-3.5" />
+                查看草稿
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -230,26 +261,19 @@ const AiTrackingDraftPanel = ({
       </Dialog>
 
       <Dialog open={draftDialogOpen} onOpenChange={setDraftDialogOpen}>
-        <DialogContent className="max-h-[88vh] max-w-5xl overflow-hidden rounded-sm p-0">
+        <DialogContent className="grid h-[min(88dvh,840px)] max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-sm p-0">
           {draft && (
             <>
-              <DialogHeader className="border-b border-border px-5 py-4">
+              <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <DialogTitle className="text-base">AI 埋点草稿 v{draft.version}</DialogTitle>
                   <Badge variant="outline" className="rounded-sm text-[10px]">{draft.events.length} 个事件</Badge>
                   <Badge variant="outline" className="rounded-sm text-[10px]">{draft.model}</Badge>
                 </div>
-                <DialogDescription>{draft.summary}</DialogDescription>
+                <DialogDescription>{draft.prd.title || draft.prd.url}</DialogDescription>
               </DialogHeader>
 
-              <div className="max-h-[calc(88vh-150px)] overflow-y-auto px-5 py-4">
-                {draft.analystQuestions.length > 0 && (
-                  <div className="mb-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    <div className="mb-1 font-medium">待人工确认</div>
-                    {draft.analystQuestions.map((question) => <div key={question}>- {question}</div>)}
-                  </div>
-                )}
-
+              <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
                 <div className="space-y-4">
                   {draft.events.map((event, index) => {
                     const diff = draft.diffs.find((item) => item.eventClientId === event.clientId);
@@ -272,47 +296,35 @@ const AiTrackingDraftPanel = ({
                               <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
                                 {diff?.scope === 'current_event' ? '填充当前事件' : '新增事件'}
                               </Badge>
-                              {event.reuseSource && (
-                                <Badge variant="outline" className="h-5 rounded-sm border-blue-200 px-1.5 text-[10px] text-blue-700">
-                                  复用 {event.reuseSource.evtId}
-                                </Badge>
-                              )}
                             </div>
-                            <div className="mt-1 text-xs text-foreground">{event.triggerTiming}</div>
                           </div>
                           <span className="text-xs text-muted-foreground">#{index + 1}</span>
                         </div>
 
-                        <div className="grid gap-px bg-border md:grid-cols-3">
+                        <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+                          <Spec label="优先级" value={event.priority} />
+                          <Spec label="端" value={event.platform} />
+                          <Spec label="处理方" value={event.handler} />
                           <Spec label="事件定义" value={event.eventDefinition} />
-                          <Spec label="指标/场景" value={event.metricScenario} />
-                          <Spec label="端 / 处理方" value={`${event.platform} / ${event.handler}`} />
+                          <Spec label="触发时机" value={event.triggerTiming} />
+                          <Spec label="公共属性要求" value={event.commonProps} />
+                          <Spec label="版本" value={event.version} />
+                          <Spec label="最低版本" value={event.minVersion} />
+                          <Spec label="变更类型" value={event.changeType} />
                         </div>
 
-                        {event.reuseSource && (
-                          <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                            复用来源：{event.reuseSource.eventName}；{event.reuseSource.modificationSummary}
-                          </div>
-                        )}
-
-                        {diff && (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-                            <span>变化字段：{diff.changedFields.join('、') || '无'}</span>
-                            <span>新增参数：{diff.addedParamNames.join('、') || '无'}</span>
-                            <span>修改参数：{diff.changedParamNames.join('、') || '无'}</span>
-                          </div>
-                        )}
-
                         <div className="overflow-x-auto border-t border-border">
-                          <table className="w-full min-w-[760px] text-left text-xs">
+                          <table className="w-full min-w-[1080px] text-left text-xs">
                             <thead className="bg-muted/40 text-muted-foreground">
                               <tr>
                                 <th className="px-3 py-2 font-medium">参数名</th>
                                 <th className="px-3 py-2 font-medium">类型</th>
-                                <th className="px-3 py-2 font-medium">必传</th>
+                                <th className="px-3 py-2 font-medium">必传规则</th>
+                                <th className="px-3 py-2 font-medium">适用端</th>
                                 <th className="px-3 py-2 font-medium">定义</th>
                                 <th className="px-3 py-2 font-medium">枚举/范围</th>
-                                <th className="px-3 py-2 font-medium">来源</th>
+                                <th className="px-3 py-2 font-medium">默认值</th>
+                                <th className="px-3 py-2 font-medium">示例</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -321,28 +333,24 @@ const AiTrackingDraftPanel = ({
                                   <td className="px-3 py-2 font-mono">{param.paramName}</td>
                                   <td className="px-3 py-2">{param.paramType}</td>
                                   <td className="px-3 py-2">{param.requiredRule}</td>
+                                  <td className="px-3 py-2">{param.platform || '-'}</td>
                                   <td className="max-w-64 px-3 py-2">{param.definition}</td>
                                   <td className="max-w-64 whitespace-pre-wrap px-3 py-2">{param.enumRange || '-'}</td>
-                                  <td className="px-3 py-2">{param.source === 'ai' ? 'AI新增' : param.source === 'official' ? '正式库' : '正式库修改'}</td>
+                                  <td className="px-3 py-2">{param.defaultValue || '-'}</td>
+                                  <td className="px-3 py-2">{param.example || '-'}</td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
 
-                        {(event.evidence.length > 0 || event.uncertainties.length > 0) && (
-                          <div className="grid gap-3 border-t border-border px-3 py-2 md:grid-cols-2">
-                            <Evidence title="PRD 依据" items={event.evidence} />
-                            <Evidence title="待确认" items={event.uncertainties} warning />
-                          </div>
-                        )}
                       </section>
                     );
                   })}
                 </div>
               </div>
 
-              <DialogFooter className="border-t border-border px-5 py-3">
+              <DialogFooter className="shrink-0 border-t border-border bg-background px-5 py-3">
                 <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
                   <FileCheck2 className="h-4 w-4" />
                   已选择 {selectedIds.size} / {draft.events.length}
@@ -352,7 +360,7 @@ const AiTrackingDraftPanel = ({
                 </Button>
                 <Button type="button" className="rounded-sm" disabled={!selectedIds.size || applying} onClick={() => void handleApply()}>
                   {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  {applying ? '应用中...' : '应用到需求单'}
+                  {applying ? '录入中...' : '确认并录入需求单'}
                 </Button>
               </DialogFooter>
             </>
@@ -370,16 +378,6 @@ function Spec({ label, value }: { label: string; value: string }) {
     <div className="bg-card px-3 py-2">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className="mt-1 whitespace-pre-wrap text-xs text-foreground">{value || '-'}</div>
-    </div>
-  );
-}
-
-function Evidence({ title, items, warning = false }: { title: string; items: string[]; warning?: boolean }) {
-  if (!items.length) return null;
-  return (
-    <div className={warning ? 'text-amber-800' : 'text-muted-foreground'}>
-      <div className="mb-1 text-[10px] font-medium">{title}</div>
-      {items.map((item) => <div key={item} className="text-xs">- {item}</div>)}
     </div>
   );
 }
