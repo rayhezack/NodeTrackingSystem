@@ -108,7 +108,7 @@ export class AiTrackingService {
     const actorLarkId = authenticatedActor || body.actorLarkId;
     const actorId = authenticatedActor ? undefined : body.actorId;
     const detail = await this.authorizedDetail(recordId, actorId, actorLarkId);
-    const requirementUrl = textValue(detail.requirementFields['需求链接']);
+    const requirementUrl = extractRequirementUrl(detail.requirementFields['需求链接']);
     if (!requirementUrl) throw new BadRequestException('当前需求单没有 PRD 链接');
 
     const accessToken = await this.oauth.getAccessToken(actorId, actorLarkId);
@@ -589,6 +589,12 @@ function textValue(value: unknown): string {
     return textValue(objectValue.text || objectValue.name || objectValue.link || objectValue.url || objectValue.id);
   }
   return '';
+}
+
+function extractRequirementUrl(value: unknown): string {
+  const raw = textValue(value).trim();
+  const markdownUrl = raw.match(/\]\((https?:\/\/[^)\s]+)\)/)?.[1];
+  return markdownUrl || raw.match(/https?:\/\/[^\s)\]]+/)?.[0] || '';
 }
 
 function uniqueStrings(values: string[]): string[] {

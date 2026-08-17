@@ -122,8 +122,24 @@ describe('AI 埋点草稿', () => {
       documents as never,
       model as never,
     );
-    return { service, tracking, model };
+    return { service, tracking, queryLibrary, documents, model };
   }
+
+  it('生成时应读取需求单文档链接和同端历史正式库', async () => {
+    const prdUrl = 'https://bcn0tgplxp2e.feishu.cn/wiki/K5dewcp55iRZPskeA4gc9W1WnKd';
+    const { service, documents, queryLibrary } = createFixture({
+      source: 'web',
+      requirementFields: {
+        需求链接: `[${prdUrl}](${prdUrl})`,
+        需求背景: '首页新增 Agent 入口',
+      },
+    });
+
+    await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
+
+    expect(documents.fetchPrd).toHaveBeenCalledWith(prdUrl, 'user-token');
+    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 });
+  });
 
   it('生成新版草稿不应写 Base，并应递增版本', async () => {
     const { service, tracking } = createFixture();

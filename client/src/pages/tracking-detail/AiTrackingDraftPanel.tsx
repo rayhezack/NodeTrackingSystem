@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
   Check,
-  ExternalLink,
   FileCheck2,
   Loader2,
   RefreshCw,
@@ -91,7 +90,6 @@ const AiTrackingDraftPanel = ({
   }, [authUrl, auth?.authorized, authDialogOpen, refreshStatus]);
 
   const handleAuthorize = async () => {
-    const popup = window.open('', 'tracking-feishu-oauth', 'width=720,height=760');
     try {
       const result = await startAiFeishuAuth({
         recordId: detail.recordId,
@@ -100,9 +98,7 @@ const AiTrackingDraftPanel = ({
       });
       setAuthUrl(result.authorizationUrl);
       setAuthDialogOpen(true);
-      if (popup) popup.location.href = result.authorizationUrl;
     } catch (error) {
-      popup?.close();
       toast.error(error instanceof Error ? error.message : '无法发起飞书授权');
     }
   };
@@ -217,17 +213,17 @@ const AiTrackingDraftPanel = ({
         <DialogContent className="max-w-md rounded-sm">
           <DialogHeader>
             <DialogTitle className="text-base">飞书文档授权</DialogTitle>
-            <DialogDescription>授权范围仅用于读取当前账号可访问的 PRD 正文。</DialogDescription>
+            <DialogDescription>请使用飞书扫码授权，仅用于读取当前账号可访问的 PRD 正文。</DialogDescription>
           </DialogHeader>
           {authUrl && (
-            <div className="flex flex-col items-center gap-4 py-3">
+            <div className="flex flex-col items-center gap-3 py-3">
               <div className="border border-border bg-white p-3">
-                <QRCodeSVG value={authUrl} size={176} />
+                <QRCodeSVG value={authUrl} size={176} title="飞书文档授权二维码" />
               </div>
-              <Button type="button" variant="outline" className="rounded-sm" onClick={() => window.open(authUrl, '_blank', 'noopener,noreferrer')}>
-                <ExternalLink className="h-4 w-4" />
-                打开授权页
-              </Button>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                等待扫码授权
+              </div>
             </div>
           )}
         </DialogContent>
