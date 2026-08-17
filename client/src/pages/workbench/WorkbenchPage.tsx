@@ -20,6 +20,8 @@ import type {
   TrackingSourceFilter,
 } from '@shared/api.interface';
 
+const RECORDS_PAGE_SIZE = 10;
+
 const WorkbenchPage = () => {
   const navigate = useNavigate();
   const userProfile = useCurrentUserProfile();
@@ -43,6 +45,8 @@ const WorkbenchPage = () => {
   const [recordsError, setRecordsError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [pageToken, setPageToken] = useState<string | undefined>(undefined);
+  const [pageStartTokens, setPageStartTokens] = useState<Record<number, string | undefined>>({ 1: undefined });
+  const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -68,7 +72,7 @@ const WorkbenchPage = () => {
         stage: stageFilter || undefined,
         priority: priorityFilter || undefined,
         platform,
-        pageSize: 20,
+        pageSize: RECORDS_PAGE_SIZE,
         todoLimit: 10,
         actorId: actor.id,
         actorLarkId: actor.larkId,
@@ -78,6 +82,11 @@ const WorkbenchPage = () => {
       setRecords(res.items);
       setHasMore(res.hasMore);
       setPageToken(res.pageToken);
+      setCurrentPage(1);
+      setPageStartTokens({
+        1: undefined,
+        ...(res.pageToken ? { 2: res.pageToken } : {}),
+      });
       setTotal(res.total);
     } catch (err) {
       logger.error('加载工作台数据失败', err);
@@ -93,10 +102,16 @@ const WorkbenchPage = () => {
     }
   }, [actor.id, actor.larkId, keyword, stageFilter, priorityFilter, platformFilter]);
 
-  // 加载更多只追加列表，避免刷新统计/待办。
-  const loadMoreRecords = useCallback(
-    async () => {
+  // 翻页只刷新列表，避免刷新统计/待办。
+  const loadRecordsPage = useCallback(
+    async (targetPage: number) => {
+      if (targetPage < 1 || loadingMore) return;
       const { source, platform } = normalizePlatformFilter(platformFilter);
+      const targetPageToken = targetPage === currentPage + 1
+        ? pageToken
+        : pageStartTokens[targetPage];
+      if (targetPage > 1 && !targetPageToken) return;
+
       setLoadingMore(true);
       setRecordsError(null);
       try {
@@ -106,21 +121,27 @@ const WorkbenchPage = () => {
           stage: stageFilter || undefined,
           priority: priorityFilter || undefined,
           platform,
-          pageSize: 20,
-          pageToken,
+          pageSize: RECORDS_PAGE_SIZE,
+          pageToken: targetPageToken,
         });
-        setRecords((prev) => [...prev, ...res.items]);
+        setRecords(res.items);
         setHasMore(res.hasMore);
         setPageToken(res.pageToken);
+        setCurrentPage(targetPage);
+        setPageStartTokens((prev) => ({
+          ...prev,
+          [targetPage]: targetPageToken,
+          ...(res.pageToken ? { [targetPage + 1]: res.pageToken } : {}),
+        }));
         setTotal(res.total);
       } catch (err) {
-        logger.error('加载更多需求失败', err);
+        logger.error('切换需求列表分页失败', err);
         setRecordsError(err instanceof Error ? err.message : '加载失败');
       } finally {
         setLoadingMore(false);
       }
     },
-    [keyword, stageFilter, priorityFilter, platformFilter, pageToken],
+    [currentPage, keyword, loadingMore, pageStartTokens, pageToken, priorityFilter, stageFilter, platformFilter],
   );
 
   // 初始加载
@@ -202,6 +223,8 @@ const WorkbenchPage = () => {
           hasMore={hasMore}
           loadingMore={loadingMore}
           total={total}
+          currentPage={currentPage}
+          pageSize={RECORDS_PAGE_SIZE}
           keyword={keyword}
           stage={stageFilter}
           priority={priorityFilter}
@@ -212,7 +235,7 @@ const WorkbenchPage = () => {
           onPlatformChange={setPlatformFilter}
           onReset={handleReset}
           onRetry={loadDashboard}
-          onLoadMore={loadMoreRecords}
+          onPageChange={loadRecordsPage}
           onRowClick={goToDetail}
         />
 

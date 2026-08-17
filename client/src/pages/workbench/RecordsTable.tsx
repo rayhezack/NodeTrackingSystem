@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Search,
   RefreshCw,
   Inbox,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
@@ -77,6 +79,8 @@ interface RecordsTableProps {
   hasMore: boolean;
   loadingMore: boolean;
   total: number;
+  currentPage: number;
+  pageSize: number;
   keyword: string;
   stage: string;
   priority: string;
@@ -87,7 +91,7 @@ interface RecordsTableProps {
   onPlatformChange: (platform: string) => void;
   onReset: () => void;
   onRetry: () => void;
-  onLoadMore: () => void;
+  onPageChange: (page: number) => void;
   onRowClick: (recordId: string) => void;
 }
 
@@ -98,6 +102,8 @@ const RecordsTable = ({
   hasMore,
   loadingMore,
   total,
+  currentPage,
+  pageSize,
   keyword,
   stage,
   priority,
@@ -108,10 +114,17 @@ const RecordsTable = ({
   onPlatformChange,
   onReset,
   onRetry,
-  onLoadMore,
+  onPageChange,
   onRowClick,
 }: RecordsTableProps) => {
   const [inputVal, setInputVal] = useState(keyword);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageStart = total ? (currentPage - 1) * pageSize + 1 : 0;
+  const pageEnd = total ? Math.min(currentPage * pageSize, total) : 0;
+
+  useEffect(() => {
+    setInputVal(keyword);
+  }, [keyword]);
 
   const handleSearch = () => {
     onSearch(inputVal.trim());
@@ -125,7 +138,9 @@ const RecordsTable = ({
     <section>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground">需求列表</h2>
-        <span className="text-xs text-muted-foreground">共 {total} 条</span>
+        <span className="text-xs text-muted-foreground">
+          共 {total} 条 · 按更新时间倒序
+        </span>
       </div>
 
       {/* 搜索筛选栏 */}
@@ -368,24 +383,42 @@ const RecordsTable = ({
                 })}
               </TableBody>
             </Table>
-            {hasMore && (
-              <div className="flex justify-center border-t border-border p-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-sm text-xs"
-                  onClick={onLoadMore}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? (
-                    <>
-                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                      加载中
-                    </>
-                  ) : (
-                    '加载更多'
-                  )}
-                </Button>
+            {(total > pageSize || currentPage > 1) && (
+              <div className="flex flex-col gap-2 border-t border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-muted-foreground">
+                  当前第 {currentPage} / {totalPages} 页，展示 {pageStart}-{pageEnd} 条
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-sm text-xs"
+                    onClick={() => onPageChange(currentPage - 1)}
+                    disabled={loadingMore || currentPage <= 1}
+                  >
+                    <ChevronLeft className="mr-1 h-3 w-3" />
+                    上一页
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-sm text-xs"
+                    onClick={() => onPageChange(currentPage + 1)}
+                    disabled={loadingMore || !hasMore}
+                  >
+                    {loadingMore ? (
+                      <>
+                        <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                        加载中
+                      </>
+                    ) : (
+                      <>
+                        下一页
+                        <ChevronRight className="ml-1 h-3 w-3" />
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
           </>

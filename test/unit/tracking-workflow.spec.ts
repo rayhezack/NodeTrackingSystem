@@ -915,6 +915,62 @@ describe('工作流 Base 回写', () => {
     expect(secondPage.hasMore).toBe(false);
   });
 
+  it('需求列表应按更新时间倒序展示最新需求，而不是按优先级优先', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_old_p0',
+            record: {
+              evt_id: 'old_p0_event',
+              事件中文名: '旧 P0 需求',
+              流程阶段: '需求录入',
+              记录类型: '埋点设计',
+              优先级: 'P0',
+              创建时间: 100,
+              更新时间: 100,
+            },
+          },
+          {
+            id: 'rec_new_p2',
+            record: {
+              evt_id: 'new_p2_event',
+              事件中文名: '新 P2 需求',
+              流程阶段: '需求录入',
+              记录类型: '埋点设计',
+              优先级: 'P2',
+              创建时间: 200,
+              更新时间: 500,
+            },
+          },
+          {
+            id: 'rec_mid_p1',
+            record: {
+              evt_id: 'mid_p1_event',
+              事件中文名: '中间 P1 需求',
+              流程阶段: '需求录入',
+              记录类型: '埋点设计',
+              优先级: 'P1',
+              创建时间: 300,
+              更新时间: 300,
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getRecords({ source: 'app', pageSize: 20 });
+
+    expect(result.items.map((item) => item.evtId)).toEqual([
+      'new_p2_event',
+      'mid_p1_event',
+      'old_p0_event',
+    ]);
+    expect(result.items[0].updatedAt).toBe(500);
+  });
+
   it('需求列表项目人员只应返回一个与姓名对齐的展示 ID', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({

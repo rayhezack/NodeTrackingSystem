@@ -102,6 +102,7 @@ const WORKBENCH_FIELDS = [
   '参数拆行状态',
   '稳定归档时间',
   '创建时间',
+  '更新时间',
 ] as const;
 
 const OFFICIAL_QUERY_FIELDS = [
@@ -366,7 +367,7 @@ export class TrackingService {
     const items = groupWorkbenchRecords(records)
       .map((group) => this.toTodoCandidate(group, isAdmin, actorCandidates))
       .filter((record): record is TodoCandidate => Boolean(record))
-      .sort(compareTrackingRecord)
+      .sort(compareTrackingRecordByPriority)
       .slice(0, limit)
       .map((record) => ({
         recordId: record.recordId,
@@ -416,7 +417,7 @@ export class TrackingService {
         }
         return true;
       })
-      .sort(compareTrackingRecord);
+      .sort(compareTrackingRecordByUpdatedAt);
     const nextOffset = safeOffset + pageSize;
 
     return {
@@ -2240,7 +2241,7 @@ export class TrackingService {
       devOwner: devUsers.names,
       devOwnerIds: devUsers.ids,
       ...(expectedCompletionDate ? { expectedCompletionDate } : {}),
-      updatedAt: Math.max(...records.map((record) => cellTimestamp(record.record['创建时间']))),
+      updatedAt: Math.max(...records.map(recordUpdatedTimestamp)),
     };
   }
 
@@ -2272,7 +2273,7 @@ export class TrackingService {
       devOwner: users.dev.names,
       devOwnerIds: users.dev.ids,
       ...(cellText(record.record['期望完成日期']).trim() ? { expectedCompletionDate: cellText(record.record['期望完成日期']).trim() } : {}),
-      updatedAt: cellTimestamp(record.record['创建时间']),
+      updatedAt: recordUpdatedTimestamp(record),
     };
   }
 
@@ -2439,10 +2440,22 @@ export class TrackingService {
   }
 }
 
-function compareTrackingRecord(a: TrackingRecord, b: TrackingRecord): number {
+function compareTrackingRecordByPriority(a: TrackingRecord, b: TrackingRecord): number {
   const priorityDiff = (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
   if (priorityDiff !== 0) return priorityDiff;
-  return b.updatedAt - a.updatedAt;
+  return compareTrackingRecordByUpdatedAt(a, b);
+}
+
+function compareTrackingRecordByUpdatedAt(a: TrackingRecord, b: TrackingRecord): number {
+  const updatedDiff = b.updatedAt - a.updatedAt;
+  if (updatedDiff !== 0) return updatedDiff;
+  const priorityDiff = (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
+  if (priorityDiff !== 0) return priorityDiff;
+  return (a.requestName || a.eventName || a.evtId).localeCompare(b.requestName || b.eventName || b.evtId);
+}
+
+function recordUpdatedTimestamp(record: BitableRecord): number {
+  return cellTimestamp(record.record['更新时间']) || cellTimestamp(record.record['创建时间']);
 }
 
 function groupWorkbenchRecords(records: SourcedWorkbenchRecord[]): WorkbenchRecordGroup[] {
