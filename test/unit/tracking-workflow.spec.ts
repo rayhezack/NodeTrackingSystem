@@ -2,6 +2,60 @@ import { BitableService } from '../../server/modules/bitable/bitable.service';
 import { TrackingService } from '../../server/modules/tracking/tracking.service';
 
 describe('工作流 Base 回写', () => {
+  it.each([
+    ['', 'PRD 文档链接不能为空'],
+    ['https://example.com/prd', '仅支持飞书 wiki 或 docx'],
+  ])('需求详情更新时应拒绝无效 PRD 链接：%s', async (requirementLink, message) => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: '',
+          流程阶段: '需求录入',
+          需求链接: 'https://example.feishu.cn/wiki/original',
+        },
+      }),
+      batchUpdateRecords: jest.fn(),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.updateRecord('app:rec_1', {
+        actorId: '1867390536304713',
+        stageId: 'requirement',
+        fields: { 需求链接: requirementLink },
+      }),
+    ).rejects.toThrow(message);
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+  });
+
+  it('缺少 PRD 的历史需求不能绕过字段校验直接推进到埋点设计', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_legacy',
+        record: {
+          evt_id: '',
+          流程阶段: '需求录入',
+          需求链接: '',
+        },
+      }),
+      batchUpdateRecords: jest.fn(),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(
+      service.updateRecord('app:rec_legacy', {
+        actorId: '1867390536304713',
+        stageId: 'requirement',
+        fields: {},
+        targetStage: '埋点设计',
+      }),
+    ).rejects.toThrow('PRD 文档链接不能为空');
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+  });
+
   it('详情接口应把 Base 人员 open_id 映射为可回显的飞书用户', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
@@ -66,6 +120,7 @@ describe('工作流 Base 回写', () => {
         record: {
           evt_id: '',
           流程阶段: '需求录入',
+          需求链接: 'https://example.feishu.cn/wiki/test_prd',
           需求提出人: [{ id: 'ou_sunwen', name: '孙文' }],
         },
       }),
@@ -102,6 +157,7 @@ describe('工作流 Base 回写', () => {
         record: {
           evt_id: '',
           流程阶段: '需求录入',
+          需求链接: 'https://example.feishu.cn/wiki/test_prd',
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),

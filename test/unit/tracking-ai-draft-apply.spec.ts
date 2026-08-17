@@ -113,4 +113,69 @@ describe('AI 埋点草稿批量录入', () => {
       ]),
     );
   });
+
+  it('参数批量写入失败时应回滚本轮新增事件，且不能提前覆盖空白需求', async () => {
+    const current = {
+      id: 'rec_current',
+      record: {
+        需求ID: 'WEB_REQ_ROLLBACK',
+        需求名称: '回滚测试',
+        evt_id: '',
+        事件中文名: '回滚测试',
+        需求链接: 'https://example.feishu.cn/wiki/test',
+        流程阶段: '需求录入',
+        端: ['Web'],
+        数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+      },
+    };
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue(current),
+      searchRecords: jest.fn().mockResolvedValue({ records: [current], hasMore: false }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_current' }]),
+      batchAddRecords: jest.fn().mockImplementation(async (instanceKey: string) => {
+        if (instanceKey === 'webWorkbench') return [{ id: 'rec_sibling_1' }];
+        if (instanceKey === 'webParamDetail') throw new Error('参数写入失败');
+        throw new Error(`unexpected instance: ${instanceKey}`);
+      }),
+      deleteRecords: jest.fn().mockResolvedValue(true),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+    const events: AiTrackingDraftEvent[] = [1, 2].map((index) => ({
+      clientId: `event_${index}`,
+      evtId: `rollback_event_${index}`,
+      eventName: `回滚事件 ${index}`,
+      eventDefinition: '回滚事件定义',
+      triggerTiming: '点击后上报',
+      metricScenario: '',
+      priority: 'P1',
+      platform: 'Web',
+      handler: '前端',
+      commonProps: '',
+      version: '待人工确认',
+      minVersion: '待人工确认',
+      changeType: '新增',
+      evidence: [],
+      uncertainties: [],
+      params: [{
+        paramName: 'page_name',
+        paramType: 'STRING',
+        requiredRule: '必传',
+        triggerCondition: '',
+        enumRange: 'home // 首页',
+        definition: '页面名称',
+        defaultValue: '',
+        example: 'home',
+        platform: 'Web通用',
+        source: 'ai',
+        uncertainties: [],
+      }],
+    }));
+
+    await expect(
+      service.applyAiDraftEvents('web:rec_current', events, '1867390536304713'),
+    ).rejects.toThrow('参数写入失败');
+
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+    expect(bitable.deleteRecords).toHaveBeenCalledWith('webWorkbench', ['rec_sibling_1']);
+  });
 });

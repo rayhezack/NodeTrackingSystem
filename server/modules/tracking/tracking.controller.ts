@@ -8,7 +8,9 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import type {
   BatchDeleteParamsRequest,
   CreateParamRequest,
@@ -30,8 +32,11 @@ export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}
 
   @Get('dashboard')
-  getDashboard(@Query() query: Record<string, string>) {
-    return this.trackingService.getWorkbenchDashboard(query);
+  getDashboard(@Query() query: Record<string, string>, @Req() request: Request) {
+    return this.trackingService.getWorkbenchDashboard({
+      ...query,
+      ...this.resolveActor(request, query.actorId, query.actorLarkId),
+    });
   }
 
   @Get('stats')
@@ -47,11 +52,12 @@ export class TrackingController {
     @Query('source') source?: string,
     @Query('actorId') actorId?: string,
     @Query('actorLarkId') actorLarkId?: string,
+    @Req() request?: Request,
   ) {
+    const actor = this.resolveActor(request, actorId, actorLarkId);
     return this.trackingService.getMyTodos(Number(limit || 10), {
       source: source as TrackingSourceFilter | undefined,
-      actorId,
-      actorLarkId,
+      ...actor,
     });
   }
 
@@ -61,13 +67,13 @@ export class TrackingController {
   }
 
   @Get('permissions')
-  getPermissions(@Query('actorId') actorId?: string) {
-    return this.trackingService.getPermissionConfig(actorId);
+  getPermissions(@Query('actorId') actorId: string | undefined, @Req() request: Request) {
+    return this.trackingService.getPermissionConfig(this.resolveActor(request, actorId).actorId);
   }
 
   @Put('permissions')
-  updatePermissions(@Body() body: UpdatePermissionConfigRequest) {
-    return this.trackingService.updatePermissionConfig(body);
+  updatePermissions(@Body() body: UpdatePermissionConfigRequest, @Req() request: Request) {
+    return this.trackingService.updatePermissionConfig(this.withTrustedActor(body, request));
   }
 
   @Post('ui-image-preview')
@@ -81,40 +87,44 @@ export class TrackingController {
   }
 
   @Post('records')
-  createRecord(@Body() body: CreateTrackingRecordRequest) {
-    return this.trackingService.createRecord(body);
+  createRecord(@Body() body: CreateTrackingRecordRequest, @Req() request: Request) {
+    return this.trackingService.createRecord(this.withTrustedActor(body, request));
   }
 
   @Post('records/:recordId/events')
   createSiblingEvent(
     @Param('recordId') recordId: string,
     @Body() body: CreateSiblingTrackingEventRequest,
+    @Req() request: Request,
   ) {
-    return this.trackingService.createSiblingEvent(recordId, body);
+    return this.trackingService.createSiblingEvent(recordId, this.withTrustedActor(body, request));
   }
 
   @Delete('records/:recordId')
   deleteEvent(
     @Param('recordId') recordId: string,
     @Body() body: DeleteTrackingEventRequest = {},
+    @Req() request: Request,
   ) {
-    return this.trackingService.deleteEvent(recordId, body);
+    return this.trackingService.deleteEvent(recordId, this.withTrustedActor(body, request));
   }
 
   @Delete('records/:recordId/request')
   deleteRequest(
     @Param('recordId') recordId: string,
     @Body() body: DeleteTrackingRequestRequest = {},
+    @Req() request: Request,
   ) {
-    return this.trackingService.deleteRequest(recordId, body);
+    return this.trackingService.deleteRequest(recordId, this.withTrustedActor(body, request));
   }
 
   @Post('records/:recordId/reuse-official-event')
   reuseOfficialEvent(
     @Param('recordId') recordId: string,
     @Body() body: ReuseOfficialEventRequest,
+    @Req() request: Request,
   ) {
-    return this.trackingService.reuseOfficialEvent(recordId, body);
+    return this.trackingService.reuseOfficialEvent(recordId, this.withTrustedActor(body, request));
   }
 
   @Get('records/:recordId')
@@ -122,16 +132,19 @@ export class TrackingController {
     @Param('recordId') recordId: string,
     @Query('actorId') actorId?: string,
     @Query('actorLarkId') actorLarkId?: string,
+    @Req() request?: Request,
   ) {
-    return this.trackingService.getDetail(recordId, actorId, actorLarkId);
+    const actor = this.resolveActor(request, actorId, actorLarkId);
+    return this.trackingService.getDetail(recordId, actor.actorId, actor.actorLarkId);
   }
 
   @Patch('records/:recordId')
   updateRecord(
     @Param('recordId') recordId: string,
     @Body() body: UpdateTrackingRecordRequest,
+    @Req() request: Request,
   ) {
-    return this.trackingService.updateRecord(recordId, body);
+    return this.trackingService.updateRecord(recordId, this.withTrustedActor(body, request));
   }
 
   @Get('records/:recordId/params')
@@ -140,24 +153,30 @@ export class TrackingController {
   }
 
   @Post('records/:recordId/params')
-  createParam(@Param('recordId') recordId: string, @Body() body: CreateParamRequest) {
-    return this.trackingService.createParam(recordId, body);
+  createParam(
+    @Param('recordId') recordId: string,
+    @Body() body: CreateParamRequest,
+    @Req() request: Request,
+  ) {
+    return this.trackingService.createParam(recordId, this.withTrustedActor(body, request));
   }
 
   @Post('records/:recordId/params/batch-delete')
   batchDeleteParams(
     @Param('recordId') recordId: string,
     @Body() body: BatchDeleteParamsRequest,
+    @Req() request: Request,
   ) {
-    return this.trackingService.batchDeleteParams(recordId, body);
+    return this.trackingService.batchDeleteParams(recordId, this.withTrustedActor(body, request));
   }
 
   @Put('params/:paramRecordId')
   updateParam(
     @Param('paramRecordId') paramRecordId: string,
     @Body() body: UpdateParamRequest,
+    @Req() request: Request,
   ) {
-    return this.trackingService.updateParam(paramRecordId, body);
+    return this.trackingService.updateParam(paramRecordId, this.withTrustedActor(body, request));
   }
 
   @Delete('params/:paramRecordId')
@@ -165,7 +184,30 @@ export class TrackingController {
     @Param('paramRecordId') paramRecordId: string,
     @Query('actorId') actorId?: string,
     @Query('actorLarkId') actorLarkId?: string,
+    @Req() request?: Request,
   ) {
-    return this.trackingService.deleteParam(paramRecordId, actorId, actorLarkId);
+    const actor = this.resolveActor(request, actorId, actorLarkId);
+    return this.trackingService.deleteParam(paramRecordId, actor.actorId, actor.actorLarkId);
+  }
+
+  private withTrustedActor<T extends { actorId?: string; actorLarkId?: string }>(
+    body: T,
+    request?: Request,
+  ): T {
+    return {
+      ...body,
+      ...this.resolveActor(request, body.actorId, body.actorLarkId),
+    };
+  }
+
+  private resolveActor(
+    request?: Request,
+    fallbackActorId?: string,
+    fallbackActorLarkId?: string,
+  ): { actorId?: string; actorLarkId?: string } {
+    const trustedActor = request?.userContext?.userId;
+    return trustedActor
+      ? { actorId: trustedActor, actorLarkId: undefined }
+      : { actorId: fallbackActorId, actorLarkId: fallbackActorLarkId };
   }
 }

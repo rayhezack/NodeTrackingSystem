@@ -8,6 +8,7 @@ export interface StageFieldConfig {
   options?: { value: string; label: string }[];
   placeholder?: string;
   multiple?: boolean;
+  required?: boolean;
 }
 
 export interface StageConfig {
@@ -134,7 +135,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'devOwnerIds', label: '研发负责人', type: 'user', baseField: '研发负责人', multiple: true },
       { key: 'dsAcceptorIds', label: '埋点校验人', type: 'user', baseField: 'DS验收人', multiple: true },
       { key: 'expectedCompletionDate', label: '期望完成日期', type: 'date', baseField: '期望完成日期' },
-      { key: 'requirementLink', label: '需求链接', type: 'url', baseField: '需求链接', placeholder: '可粘贴 PRD、需求文档或飞书链接' },
+      { key: 'requirementLink', label: 'PRD 文档链接', type: 'url', baseField: '需求链接', placeholder: '请粘贴飞书 PRD 文档链接（wiki 或 docx）', required: true },
       { key: 'requirementBackground', label: '需求背景', type: 'textarea', baseField: '需求背景', placeholder: '说明为什么需要这个埋点...' },
       { key: 'metricScenario', label: '指标/使用场景', type: 'textarea', baseField: '指标/使用场景', placeholder: '说明要支撑的指标、看板或分析场景...' },
     ],

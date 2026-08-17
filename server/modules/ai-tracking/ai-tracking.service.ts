@@ -18,6 +18,7 @@ import type {
   GetAiTrackingDraftResponse,
   GetLatestAiTrackingDraftResponse,
   OfficialEvent,
+  OfficialEventContext,
   ParamDetail,
   TrackingDetail,
 } from '@shared/api.interface';
@@ -36,7 +37,7 @@ const modelParamSchema = z.object({
   definition: z.string().default(''),
   defaultValue: z.string().default(''),
   example: z.string().default(''),
-  platform: z.string().default('App通用'),
+  platform: z.string().default(''),
 });
 
 const modelEventSchema = z.object({
@@ -45,17 +46,17 @@ const modelEventSchema = z.object({
   eventDefinition: z.string().default(''),
   triggerTiming: z.string().default(''),
   priority: z.string().default('P1'),
-  platform: z.string().default('iOS、Android'),
-  handler: z.string().default('客户端'),
+  platform: z.string().default(''),
+  handler: z.string().default(''),
   commonProps: z.string().default(''),
   version: z.string().default('待人工确认'),
   minVersion: z.string().default('待人工确认'),
   changeType: z.string().default('新增'),
-  params: z.array(modelParamSchema).default([]),
+  params: z.array(modelParamSchema).max(50, '单个事件最多生成 50 个参数').default([]),
 });
 
 const modelResponseSchema = z.object({
-  events: z.array(modelEventSchema).min(1),
+  events: z.array(modelEventSchema).min(1).max(20, '单次最多生成 20 个埋点事件'),
 });
 
 @Injectable()
@@ -104,7 +105,9 @@ export class AiTrackingService {
     const actorId = authenticatedActor ? undefined : body.actorId;
     const detail = await this.authorizedDetail(recordId, actorId, actorLarkId);
     const requirementUrl = extractRequirementUrl(detail.requirementFields['需求链接']);
-    if (!requirementUrl) throw new BadRequestException('当前需求单没有 PRD 链接');
+    if (!requirementUrl) {
+      throw new BadRequestException('请先提供 PRD 文档链接，再生成 AI 埋点初稿');
+    }
 
     const accessToken = await this.oauth.getAccessToken(actorId, actorLarkId);
     const [prd, currentParams, library] = await Promise.all([
@@ -112,20 +115,26 @@ export class AiTrackingService {
       this.tracking.getParams(recordId),
       this.queryLibrary.getEvents({ source: detail.source, pageSize: 500 }),
     ]);
-    const candidates = selectOfficialCandidates(detail, prd.content, library.items, 24);
+    const candidates = selectOfficialCandidates(detail, prd.content, library.items, 12);
+    const historicalContexts = await this.queryLibrary.getEventContexts(candidates);
     const raw = await this.model.generateJson([
       { role: 'system', content: TRACKING_DESIGN_GUIDELINES },
       {
         role: 'user',
-        content: buildPrompt(detail, currentParams.items, prd, candidates),
+        content: buildPrompt(detail, currentParams.items, prd, historicalContexts),
       },
     ]);
     const parsed = modelResponseSchema.safeParse(raw);
     if (!parsed.success) {
       throw new BadRequestException(`AI 草稿结构校验失败：${parsed.error.issues[0]?.message || '未知错误'}`);
     }
+    const totalParamCount = parsed.data.events.reduce((total, event) => total + event.params.length, 0);
+    if (totalParamCount > 200) {
+      throw new BadRequestException('AI 草稿结构校验失败：单次最多生成 200 个参数');
+    }
 
-    const events = parsed.data.events.map((event, index) => this.normalizeEvent(event, index));
+    const events = parsed.data.events.map((event, index) =>
+      this.normalizeEvent(event, index, detail.source, detail.platform));
     assertUniqueEvents(events);
     const draftKey = draftOwnerKey(recordId, actorId, actorLarkId);
     const version = (this.versions.get(draftKey) || 0) + 1;
@@ -263,6 +272,8 @@ export class AiTrackingService {
   private normalizeEvent(
     input: z.infer<typeof modelEventSchema>,
     index: number,
+    source: TrackingDetail['source'],
+    requestPlatform: string,
   ): AiTrackingDraftEvent {
     const normalizedEvtId = snakeCase(input.evtId);
     const evtId = normalizedEvtId || `pending_event_${index + 1}`;
@@ -284,7 +295,7 @@ export class AiTrackingService {
         definition: param.definition.trim() || '待人工确认',
         defaultValue: param.defaultValue.trim(),
         example: param.example.trim(),
-        platform: normalizeParamPlatform(param.platform),
+        platform: normalizeParamPlatform(param.platform, source),
         source: 'ai' as const,
         uncertainties: [],
       }));
@@ -296,8 +307,8 @@ export class AiTrackingService {
       triggerTiming: input.triggerTiming.trim() || '待人工确认',
       metricScenario: '',
       priority: ['P0', 'P1', 'P2'].includes(input.priority) ? input.priority : 'P1',
-      platform: input.platform.trim() || 'iOS、Android',
-      handler: ['客户端', '客户端/服务端'].includes(input.handler) ? input.handler : '客户端',
+      platform: normalizeEventPlatform(input.platform, source, requestPlatform),
+      handler: normalizeEventHandler(input.handler, source),
       commonProps: input.commonProps.trim(),
       version: input.version.trim() || '待人工确认',
       minVersion: input.minVersion.trim() || '待人工确认',
@@ -326,18 +337,27 @@ function buildPrompt(
   detail: TrackingDetail,
   currentParams: ParamDetail[],
   prd: { title: string; content: string; truncated: boolean },
-  candidates: OfficialEvent[],
+  historicalContexts: OfficialEventContext[],
 ): string {
+  const isWeb = detail.source === 'web';
+  const sourceLabel = isWeb ? 'Web' : 'App';
+  const eventPlatform = isWeb ? 'Web' : 'iOS|Android|iOS、Android';
+  const handlerOptions = isWeb ? '前端|服务端|前端/服务端' : '客户端|客户端/服务端';
+  const paramPlatformOptions = isWeb
+    ? 'Web通用|Web&App历史兼容|Web/App差异待拆|待确认'
+    : 'App通用|仅iOS|仅Android|待确认';
   const currentEvents = detail.relatedEvents.map((event) => ({
     evtId: event.evtId,
     eventName: event.eventName,
     design: event.detail?.designFields,
   }));
   return `
-请为下面这笔 App 埋点需求生成初稿。只输出 JSON，不要 Markdown。
+请为下面这笔 ${sourceLabel} 埋点需求生成初稿。只输出 JSON，不要 Markdown。
+最多生成 20 个事件、单事件 50 个参数、总计 200 个参数；只生成 PRD 支撑且有分析价值的内容。
 
 需求上下文：
 ${JSON.stringify({
+  source: detail.source,
   requestId: detail.requestId,
   requestName: detail.requestName,
   background: detail.requirementFields['需求背景'],
@@ -347,8 +367,8 @@ ${JSON.stringify({
   currentParams,
 }, null, 2)}
 
-同端历史正式事件参考（仅用于统一 evt_id、参数命名与统计口径，不要输出复用说明）：
-${JSON.stringify(candidates, null, 2)}
+同端历史正式事件与参数参考（仅用于统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
+${JSON.stringify(historicalContexts, null, 2)}
 
 PRD 标题：${prd.title}
 PRD 是否截断：${prd.truncated ? '是，必须标记信息风险' : '否'}
@@ -365,8 +385,8 @@ ${prd.content}
     "eventDefinition": "可判定定义",
     "triggerTiming": "明确触发条件与边界",
     "priority": "P0|P1|P2",
-    "platform": "iOS、Android",
-    "handler": "客户端|客户端/服务端",
+    "platform": "${eventPlatform}",
+    "handler": "${handlerOptions}",
     "commonProps": "公共属性要求",
     "version": "PRD未给则待人工确认",
     "minVersion": "PRD未给则待人工确认",
@@ -379,7 +399,7 @@ ${prd.content}
       "definition": "参数定义",
       "defaultValue": "默认值；没有则留空",
       "example": "示例值；没有则留空",
-      "platform": "App通用|仅iOS|仅Android|待确认"
+      "platform": "${paramPlatformOptions}"
     }]
   }]
 }`.trim();
@@ -483,9 +503,41 @@ function normalizeRequiredRule(value: string): string {
   return ['必传', '非必传', '条件必传'].includes(value) ? value : '非必传';
 }
 
-function normalizeParamPlatform(value: string): string {
-  return ['App通用', '仅App', '仅iOS', '仅Android', 'Web&App历史兼容', 'App/Web差异待拆', '待确认', '无特殊参数'].includes(value)
-    ? value
+function normalizeEventPlatform(value: string, source: TrackingDetail['source'], requestPlatform: string): string {
+  if (source === 'web') return 'Web';
+  const normalized = value.trim();
+  return ['iOS', 'Android', 'iOS、Android'].includes(normalized)
+    ? normalized
+    : (['iOS', 'Android', 'iOS、Android'].includes(requestPlatform) ? requestPlatform : 'iOS、Android');
+}
+
+function normalizeEventHandler(value: string, source: TrackingDetail['source']): string {
+  const normalized = value.trim();
+  if (source === 'web') {
+    const aliases: Record<string, string> = {
+      客户端: '前端',
+      '客户端/服务端': '前端/服务端',
+    };
+    const handler = aliases[normalized] || normalized;
+    return ['前端', '服务端', '前端/服务端'].includes(handler) ? handler : '前端';
+  }
+  return ['客户端', '客户端/服务端'].includes(normalized) ? normalized : '客户端';
+}
+
+function normalizeParamPlatform(value: string, source: TrackingDetail['source']): string {
+  const normalized = value.trim();
+  if (source === 'web') {
+    const aliases: Record<string, string> = {
+      App通用: 'Web通用',
+      'App/Web差异待拆': 'Web/App差异待拆',
+    };
+    const platform = aliases[normalized] || normalized;
+    return ['Web通用', 'Web&App历史兼容', 'Web/App差异待拆', '待确认', '无特殊参数'].includes(platform)
+      ? platform
+      : '待确认';
+  }
+  return ['App通用', '仅App', '仅iOS', '仅Android', 'Web&App历史兼容', 'App/Web差异待拆', '待确认', '无特殊参数'].includes(normalized)
+    ? normalized
     : '待确认';
 }
 

@@ -767,80 +767,112 @@ export class TrackingService {
 
     if (currentIsBlank) {
       const first = events[0];
-      await this.updateRecord(recordId, {
-        fields: {
-          evt_id: first.evtId,
-          事件中文名: first.eventName,
-          优先级: first.priority,
-          端: first.platform,
-          事件定义: first.eventDefinition,
-          触发时机: first.triggerTiming,
-          处理方: first.handler,
-          公共属性要求: first.commonProps,
-          版本: first.version,
-          最低版本: first.minVersion,
-          变更类型: first.changeType,
-          参数拆行状态: first.params.length ? '已拆行' : '未拆行',
-        },
-        stageId: 'design',
-        targetStage: '埋点设计',
-        actorId,
-        actorLarkId,
-      });
       targetEvents.push({ event: first, rawRecordId: current.id });
       siblingStartIndex = 1;
     }
 
-    const siblingEvents = events.slice(siblingStartIndex);
-    if (siblingEvents.length) {
-      const siblingRecords = siblingEvents.map((event) => ({
-        ...this.toSiblingEventRecord(source, currentRecord, requestId, requestName, event),
-        参数拆行状态: event.params.length ? '已拆行' : '未拆行',
-      }));
-      const created = await this.bitable.batchAddRecords(workbench, siblingRecords);
-      if (created.length !== siblingEvents.length) {
-        throw new InternalServerErrorException('批量新增埋点事件返回数量异常');
+    const createdSiblingIds: string[] = [];
+    const createdParamIds: string[] = [];
+    try {
+      const siblingEvents = events.slice(siblingStartIndex);
+      if (siblingEvents.length) {
+        const siblingRecords = siblingEvents.map((event) => ({
+          ...this.toSiblingEventRecord(source, currentRecord, requestId, requestName, event),
+          参数拆行状态: event.params.length ? '已拆行' : '未拆行',
+        }));
+        const created = await this.bitable.batchAddRecords(workbench, siblingRecords);
+        createdSiblingIds.push(...created.map((record) => record.id));
+        if (created.length !== siblingEvents.length) {
+          throw new InternalServerErrorException('批量新增埋点事件返回数量异常');
+        }
+        for (let index = 0; index < siblingEvents.length; index += 1) {
+          targetEvents.push({ event: siblingEvents[index], rawRecordId: created[index].id });
+        }
       }
-      for (let index = 0; index < siblingEvents.length; index += 1) {
-        targetEvents.push({ event: siblingEvents[index], rawRecordId: created[index].id });
-      }
-    }
 
-    const paramRecords = targetEvents.flatMap(({ event, rawRecordId }) =>
-      event.params.map((param) => this.toParamRecord(
-        source,
-        rawRecordId,
-        event.evtId,
-        event.version,
-        {
-          evtId: event.evtId,
-          paramName: param.paramName,
-          paramType: param.paramType,
-          required: param.requiredRule === '必传' || param.requiredRule === '条件必传',
-          requiredRule: param.requiredRule,
-          triggerCondition: param.triggerCondition,
-          enumRange: param.enumRange,
-          definition: param.definition,
-          defaultValue: param.defaultValue,
-          example: param.example,
-          platform: param.platform,
-          status: '草稿',
-          changeType: event.changeType,
-        },
-      )),
-    );
-    if (paramRecords.length) {
-      const createdParams = await this.bitable.batchAddRecords(paramDetailKey(source), paramRecords);
-      if (createdParams.length !== paramRecords.length) {
-        throw new InternalServerErrorException('批量新增埋点参数返回数量异常');
+      const paramRecords = targetEvents.flatMap(({ event, rawRecordId }) =>
+        event.params.map((param) => this.toParamRecord(
+          source,
+          rawRecordId,
+          event.evtId,
+          event.version,
+          {
+            evtId: event.evtId,
+            paramName: param.paramName,
+            paramType: param.paramType,
+            required: param.requiredRule === '必传' || param.requiredRule === '条件必传',
+            requiredRule: param.requiredRule,
+            triggerCondition: param.triggerCondition,
+            enumRange: param.enumRange,
+            definition: param.definition,
+            defaultValue: param.defaultValue,
+            example: param.example,
+            platform: param.platform,
+            status: '草稿',
+            changeType: event.changeType,
+          },
+        )),
+      );
+      if (paramRecords.length) {
+        const createdParams = await this.bitable.batchAddRecords(paramDetailKey(source), paramRecords);
+        createdParamIds.push(...createdParams.map((record) => record.id));
+        if (createdParams.length !== paramRecords.length) {
+          throw new InternalServerErrorException('批量新增埋点参数返回数量异常');
+        }
       }
-    }
 
-    return {
-      appliedRecordIds: targetEvents.map(({ rawRecordId }) => encodeScopedRecordId(source, rawRecordId)),
-      createdEventCount: targetEvents.length,
-      createdParamCount: paramRecords.length,
-    };
+      if (currentIsBlank) {
+        const first = events[0];
+        await this.updateRecord(recordId, {
+          fields: {
+            evt_id: first.evtId,
+            事件中文名: first.eventName,
+            优先级: first.priority,
+            端: first.platform,
+            事件定义: first.eventDefinition,
+            触发时机: first.triggerTiming,
+            处理方: first.handler,
+            公共属性要求: first.commonProps,
+            版本: first.version,
+            最低版本: first.minVersion,
+            变更类型: first.changeType,
+            参数拆行状态: first.params.length ? '已拆行' : '未拆行',
+          },
+          stageId: 'design',
+          targetStage: '埋点设计',
+          actorId,
+          actorLarkId,
+        });
+      }
+
+      return {
+        appliedRecordIds: targetEvents.map(({ rawRecordId }) => encodeScopedRecordId(source, rawRecordId)),
+        createdEventCount: targetEvents.length,
+        createdParamCount: paramRecords.length,
+      };
+    } catch (error) {
+      const rollbackErrors: string[] = [];
+      if (createdParamIds.length) {
+        try {
+          await this.bitable.deleteRecords(paramDetailKey(source), createdParamIds);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : '参数回滚失败');
+        }
+      }
+      if (createdSiblingIds.length) {
+        try {
+          await this.bitable.deleteRecords(workbench, createdSiblingIds);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : '事件回滚失败');
+        }
+      }
+      if (rollbackErrors.length) {
+        throw new InternalServerErrorException(
+          `AI 草稿录入失败且自动回滚不完整，请人工检查需求单：${rollbackErrors.join('；')}`,
+        );
+      }
+      throw error;
+    }
   }
 
   async createSiblingEvent(recordId: string, body: CreateSiblingTrackingEventRequest): Promise<CreateSiblingTrackingEventResponse> {
@@ -1137,6 +1169,27 @@ export class TrackingService {
         throw new BadRequestException('需求名称不能为空');
       }
       patch['需求名称'] = requestName;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, '需求链接')) {
+      const requirementLink = cellText(patch['需求链接']).trim();
+      if (!requirementLink) {
+        throw new BadRequestException('PRD 文档链接不能为空；没有 PRD 文档无法进行埋点设计');
+      }
+      if (!isSupportedFeishuPrdUrl(requirementLink)) {
+        throw new BadRequestException('MVP 目前仅支持飞书 wiki 或 docx 文档链接');
+      }
+      patch['需求链接'] = requirementLink;
+    }
+    if (body.targetStage && getBaseStageFromUi(body.targetStage) === '埋点设计') {
+      const effectiveRequirementLink = Object.prototype.hasOwnProperty.call(patch, '需求链接')
+        ? cellText(patch['需求链接']).trim()
+        : firstText(current.record['需求链接']).trim();
+      if (!effectiveRequirementLink) {
+        throw new BadRequestException('PRD 文档链接不能为空；没有 PRD 文档无法进行埋点设计');
+      }
+      if (!isSupportedFeishuPrdUrl(effectiveRequirementLink)) {
+        throw new BadRequestException('MVP 目前仅支持飞书 wiki 或 docx 文档链接');
+      }
     }
     normalizeWorkflowProgressPatch(patch, current.record);
     const notificationSnapshotPatch = buildMergedNotificationIdentitySnapshot(ref.source, current.record, body.fields || {});

@@ -38,6 +38,7 @@ import type {
   AiTrackingDraft,
   TrackingDetail,
 } from '@shared/api.interface';
+import { getAiDraftGenerationBlockReason } from './ai-tracking-prd.utils';
 
 interface AiTrackingDraftPanelProps {
   detail: TrackingDetail;
@@ -124,6 +125,12 @@ const AiTrackingDraftPanel = ({
   };
 
   const handleGenerate = async () => {
+    const requirementLink = String(detail.requirementFields['需求链接'] || '').trim();
+    const blockedReason = getAiDraftGenerationBlockReason(requirementLink);
+    if (blockedReason) {
+      toast.error(blockedReason);
+      return;
+    }
     if (!auth?.authorized) {
       await handleAuthorize();
       return;
@@ -244,7 +251,7 @@ const AiTrackingDraftPanel = ({
               type="button"
               size="sm"
               className="h-8 rounded-sm"
-              disabled={!canEdit || !ready || !requirementLink || loading}
+              disabled={!canEdit || !ready || loading}
               onClick={() => void handleGenerate()}
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

@@ -67,6 +67,7 @@ describe('AI 埋点草稿', () => {
     const queryLibrary = {
       getEvents: jest.fn().mockResolvedValue({ items: [], total: 0, hasMore: false }),
       getParams: jest.fn(),
+      getEventContexts: jest.fn().mockResolvedValue([]),
     };
     const oauth = {
       configured: true,
@@ -133,18 +134,127 @@ describe('AI 埋点草稿', () => {
 
   it('生成时应读取需求单文档链接和同端历史正式库', async () => {
     const prdUrl = 'https://bcn0tgplxp2e.feishu.cn/wiki/K5dewcp55iRZPskeA4gc9W1WnKd';
-    const { service, documents, queryLibrary } = createFixture({
+    const { service, documents, queryLibrary, model } = createFixture({
       source: 'web',
       requirementFields: {
         需求链接: `[${prdUrl}](${prdUrl})`,
         需求背景: '首页新增 Agent 入口',
       },
     });
+    const officialEvent = {
+      recordId: 'web:rec_official_agent',
+      source: 'web' as const,
+      evtId: 'home_agent_entry_click',
+      eventName: '首页 Agent 入口点击',
+      platform: 'Web',
+      version: '1.0.0',
+      status: '已上线',
+      paramLink: 'https://example.feishu.cn/base/params',
+    };
+    queryLibrary.getEvents.mockResolvedValue({
+      items: [officialEvent],
+      total: 1,
+      hasMore: false,
+    });
+    queryLibrary.getEventContexts.mockResolvedValue([{
+      event: officialEvent,
+      params: [{
+        paramKey: 'home_agent_entry_click.entry_source',
+        paramName: 'entry_source',
+        paramType: 'STRING',
+        required: true,
+        requiredRule: '必传',
+        enumRange: 'home // 首页',
+        definition: '入口来源',
+        example: 'home',
+        platform: 'Web通用',
+        status: '正式',
+      }],
+    }]);
 
     await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
 
     expect(documents.fetchPrd).toHaveBeenCalledWith(prdUrl, 'user-token');
     expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 });
+    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([officialEvent]);
+    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    expect(messages.find((message) => message.role === 'user')?.content).toContain('"paramName": "entry_source"');
+  });
+
+  it('Web 需求应使用 Web 端提示词并生成 Web 字段枚举', async () => {
+    const { service, model } = createFixture({
+      recordId: 'web:rec_1',
+      source: 'web',
+      platform: 'Web',
+    });
+    model.generateJson.mockResolvedValue({
+      events: [{
+        evtId: 'home_agent_entry_click',
+        eventName: '首页 Agent 入口点击',
+        eventDefinition: '用户点击首页 Agent 入口',
+        triggerTiming: 'Web 前端确认点击后上报',
+        priority: 'P1',
+        platform: 'Web',
+        handler: '前端/服务端',
+        commonProps: 'page_name',
+        version: '待人工确认',
+        minVersion: '待人工确认',
+        changeType: '新增',
+        params: [{
+          paramName: 'page_name',
+          paramType: 'STRING',
+          requiredRule: '必传',
+          enumRange: 'home // 首页',
+          definition: '当前页面名称',
+          defaultValue: '',
+          example: 'home',
+          platform: 'Web通用',
+        }],
+      }],
+    });
+
+    const { draft } = await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
+    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    const userPrompt = messages.find((message) => message.role === 'user')?.content || '';
+
+    expect(userPrompt).toContain('Web 埋点需求生成初稿');
+    expect(userPrompt).toContain('"handler": "前端|服务端|前端/服务端"');
+    expect(userPrompt).toContain('"platform": "Web通用|Web&App历史兼容|Web/App差异待拆|待确认"');
+    expect(draft.events[0]).toEqual(expect.objectContaining({
+      platform: 'Web',
+      handler: '前端/服务端',
+    }));
+    expect(draft.events[0].params[0].platform).toBe('Web通用');
+  });
+
+  it('应拒绝超过单次上限的模型草稿，避免拖垮 Base 批量写入', async () => {
+    const { service, model } = createFixture();
+    model.generateJson.mockResolvedValue({
+      events: Array.from({ length: 21 }, (_, index) => ({
+        evtId: `event_${index + 1}`,
+        eventName: `事件 ${index + 1}`,
+        params: [],
+      })),
+    });
+
+    await expect(
+      service.generateDraft('app:rec_1', { actorId: 'actor_1' }),
+    ).rejects.toThrow('单次最多生成 20 个埋点事件');
+  });
+
+  it('需求单没有 PRD 链接时应在读取文档和调用模型前阻断', async () => {
+    const { service, documents, model } = createFixture({
+      requirementFields: {
+        需求链接: '',
+        需求背景: '缺少 PRD',
+      },
+    });
+
+    await expect(
+      service.generateDraft('app:rec_1', { actorId: 'actor_1' }),
+    ).rejects.toThrow('请先提供 PRD 文档链接，再生成 AI 埋点初稿');
+    expect(documents.fetchPrd).not.toHaveBeenCalled();
+    expect(model.generateJson).not.toHaveBeenCalled();
   });
 
   it('生成新版草稿不应写 Base，并应递增版本', async () => {

@@ -590,6 +590,14 @@ export interface OfficialEvent {
   version: string;
   status: string;
   paramLink: string;
+  eventDefinition?: string;
+  triggerTiming?: string;
+  metricScenario?: string;
+}
+
+export interface OfficialEventContext {
+  event: OfficialEvent;
+  params: OfficialParam[];
 }
 
 export interface GetOfficialEventsParams {

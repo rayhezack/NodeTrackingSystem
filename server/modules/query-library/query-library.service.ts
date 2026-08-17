@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { GetOfficialEventsParams, GetOfficialEventsResponse, GetOfficialParamsResponse, OfficialEvent, OfficialParam, TrackingSource } from '@shared/api.interface';
+import type { GetOfficialEventsParams, GetOfficialEventsResponse, GetOfficialParamsResponse, OfficialEvent, OfficialEventContext, OfficialParam, TrackingSource } from '@shared/api.interface';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import type { BitableInstanceKey } from '../bitable/bitable.constants';
 
@@ -80,6 +80,26 @@ export class QueryLibraryService {
     return { items: params, total: params.length, baseLink };
   }
 
+  async getEventContexts(events: OfficialEvent[]): Promise<OfficialEventContext[]> {
+    if (!events.length) return [];
+    const source = events[0].source;
+    const sourceEvents = events.filter((event) => event.source === source);
+    const records = await this.searchAllRecords(
+      officialParamDetailKey(source),
+      officialParamFields(source),
+    );
+
+    return sourceEvents.map((event) => {
+      const rawEventId = parseScopedRecordId(event.recordId).rawId;
+      const params = records
+        .filter((record) => isOfficialParamForEvent(record, rawEventId, event.evtId))
+        .map((record) => this.toOfficialParam(record, source))
+        .filter((param) => (param.paramKey || param.paramName) && param.status !== '已废弃')
+        .sort((left, right) => left.paramKey.localeCompare(right.paramKey));
+      return { event, params };
+    });
+  }
+
   private toOfficialEvent(record: BitableRecord, source: TrackingSource): OfficialEvent {
     return {
       recordId: encodeScopedRecordId(source, record.id),
@@ -90,6 +110,9 @@ export class QueryLibraryService {
       version: firstText(record.record['上线版本'], record.record['版本']) || '-',
       paramLink: cellText(record.record['参数明细入口']) || paramBaseLink(source),
       status: firstText(record.record['状态'], record.record['正式状态'], record.record['生命周期状态'], record.record['流程阶段']) || '-',
+      eventDefinition: cellText(record.record['事件定义']),
+      triggerTiming: cellText(record.record['触发时机']),
+      metricScenario: cellText(record.record['指标/使用场景']),
     };
   }
 

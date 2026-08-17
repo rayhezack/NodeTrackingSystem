@@ -178,6 +178,9 @@ const StageForm = ({
     const fields: Record<string, unknown> = {};
     for (const field of stageConfig.fields) {
       const value = formData[field.key];
+      if (field.required && !toTextValue(value).trim()) {
+        throw new Error(`请填写${field.label}`);
+      }
       if (
         field.type === 'url' &&
         dirtyFieldNames.has(field.baseField) &&
@@ -325,6 +328,7 @@ const StageForm = ({
           >
             <Label className="mb-1.5 block text-xs text-muted-foreground">
               {field.label}
+              {field.required && <span className="ml-0.5 text-destructive">*</span>}
             </Label>
             {field.type === 'input' && (
               <Input
@@ -340,6 +344,7 @@ const StageForm = ({
             {field.type === 'url' && (
               <Input
                 type="url"
+                required={field.required}
                 value={toTextValue(formData[field.key])}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   handleChange(field.key, e.target.value)
