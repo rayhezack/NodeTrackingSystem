@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Check,
@@ -64,25 +64,29 @@ const AiTrackingDraftPanel = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const pendingGenerateAfterAuthRef = useRef(false);
+  const authSuccessClosingRef = useRef(false);
 
   const setActiveDraft = useCallback((nextDraft: AiTrackingDraft | null) => {
     setDraft(nextDraft);
     setSelectedIds(new Set(nextDraft?.events.map((event) => event.clientId) || []));
   }, []);
 
-  const refreshStatus = useCallback(async () => {
-    const [nextConfig, nextAuth] = await Promise.all([
-      getAiTrackingConfig(),
-      getAiFeishuAuthStatus(actorId, actorLarkId),
-    ]);
+  const refreshConfig = useCallback(async () => {
+    const nextConfig = await getAiTrackingConfig();
     setConfig(nextConfig);
+    return nextConfig;
+  }, []);
+
+  const refreshAuthStatus = useCallback(async () => {
+    const nextAuth = await getAiFeishuAuthStatus(actorId, actorLarkId);
     setAuth(nextAuth);
     return nextAuth;
   }, [actorId, actorLarkId]);
 
   useEffect(() => {
-    void refreshStatus().catch(() => undefined);
-  }, [refreshStatus]);
+    void Promise.all([refreshConfig(), refreshAuthStatus()]).catch(() => undefined);
+  }, [refreshAuthStatus, refreshConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,45 +100,7 @@ const AiTrackingDraftPanel = ({
     return () => { cancelled = true; };
   }, [actorId, actorLarkId, canEdit, detail.recordId, setActiveDraft]);
 
-  useEffect(() => {
-    if (!authUrl || auth?.authorized || !authDialogOpen) return;
-    const interval = window.setInterval(() => {
-      void refreshStatus().then((status) => {
-        if (status.authorized) {
-          setAuthDialogOpen(false);
-          setAuthUrl('');
-          toast.success('飞书文档已授权');
-        }
-      }).catch(() => undefined);
-    }, 2_000);
-    return () => window.clearInterval(interval);
-  }, [authUrl, auth?.authorized, authDialogOpen, refreshStatus]);
-
-  const handleAuthorize = async () => {
-    try {
-      const result = await startAiFeishuAuth({
-        recordId: detail.recordId,
-        actorId,
-        actorLarkId,
-      });
-      setAuthUrl(result.authorizationUrl);
-      setAuthDialogOpen(true);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '无法发起飞书授权');
-    }
-  };
-
-  const handleGenerate = async () => {
-    const requirementLink = String(detail.requirementFields['需求链接'] || '').trim();
-    const blockedReason = getAiDraftGenerationBlockReason(requirementLink);
-    if (blockedReason) {
-      toast.error(blockedReason);
-      return;
-    }
-    if (!auth?.authorized) {
-      await handleAuthorize();
-      return;
-    }
+  const performGenerate = useCallback(async () => {
     setLoading(true);
     try {
       const result = await generateAiTrackingDraft(detail.recordId, { actorId, actorLarkId });
@@ -145,6 +111,75 @@ const AiTrackingDraftPanel = ({
     } finally {
       setLoading(false);
     }
+  }, [actorId, actorLarkId, detail.recordId, setActiveDraft]);
+
+  useEffect(() => {
+    if (!authUrl || auth?.authorized || !authDialogOpen) return;
+    const interval = window.setInterval(() => {
+      void refreshAuthStatus().then((status) => {
+        if (status.authorized) {
+          authSuccessClosingRef.current = true;
+          setAuthDialogOpen(false);
+          setAuthUrl('');
+          window.setTimeout(() => {
+            authSuccessClosingRef.current = false;
+          }, 0);
+          toast.success('飞书文档已授权');
+          if (pendingGenerateAfterAuthRef.current) {
+            pendingGenerateAfterAuthRef.current = false;
+            void performGenerate();
+          }
+        }
+      }).catch(() => undefined);
+    }, 2_000);
+    return () => window.clearInterval(interval);
+  }, [authUrl, auth?.authorized, authDialogOpen, performGenerate, refreshAuthStatus]);
+
+  const handleAuthorize = async () => {
+    try {
+      const result = await startAiFeishuAuth({
+        recordId: detail.recordId,
+        actorId,
+        actorLarkId,
+      });
+      setAuthUrl(result.authorizationUrl);
+      setAuthDialogOpen(true);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '无法发起飞书授权');
+      return false;
+    }
+  };
+
+  const handleAuthDialogOpenChange = useCallback((open: boolean) => {
+    setAuthDialogOpen(open);
+    if (!open) {
+      setAuthUrl('');
+      if (authSuccessClosingRef.current) {
+        authSuccessClosingRef.current = false;
+        return;
+      }
+      if (!auth?.authorized) {
+        pendingGenerateAfterAuthRef.current = false;
+      }
+    }
+  }, [auth?.authorized]);
+
+  const handleGenerate = async () => {
+    const requirementLink = String(detail.requirementFields['需求链接'] || '').trim();
+    const blockedReason = getAiDraftGenerationBlockReason(requirementLink);
+    if (blockedReason) {
+      toast.error(blockedReason);
+      return;
+    }
+    const currentAuth = auth?.authorized ? auth : await refreshAuthStatus().catch(() => auth);
+    if (!currentAuth?.authorized) {
+      pendingGenerateAfterAuthRef.current = true;
+      const started = await handleAuthorize();
+      if (!started) pendingGenerateAfterAuthRef.current = false;
+      return;
+    }
+    await performGenerate();
   };
 
   const handleApply = async () => {
@@ -222,19 +257,6 @@ const AiTrackingDraftPanel = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!auth?.authorized && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-sm"
-                disabled={!canEdit || !config?.feishuOAuthConfigured}
-                onClick={() => void handleAuthorize()}
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                授权文档
-              </Button>
-            )}
             {draft && (
               <Button
                 type="button"
@@ -272,11 +294,11 @@ const AiTrackingDraftPanel = ({
         )}
       </div>
 
-      <Dialog open={authDialogOpen} onOpenChange={setAuthDialogOpen}>
+      <Dialog open={authDialogOpen} onOpenChange={handleAuthDialogOpenChange}>
         <DialogContent className="max-w-md rounded-sm">
           <DialogHeader>
             <DialogTitle className="text-base">飞书文档授权</DialogTitle>
-            <DialogDescription>请使用飞书扫码授权，仅用于读取当前账号可访问的 PRD 正文。</DialogDescription>
+            <DialogDescription>请使用飞书扫码授权，仅用于读取当前账号可访问的 PRD 正文。授权完成后会自动继续生成。</DialogDescription>
           </DialogHeader>
           {authUrl && (
             <div className="flex flex-col items-center gap-3 py-3">

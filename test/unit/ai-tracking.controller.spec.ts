@@ -47,6 +47,32 @@ describe('AI 埋点控制器身份解析', () => {
       actorLarkId?: string,
     ) => Promise<unknown>)(request, 'client_actor', 'ou_client');
 
+    expect(aiTracking.getAuthStatus).toHaveBeenCalledWith('ou_client');
+  });
+
+  it('即使存在旧的授权 Cookie，也不应覆盖当前请求中的妙搭用户', async () => {
+    const oauth = {
+      getSessionActor: jest.fn().mockReturnValue('stale_cookie_actor'),
+    };
+    const aiTracking = {
+      getAuthStatus: jest.fn().mockResolvedValue({ authorized: true }),
+      startAuth: jest.fn().mockReturnValue({ authorizationUrl: 'https://example.com/auth' }),
+      generateDraft: jest.fn().mockResolvedValue({ draft: {} }),
+      getLatestDraft: jest.fn().mockResolvedValue({ draft: {} }),
+      getDraft: jest.fn().mockResolvedValue({ draft: {} }),
+    };
+    const staleController = new AiTrackingController(aiTracking as never, oauth as never);
+    const request = {
+      headers: {},
+      userContext: { userId: 'platform_user_1' },
+    } as unknown as Request;
+
+    await (staleController.getAuthStatus as unknown as (
+      request: Request,
+      actorId?: string,
+      actorLarkId?: string,
+    ) => Promise<unknown>)(request);
+
     expect(aiTracking.getAuthStatus).toHaveBeenCalledWith('platform_user_1');
   });
 
@@ -61,7 +87,7 @@ describe('AI 埋点控制器身份解析', () => {
     expect(aiTracking.startAuth).toHaveBeenCalledWith({
       recordId: 'web:rec_1',
       actorId: 'platform_user_1',
-      actorLarkId: undefined,
+      actorLarkId: 'ou_client',
     });
   });
 
@@ -74,7 +100,7 @@ describe('AI 埋点控制器身份解析', () => {
     expect(aiTracking.generateDraft).toHaveBeenCalledWith(
       'web:rec_1',
       body,
-      'platform_user_1',
+      'ou_client',
     );
   });
 
@@ -96,7 +122,7 @@ describe('AI 埋点控制器身份解析', () => {
       'web:rec_1',
       'client_actor',
       'ou_client',
-      'platform_user_1',
+      'ou_client',
     );
   });
 
@@ -127,7 +153,7 @@ describe('AI 埋点控制器身份解析', () => {
       'draft_1',
       'client_actor',
       'ou_client',
-      'platform_user_1',
+      'ou_client',
     );
   });
 });

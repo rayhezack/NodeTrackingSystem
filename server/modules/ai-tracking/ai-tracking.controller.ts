@@ -36,9 +36,9 @@ export class AiTrackingController {
     const actor = this.resolveRequestActor(request, body.actorId, body.actorLarkId);
     if (!actor) throw new UnauthorizedException('无法识别当前妙搭用户，不能发起飞书文档授权');
     return this.aiTracking.startAuth({
-      ...body,
-      actorId: actor,
-      actorLarkId: undefined,
+      recordId: body.recordId,
+      actorId: request.userContext?.userId || body.actorId || actor,
+      actorLarkId: body.actorLarkId,
     });
   }
 
@@ -71,7 +71,11 @@ export class AiTrackingController {
     @Body() body: GenerateAiTrackingDraftRequest,
     @Req() request: Request,
   ) {
-    return this.aiTracking.generateDraft(recordId, body, this.requireSessionActor(request));
+    return this.aiTracking.generateDraft(
+      recordId,
+      body,
+      this.requireSessionActor(request, body.actorId, body.actorLarkId),
+    );
   }
 
   @Get('records/:recordId/drafts/latest')
@@ -85,7 +89,7 @@ export class AiTrackingController {
       recordId,
       actorId,
       actorLarkId,
-      this.requireSessionActor(request),
+      this.requireSessionActor(request, actorId, actorLarkId),
     );
   }
 
@@ -102,7 +106,7 @@ export class AiTrackingController {
       draftId,
       actorId,
       actorLarkId,
-      this.requireSessionActor(request),
+      this.requireSessionActor(request, actorId, actorLarkId),
     );
   }
 
@@ -113,11 +117,20 @@ export class AiTrackingController {
     @Body() body: ApplyAiTrackingDraftRequest,
     @Req() request: Request,
   ) {
-    return this.aiTracking.applyDraft(recordId, draftId, body, this.requireSessionActor(request));
+    return this.aiTracking.applyDraft(
+      recordId,
+      draftId,
+      body,
+      this.requireSessionActor(request, body.actorId, body.actorLarkId),
+    );
   }
 
-  private requireSessionActor(request: Request): string {
-    const actor = this.resolveRequestActor(request);
+  private requireSessionActor(
+    request: Request,
+    fallbackActorId?: string,
+    fallbackActorLarkId?: string,
+  ): string {
+    const actor = this.resolveRequestActor(request, fallbackActorId, fallbackActorLarkId);
     if (!actor) throw new UnauthorizedException('飞书文档授权会话不存在或已失效，请重新授权');
     return actor;
   }
@@ -127,10 +140,10 @@ export class AiTrackingController {
     fallbackActorId?: string,
     fallbackActorLarkId?: string,
   ): string | undefined {
-    return request.userContext?.userId ||
-      this.oauth.getSessionActor(request.headers.cookie) ||
-      fallbackActorLarkId ||
-      fallbackActorId;
+    return fallbackActorLarkId ||
+      request.userContext?.userId ||
+      fallbackActorId ||
+      this.oauth.getSessionActor(request.headers.cookie);
   }
 }
 
