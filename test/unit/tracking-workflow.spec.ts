@@ -478,7 +478,7 @@ describe('工作流 Base 回写', () => {
     );
   });
 
-  it('正式查询库已有同 evt_id 时应更新而不是重复新增', async () => {
+  it('正式查询库已有同 evt_id 时不应更新正式事件，也不重复新增', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
         id: 'rec_1',
@@ -514,25 +514,79 @@ describe('工作流 Base 回写', () => {
       fields: { 事件中文名: '测试事件 v2' },
     });
 
-    expect(bitable.batchUpdateRecords).toHaveBeenNthCalledWith(2, 'queryLibrary', [
-      {
-        id: 'rec_official',
-        record: expect.objectContaining({
-          evt_id: 'test_event',
-          事件中文名: '测试事件 v2',
-          上线版本: '2.1.0',
-          最低版本: '2.0.0',
-          状态: '已上线',
-          优先级: 'P2',
-          数据负责人: [1867390536304713],
-          研发负责人: [3002],
-          DS验收人: [1855461847682347],
-          稳定归档时间: new Date('2026-08-05T14:48:32').getTime(),
-          源事件记录ID: 'rec_1',
-        }),
-      },
-    ]);
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledTimes(1);
+    expect(bitable.batchUpdateRecords.mock.calls.some(([instanceKey]) => instanceKey === 'queryLibrary')).toBe(false);
     expect(bitable.batchAddRecords).not.toHaveBeenCalled();
+  });
+
+  it('复用已有正式事件追加新参数时，应沿用正式事件名而不是设计稿误改名', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'test_event',
+          事件中文名: '设计稿误改名',
+          流程阶段: '稳定归档',
+          端: ['iOS'],
+          版本: '2.1.0',
+          正式状态: '已上线',
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      searchRecords: jest
+        .fn()
+        .mockResolvedValueOnce({
+          records: [{
+            id: 'rec_official',
+            record: {
+              evt_id: 'test_event',
+              事件中文名: '正式事件名',
+              状态: '已上线',
+            },
+          }],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [{
+            id: 'rec_design_param',
+            record: {
+              evt_id: 'test_event',
+              参数名: 'new_param',
+              数据类型: 'STRING',
+              必传规则: '非必传',
+              参数定义: '新增参数定义',
+              参数状态: '草稿',
+              变更类型: '新增',
+              来源设计记录ID: 'rec_1',
+              关联设计: ['rec_1'],
+            },
+          }],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [],
+          hasMore: false,
+        }),
+      batchAddRecords: jest.fn().mockResolvedValue([{ id: 'rec_new_official_param' }]),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      actorId: '1867390536304713',
+      stageId: 'archive',
+      fields: {},
+    });
+
+    expect(bitable.batchUpdateRecords.mock.calls.some(([instanceKey]) => instanceKey === 'queryLibrary')).toBe(false);
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('officialParamDetail', [
+      expect.objectContaining({
+        参数主键: 'test_event.new_param',
+        事件中文名: '正式事件名',
+        事件状态: '已上线',
+        参数名: 'new_param',
+      }),
+    ]);
   });
 
   it('归档已有正式参数时应在正式库枚举基础上追加新增枚举，而不是覆盖', async () => {
@@ -570,10 +624,11 @@ describe('工作流 Base 回写', () => {
               record: {
                 evt_id: 'createflow_form_submit',
                 参数名: 'form_type',
-                数据类型: 'STRING',
+                数据类型: 'NUMBER',
                 必传规则: '非必传',
-                '枚举/取值范围': 'abc',
-                参数定义: '',
+                条件说明: 'AI 误改条件',
+                '枚举/取值范围': 'old // AI 误改旧枚举\nabc // 新枚举',
+                参数定义: 'AI 误改参数定义',
                 Web适用性: 'Web通用',
                 参数状态: '草稿',
                 变更类型: '修改',
@@ -593,9 +648,14 @@ describe('工作流 Base 回写', () => {
                 evt_id: 'createflow_form_submit',
                 参数名: 'form_type',
                 数据类型: 'STRING',
-                '枚举/取值范围': 'old,qwe',
+                必传规则: '必传',
+                条件说明: '正式库原有条件',
+                '枚举/取值范围': 'old // 原有枚举\nqwe // 原有枚举 2',
                 参数定义: '正式库原有表单类型定义',
+                版本: '1.0.0',
                 参数状态: '正式',
+                Web适用性: 'Web通用',
+                备注: '正式库原有备注',
                 关联事件: ['rec_official'],
               },
             },
@@ -603,7 +663,34 @@ describe('工作流 Base 回写', () => {
           hasMore: false,
         })
         .mockResolvedValueOnce({
-          records: [],
+          records: [
+            {
+              id: 'rec_enum_old',
+              record: {
+                枚举主键: 'createflow_form_submit.form_type.old',
+                evt_id: 'createflow_form_submit',
+                参数名: 'form_type',
+                枚举值: 'old',
+                枚举中文名: '正式库原有旧枚举',
+                枚举定义: '正式库原有旧枚举定义',
+                枚举状态: '正式',
+                关联正式参数: [],
+              },
+            },
+            {
+              id: 'rec_enum_qwe',
+              record: {
+                枚举主键: 'createflow_form_submit.form_type.qwe',
+                evt_id: 'createflow_form_submit',
+                参数名: 'form_type',
+                枚举值: 'qwe',
+                枚举中文名: '正式库原有枚举 2',
+                枚举定义: '正式库原有枚举 2 定义',
+                枚举状态: '正式',
+                关联正式参数: [],
+              },
+            },
+          ],
           hasMore: false,
         }),
       batchAddRecords: jest.fn().mockImplementation(async (_instanceKey: string, records: Record<string, unknown>[]) =>
@@ -618,16 +705,93 @@ describe('工作流 Base 回写', () => {
       fields: {},
     });
 
+    expect(bitable.batchUpdateRecords.mock.calls.some(([instanceKey]) => instanceKey === 'queryLibrary')).toBe(false);
     expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('officialParamDetail', [
-      expect.objectContaining({
+      {
         id: 'rec_official_param',
-        record: expect.objectContaining({
-          参数主键: 'createflow_form_submit.form_type',
-          '枚举/取值范围': 'old,qwe,abc',
-          参数定义: '正式库原有表单类型定义',
-        }),
+        record: {
+          '枚举/取值范围': 'old // 原有枚举\nqwe // 原有枚举 2\nabc // 新枚举',
+        },
+      },
+    ]);
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('enumDictionary', [
+      { id: 'rec_enum_old', record: { 关联正式参数: ['rec_official_param'] } },
+      { id: 'rec_enum_qwe', record: { 关联正式参数: ['rec_official_param'] } },
+    ]);
+    expect(bitable.batchAddRecords).toHaveBeenCalledWith('enumDictionary', [
+      expect.objectContaining({
+        枚举主键: 'createflow_form_submit.form_type.abc',
+        枚举值: 'abc',
+        枚举中文名: '新枚举',
+        枚举定义: '新枚举',
       }),
     ]);
+  });
+
+  it('复用已有正式参数时，即使设计参数标记废弃也不应删除正式参数', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_1',
+        record: {
+          evt_id: 'createflow_form_submit',
+          事件中文名: '创建流程提交',
+          流程阶段: '稳定归档',
+          端: ['Web'],
+          版本: '2.1.0',
+          正式状态: '已上线',
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
+      searchRecords: jest
+        .fn()
+        .mockResolvedValueOnce({
+          records: [{ id: 'rec_official', record: { evt_id: 'createflow_form_submit' } }],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [{
+            id: 'rec_design_param',
+            record: {
+              evt_id: 'createflow_form_submit',
+              参数名: 'form_type',
+              数据类型: 'STRING',
+              参数状态: '废弃',
+              变更类型: '废弃',
+              来源设计记录ID: 'rec_1',
+              关联设计: ['rec_1'],
+            },
+          }],
+          hasMore: false,
+        })
+        .mockResolvedValueOnce({
+          records: [{
+            id: 'rec_official_param',
+            record: {
+              参数主键: 'createflow_form_submit.form_type',
+              evt_id: 'createflow_form_submit',
+              参数名: 'form_type',
+              数据类型: 'STRING',
+              参数状态: '正式',
+              关联事件: ['rec_official'],
+            },
+          }],
+          hasMore: false,
+        }),
+      batchAddRecords: jest.fn(),
+      deleteRecords: jest.fn(),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_1', {
+      actorId: '1867390536304713',
+      stageId: 'archive',
+      fields: {},
+    });
+
+    expect(bitable.deleteRecords).not.toHaveBeenCalled();
+    expect(bitable.batchAddRecords).not.toHaveBeenCalledWith('deprecatedParamDetail', expect.any(Array));
+    expect(bitable.batchUpdateRecords.mock.calls.some(([instanceKey]) => instanceKey === 'officialParamDetail')).toBe(false);
   });
 
   it('提需人只应能维护需求录入节点，不能越权修改埋点设计', async () => {

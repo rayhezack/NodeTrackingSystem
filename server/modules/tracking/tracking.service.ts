@@ -1527,7 +1527,15 @@ export class TrackingService {
       };
 
       if (existing) {
-        updates.push({ id: existing.id, record: recordPatch });
+        if (mode === 'official' && !isRemoved) {
+          const previousLinks = cellIds(existing.record[linkedField]);
+          const nextLinks = uniqueStrings([...previousLinks, paramRecordId]);
+          if (nextLinks.length !== previousLinks.length) {
+            updates.push({ id: existing.id, record: { [linkedField]: nextLinks } });
+          }
+        } else {
+          updates.push({ id: existing.id, record: recordPatch });
+        }
       } else {
         inserts.push({
           枚举主键: entry.key,
@@ -1608,14 +1616,15 @@ export class TrackingService {
 
     let officialEventRecordId = existing?.id;
     if (existing) {
-      await this.bitable.batchUpdateRecords(instanceKey, [{ id: existing.id, record: officialRecord }]);
+      // 复用已有正式埋点时，归档只允许在参数层做增量追加；
+      // 正式事件本身的定义、触发时机、负责人、状态等字段保持不变。
     } else {
       const [created] = await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
       officialEventRecordId = created?.id;
     }
 
     if (officialEventRecordId) {
-      await this.syncOfficialParams(source, designRecordId, record, officialEventRecordId);
+      await this.syncOfficialParams(source, designRecordId, record, officialEventRecordId, existing?.record);
     }
   }
 
@@ -1645,7 +1654,13 @@ export class TrackingService {
     }
   }
 
-  private async syncOfficialParams(source: TrackingSource, designRecordId: string, designRecord: Record<string, unknown>, officialEventRecordId: string): Promise<void> {
+  private async syncOfficialParams(
+    source: TrackingSource,
+    designRecordId: string,
+    designRecord: Record<string, unknown>,
+    officialEventRecordId: string,
+    officialEvent?: Record<string, unknown>,
+  ): Promise<void> {
     const evtId = cellText(designRecord['evt_id']).trim();
     if (!evtId) return;
 
@@ -1668,29 +1683,27 @@ export class TrackingService {
     const inserts: Record<string, unknown>[] = [];
     const enumSyncTargets: Array<{ id: string; record: Record<string, unknown> }> = [];
 
-    const officialParamsToDelete = removedDesignParams
-      .map((paramRecord) => {
-        const paramKey = getDesignParamKey(paramRecord.record).toLowerCase();
-        return paramKey ? existingByParamKey.get(paramKey) : undefined;
-      })
-      .filter((record): record is BitableRecord => Boolean(record));
-    if (removedDesignParams.length || officialParamsToDelete.length) {
-      await this.upsertDeprecatedParams(source, designRecord, removedDesignParams, officialParamsToDelete);
-    }
-    if (officialParamsToDelete.length) {
-      await this.bitable.deleteRecords(officialParamKey, officialParamsToDelete.map((record) => record.id));
+    const removedDraftOnlyParams = removedDesignParams.filter((paramRecord) => {
+      const paramKey = getDesignParamKey(paramRecord.record).toLowerCase();
+      return !paramKey || !existingByParamKey.has(paramKey);
+    });
+    if (removedDraftOnlyParams.length) {
+      // 普通复用/修改归档不允许删除既有正式参数；这里只记录从未进入正式库的设计侧废弃参数。
+      await this.upsertDeprecatedParams(source, designRecord, removedDraftOnlyParams, []);
     }
 
     for (const designParam of designParams) {
-      const officialParam = toOfficialParamRecord(source, designRecord, designParam.record, officialEventRecordId);
+      const officialParam = toOfficialParamRecord(source, designRecord, designParam.record, officialEventRecordId, officialEvent);
       if (!officialParam) continue;
 
       const paramKey = cellText(officialParam['参数主键']).trim().toLowerCase();
       const existing = existingByParamKey.get(paramKey);
       if (existing) {
-        const mergedRecord = mergeOfficialParamRecord(existing.record, officialParam);
-        updates.push({ id: existing.id, record: mergedRecord });
-        enumSyncTargets.push({ id: existing.id, record: mergedRecord });
+        const appendOnly = mergeOfficialParamRecord(existing.record, officialParam);
+        if (Object.keys(appendOnly.patch).length) {
+          updates.push({ id: existing.id, record: appendOnly.patch });
+        }
+        enumSyncTargets.push({ id: existing.id, record: appendOnly.effectiveRecord });
       } else {
         inserts.push(officialParam);
       }
@@ -3486,7 +3499,13 @@ function createOfficialUserCells(record: Record<string, unknown>, fieldName: str
   );
 }
 
-function toOfficialParamRecord(source: TrackingSource, designRecord: Record<string, unknown>, designParam: Record<string, unknown>, officialEventRecordId: string): Record<string, unknown> | null {
+function toOfficialParamRecord(
+  source: TrackingSource,
+  designRecord: Record<string, unknown>,
+  designParam: Record<string, unknown>,
+  officialEventRecordId: string,
+  officialEvent?: Record<string, unknown>,
+): Record<string, unknown> | null {
   const evtId = firstText(designParam.evt_id, designRecord['evt_id']).trim();
   const paramName = cellText(designParam['参数名']).trim();
   const paramKey = buildParamKey(evtId, paramName);
@@ -3499,7 +3518,7 @@ function toOfficialParamRecord(source: TrackingSource, designRecord: Record<stri
   return {
     参数主键: paramKey,
     evt_id: evtId,
-    事件中文名: cellText(designRecord['事件中文名']),
+    事件中文名: firstText(officialEvent?.['事件中文名'], designRecord['事件中文名']),
     参数名: paramName,
     数据类型: normalizeParamType(cellText(designParam['数据类型'])),
     必传规则: normalizeRequiredRule(cellText(designParam['必传规则'])),
@@ -3508,7 +3527,7 @@ function toOfficialParamRecord(source: TrackingSource, designRecord: Record<stri
     参数定义: cellText(designParam['参数定义']),
     版本: firstText(designRecord['版本'], designRecord['最低版本'], designParam['版本']) || '1.0.0',
     参数状态: normalizeOfficialParamStatus(cellText(designParam['参数状态']), cellText(designParam['变更类型'])),
-    事件状态: getOfficialQueryStatus(designRecord),
+    事件状态: firstText(officialEvent?.['状态'], getOfficialQueryStatus(designRecord)),
     来源表: '埋点设计库',
     关联事件: [officialEventRecordId],
     [platformField]: normalizeParamApplicability(cellText(designParam[platformField]), source),
@@ -3521,40 +3540,47 @@ function normalizeOfficialParamStatus(paramStatus: string, changeType: string): 
   return '正式';
 }
 
-function mergeOfficialParamRecord(existing: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
-  const merged: Record<string, unknown> = {
-    ...incoming,
-    '枚举/取值范围': mergeEnumRangeText(
-      cellText(existing['枚举/取值范围']),
-      cellText(incoming['枚举/取值范围']),
-    ),
-  };
-
-  for (const fieldName of [
-    '数据类型',
-    '必传规则',
-    '条件说明',
-    '参数定义',
-    '版本',
-    '来源表',
-    'App适用性',
-    'Web适用性',
-    '备注',
-  ]) {
-    if (!cellText(merged[fieldName]) && cellText(existing[fieldName])) {
-      merged[fieldName] = existing[fieldName];
-    }
+function mergeOfficialParamRecord(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): { patch: Record<string, unknown>; effectiveRecord: Record<string, unknown> } {
+  const existingEnumRange = cellText(existing['枚举/取值范围']);
+  const mergedEnumRange = mergeEnumRangeText(
+    existingEnumRange,
+    cellText(incoming['枚举/取值范围']),
+  );
+  const patch: Record<string, unknown> = {};
+  if (mergedEnumRange !== existingEnumRange) {
+    patch['枚举/取值范围'] = mergedEnumRange;
   }
 
-  return merged;
+  return {
+    patch,
+    effectiveRecord: {
+      ...existing,
+      ...patch,
+    },
+  };
 }
 
 function mergeEnumRangeText(existingText: string, incomingText: string): string {
   const existingParts = splitEnumRange(existingText);
   const incomingParts = splitEnumRange(incomingText);
-  const merged = uniqueStrings([...existingParts, ...incomingParts]);
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const item of [...existingParts, ...incomingParts]) {
+    const key = enumRangeItemKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
   if (!merged.length) return incomingText || existingText || '';
   return merged.join(detectEnumDelimiter(existingText || incomingText));
+}
+
+function enumRangeItemKey(item: string): string {
+  const parsed = parseEnumDictionaryItem(item);
+  return (parsed.value || item).trim().toLowerCase();
 }
 
 function parseEnumDictionaryEntries(evtId: string, paramName: string, enumRange: string): Array<{ key: string; value: string; label: string; definition: string }> {
@@ -3610,14 +3636,25 @@ function isValidEnumDictionaryValue(value: string): boolean {
 }
 
 function splitEnumRange(value: string): string[] {
-  return String(value || '')
-    .split(/[\n,，、/|]+/)
+  const text = String(value || '').trim();
+  if (!text) return [];
+  if (text.includes('\n')) {
+    return text
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (text.includes('//')) return [text];
+  return text
+    .split(/[,，、/|]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function detectEnumDelimiter(value: string): string {
   if (value.includes('\n')) return '\n';
+  if (value.includes('//')) return '\n';
   if (value.includes('，')) return '，';
   if (value.includes('、')) return '、';
   if (value.includes('/')) return '/';
