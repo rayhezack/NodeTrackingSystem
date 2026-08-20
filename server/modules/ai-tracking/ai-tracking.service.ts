@@ -60,6 +60,8 @@ const modelResponseSchema = z.object({
   events: z.array(modelEventSchema).min(1).max(20, '单次最多生成 20 个埋点事件'),
 });
 
+const GENERATION_HANDOFF_TIMEOUT_MS = 8_000;
+
 @Injectable()
 export class AiTrackingService {
   private readonly drafts = new Map<string, AiTrackingDraft>();
@@ -111,38 +113,14 @@ export class AiTrackingService {
     }
 
     const accessToken = await this.oauth.getAccessToken(actorId, actorLarkId);
-    const prd = await this.documents.fetchPrd(requirementUrl, accessToken);
     const contextFiles = normalizeContextFiles(body.contextFiles);
-    const [currentParams, appLibrary, webLibrary] = await Promise.all([
-      this.tracking.getParams(recordId),
-      this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }),
-      this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }),
-    ]);
-    const candidates = selectOfficialAssetCandidates(detail, prd.content, {
-      app: appLibrary.items,
-      web: webLibrary.items,
-    }, 16);
-    const historicalContexts = await this.queryLibrary.getEventContexts(candidates);
-    const raw = await this.model.generateJson([
-      { role: 'system', content: TRACKING_DESIGN_GUIDELINES },
-      {
-        role: 'user',
-        content: buildPrompt(detail, currentParams.items, prd, historicalContexts, contextFiles),
-      },
-    ]);
-    const parsed = modelResponseSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new BadRequestException(`AI 草稿结构校验失败：${parsed.error.issues[0]?.message || '未知错误'}`);
-    }
-    const totalParamCount = parsed.data.events.reduce((total, event) => total + event.params.length, 0);
-    if (totalParamCount > 200) {
-      throw new BadRequestException('AI 草稿结构校验失败：单次最多生成 200 个参数');
+    const draftKey = draftOwnerKey(recordId, actorId, actorLarkId);
+    const currentDraftId = this.latestDraftIds.get(draftKey);
+    const currentDraft = currentDraftId ? this.drafts.get(currentDraftId) : undefined;
+    if (currentDraft?.status === 'generating') {
+      return { draft: currentDraft };
     }
 
-    const events = parsed.data.events.map((event, index) =>
-      this.normalizeEvent(event, index, detail.source, detail.platform));
-    assertUniqueEvents(events);
-    const draftKey = draftOwnerKey(recordId, actorId, actorLarkId);
     const version = (this.versions.get(draftKey) || 0) + 1;
     this.versions.set(draftKey, version);
     const draft: AiTrackingDraft = {
@@ -150,26 +128,98 @@ export class AiTrackingService {
       recordId,
       requestId: detail.requestId,
       version,
-      status: 'draft',
+      status: 'generating',
       createdAt: Date.now(),
       provider: this.model.status.provider,
       model: this.model.status.model,
       prd: {
-        url: prd.url,
-        title: prd.title,
-        revision: prd.revision,
-        truncated: prd.truncated,
+        url: requirementUrl,
+        title: '正在读取 PRD',
+        truncated: false,
       },
-      summary: `共生成 ${events.length} 个埋点事件初稿`,
-      analystQuestions: uniqueStrings(events.flatMap((event) => event.uncertainties)),
-      events,
-      diffs: buildDraftDiffs(detail, currentParams.items, events),
+      summary: '正在读取 PRD、正式查询库并生成埋点初稿',
+      analystQuestions: [],
+      events: [],
+      diffs: [],
     };
     this.drafts.set(draft.id, draft);
     this.draftOwners.set(draft.id, draftKey);
     this.latestDraftIds.set(draftKey, draft.id);
     this.pruneDrafts();
+
+    // 妙搭网关约 30 秒会切断同步请求；模型和文档链路可能更久，交给后台任务继续执行。
+    const generation = this.populateDraft(draft, detail, requirementUrl, accessToken, contextFiles);
+    void generation.catch(() => undefined);
+    let handoffTimer: ReturnType<typeof setTimeout> | undefined;
+    const handoffTimeout = new Promise<void>((resolve) => {
+      handoffTimer = setTimeout(resolve, GENERATION_HANDOFF_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([generation, handoffTimeout]);
+    } finally {
+      if (handoffTimer) clearTimeout(handoffTimer);
+    }
     return { draft };
+  }
+
+  private async populateDraft(
+    draft: AiTrackingDraft,
+    detail: TrackingDetail,
+    requirementUrl: string,
+    accessToken: string,
+    contextFiles: AiTrackingContextFile[],
+  ): Promise<void> {
+    try {
+      const prd = await this.documents.fetchPrd(requirementUrl, accessToken);
+      draft.prd = {
+        url: prd.url,
+        title: prd.title,
+        revision: prd.revision,
+        truncated: prd.truncated,
+      };
+      draft.summary = '正在读取正式埋点查询和正式参数查询';
+
+      const [currentParams, appLibrary, webLibrary] = await Promise.all([
+        this.tracking.getParams(detail.recordId),
+        this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }),
+        this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }),
+      ]);
+      const candidates = selectOfficialAssetCandidates(detail, prd.content, {
+        app: appLibrary.items,
+        web: webLibrary.items,
+      }, 16);
+      const historicalContexts = await this.queryLibrary.getEventContexts(candidates);
+      draft.summary = '正在调用大模型生成埋点初稿';
+      const raw = await this.model.generateJson([
+        { role: 'system', content: TRACKING_DESIGN_GUIDELINES },
+        {
+          role: 'user',
+          content: buildPrompt(detail, currentParams.items, prd, historicalContexts, contextFiles),
+        },
+      ]);
+      const parsed = modelResponseSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new BadRequestException(`AI 草稿结构校验失败：${parsed.error.issues[0]?.message || '未知错误'}`);
+      }
+      const totalParamCount = parsed.data.events.reduce((total, event) => total + event.params.length, 0);
+      if (totalParamCount > 200) {
+        throw new BadRequestException('AI 草稿结构校验失败：单次最多生成 200 个参数');
+      }
+
+      const events = parsed.data.events.map((event, index) =>
+        this.normalizeEvent(event, index, detail.source, detail.platform));
+      assertUniqueEvents(events);
+      draft.summary = `共生成 ${events.length} 个埋点事件初稿`;
+      draft.analystQuestions = uniqueStrings(events.flatMap((event) => event.uncertainties));
+      draft.events = events;
+      draft.diffs = buildDraftDiffs(detail, currentParams.items, events);
+      draft.status = 'draft';
+    } catch (error) {
+      draft.status = 'failed';
+      draft.summary = 'AI 埋点初稿生成失败';
+      draft.failureMessage = error instanceof Error ? error.message : 'AI 埋点初稿生成失败，请稍后重试';
+      throw error;
+    }
   }
 
   async getLatestDraft(
@@ -185,7 +235,7 @@ export class AiTrackingService {
     const ownerKey = draftOwnerKey(recordId, resolvedActorId, resolvedActorLarkId);
     const draftId = this.latestDraftIds.get(ownerKey);
     const draft = draftId ? this.drafts.get(draftId) : undefined;
-    return { draft: draft?.status === 'draft' ? draft : null };
+    return { draft: draft?.status === 'applied' ? null : draft || null };
   }
 
   async getDraft(
@@ -238,6 +288,7 @@ export class AiTrackingService {
         createdParamCount: draft.appliedParamCount || 0,
       };
     }
+    if (draft.status === 'generating') throw new BadRequestException('AI 草稿仍在生成，请稍候');
     if (draft.status === 'applying') throw new BadRequestException('该草稿正在应用，请勿重复提交');
     if (draft.status === 'failed') throw new BadRequestException('该草稿曾部分应用失败，请重新生成新版草稿后再操作');
 

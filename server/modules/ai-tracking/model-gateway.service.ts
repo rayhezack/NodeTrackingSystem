@@ -42,11 +42,23 @@ export class ModelGatewayService {
       throw modelNetworkError(error);
     }
 
-    const payload = (await response.json().catch(() => ({}))) as ModelResponse;
+    let rawBody: string;
+    try {
+      rawBody = await response.text();
+    } catch (error) {
+      throw modelNetworkError(error);
+    }
+
+    const eventStream = response.headers.get('content-type')?.includes('text/event-stream');
+    const streamResult = eventStream ? parseResponsesEventStream(rawBody) : undefined;
+    const payload = eventStream ? streamResult?.payload || {} : parseModelResponse(rawBody);
     if (!response.ok) {
       throw new ServiceUnavailableException(payload.error?.message || `大模型请求失败（HTTP ${response.status}）`);
     }
-    const content = extractContent(payload);
+    if (streamResult?.errorMessage) {
+      throw new ServiceUnavailableException(streamResult.errorMessage);
+    }
+    const content = streamResult?.content || extractContent(payload);
     if (!content) throw new ServiceUnavailableException('大模型未返回可解析内容');
     try {
       return JSON.parse(stripCodeFence(content));
@@ -60,10 +72,11 @@ export class ModelGatewayService {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
+        Accept: this.wireApi === 'responses' ? 'text/event-stream' : 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
   }
 
@@ -110,6 +123,8 @@ function buildResponsesBody(
     input,
     reasoning: { effort: reasoningEffort },
     text: { format: { type: 'json_object' } },
+    stream: true,
+    store: false,
   };
 }
 
@@ -137,6 +152,58 @@ function extractContent(payload: ModelResponse): string | undefined {
   if (outputText) return outputText;
 
   return payload.choices?.[0]?.message?.content;
+}
+
+function parseModelResponse(value: string): ModelResponse {
+  try {
+    return JSON.parse(value) as ModelResponse;
+  } catch {
+    return {};
+  }
+}
+
+function parseResponsesEventStream(value: string): {
+  content?: string;
+  errorMessage?: string;
+  payload?: ModelResponse;
+} {
+  let content = '';
+  let payload: ModelResponse | undefined;
+  let errorMessage: string | undefined;
+
+  for (const block of value.split(/\r?\n\r?\n/)) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n');
+    if (!data || data === '[DONE]') continue;
+
+    try {
+      const event = JSON.parse(data) as {
+        type?: string;
+        delta?: string;
+        response?: ModelResponse;
+        error?: { message?: string };
+        message?: string;
+      };
+      if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') {
+        content += event.delta;
+      }
+      if (event.response) payload = event.response;
+      if (event.type === 'error') {
+        errorMessage = event.error?.message || event.message || '大模型流式响应失败';
+      }
+    } catch {
+      // Ignore non-JSON heartbeat events.
+    }
+  }
+
+  return {
+    content: content || (payload ? extractContent(payload) : undefined),
+    errorMessage,
+    payload,
+  };
 }
 
 function modelNetworkError(error: unknown): ServiceUnavailableException {

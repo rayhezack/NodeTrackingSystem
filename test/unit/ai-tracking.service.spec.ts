@@ -314,6 +314,43 @@ describe('AI 埋点草稿', () => {
     expect(tracking.createParam).not.toHaveBeenCalled();
   });
 
+  it('生成超过网关安全时间时应转为后台任务，并复用同一生成中的草稿', async () => {
+    jest.useFakeTimers();
+    try {
+      const { service, model } = createFixture();
+      let resolveModel: ((value: unknown) => void) | undefined;
+      model.generateJson.mockReturnValue(new Promise((resolve) => {
+        resolveModel = resolve;
+      }));
+
+      const pending = service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+      await jest.advanceTimersByTimeAsync(8_000);
+      const first = await pending;
+
+      expect(first.draft.status).toBe('generating');
+      const duplicate = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+      expect(duplicate.draft.id).toBe(first.draft.id);
+      expect(model.generateJson).toHaveBeenCalledTimes(1);
+
+      resolveModel?.({
+        events: [{
+          evtId: 'home_agent_task_submit',
+          eventName: '首页 Agent 任务发起',
+          eventDefinition: '用户发起任务',
+          triggerTiming: '提交成功时',
+          params: [],
+        }],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const completed = await service.getDraft('app:rec_1', first.draft.id, 'actor_1');
+      expect(completed.draft?.status).toBe('draft');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('同一分析师关闭弹窗或返回页面后仍应能读取最近草稿', async () => {
     const { service } = createFixture();
     const generated = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });

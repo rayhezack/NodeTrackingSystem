@@ -69,11 +69,35 @@ const AiTrackingDraftPanel = ({
   const contextFileInputRef = useRef<HTMLInputElement>(null);
   const pendingGenerateAfterAuthRef = useRef(false);
   const authWindowRef = useRef<Window | null>(null);
+  const generationPollRef = useRef(0);
 
   const setActiveDraft = useCallback((nextDraft: AiTrackingDraft | null) => {
     setDraft(nextDraft);
     setSelectedIds(new Set(nextDraft?.events.map((event) => event.clientId) || []));
   }, []);
+
+  const pollDraftGeneration = useCallback(async (draftId: string) => {
+    const pollId = generationPollRef.current + 1;
+    generationPollRef.current = pollId;
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      if (generationPollRef.current !== pollId) return;
+      try {
+        const { draft: nextDraft } = await getAiTrackingDraft(detail.recordId, draftId, actorId, actorLarkId);
+        if (!nextDraft) return;
+        setActiveDraft(nextDraft);
+        if (nextDraft.status !== 'generating') {
+          if (nextDraft.status === 'failed') {
+            toast.error(nextDraft.failureMessage || 'AI 埋点草稿生成失败');
+          }
+          return;
+        }
+      } catch {
+        // A transient status-query failure should not cancel the background generation.
+      }
+    }
+    toast.warning('AI 草稿仍在后台生成，请稍后重新打开需求单查看');
+  }, [actorId, actorLarkId, detail.recordId, setActiveDraft]);
 
   const refreshConfig = useCallback(async () => {
     const nextConfig = await getAiTrackingConfig();
@@ -97,11 +121,19 @@ const AiTrackingDraftPanel = ({
     if (!canEdit) return () => { cancelled = true; };
     void getLatestAiTrackingDraft(detail.recordId, actorId, actorLarkId)
       .then(({ draft: latestDraft }) => {
-        if (!cancelled && latestDraft) setActiveDraft(latestDraft);
+        if (cancelled || !latestDraft) return;
+        setActiveDraft(latestDraft);
+        if (latestDraft.status === 'generating') {
+          void pollDraftGeneration(latestDraft.id);
+        }
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [actorId, actorLarkId, canEdit, detail.recordId, setActiveDraft]);
+  }, [actorId, actorLarkId, canEdit, detail.recordId, pollDraftGeneration, setActiveDraft]);
+
+  useEffect(() => () => {
+    generationPollRef.current += 1;
+  }, []);
 
   const performGenerate = useCallback(async () => {
     setLoading(true);
@@ -113,12 +145,15 @@ const AiTrackingDraftPanel = ({
       });
       setActiveDraft(result.draft);
       setDraftDialogOpen(true);
+      if (result.draft.status === 'generating') {
+        void pollDraftGeneration(result.draft.id);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI 埋点草稿生成失败');
     } finally {
       setLoading(false);
     }
-  }, [actorId, actorLarkId, contextFiles, detail.recordId, setActiveDraft]);
+  }, [actorId, actorLarkId, contextFiles, detail.recordId, pollDraftGeneration, setActiveDraft]);
 
   useEffect(() => {
     if (!authUrl || auth?.authorized || !authDialogOpen) return;
@@ -189,6 +224,10 @@ const AiTrackingDraftPanel = ({
   };
 
   const handleGenerate = async () => {
+    if (draft?.status === 'generating') {
+      toast.info('当前草稿仍在生成，请稍候');
+      return;
+    }
     const requirementLink = String(detail.requirementFields['需求链接'] || '').trim();
     const blockedReason = getAiDraftGenerationBlockReason(requirementLink);
     if (blockedReason) {
@@ -294,11 +333,11 @@ const AiTrackingDraftPanel = ({
               type="button"
               size="sm"
               className="h-8 rounded-sm"
-              disabled={!canEdit || !ready || loading}
+              disabled={!canEdit || !ready || loading || draft?.status === 'generating'}
               onClick={() => void handleGenerate()}
             >
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {loading ? '生成中...' : draft ? '生成新版' : auth?.authorized ? '生成初稿' : '授权并生成初稿'}
+              {loading || draft?.status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {loading || draft?.status === 'generating' ? '生成中...' : draft ? '生成新版' : auth?.authorized ? '生成初稿' : '授权并生成初稿'}
             </Button>
           </div>
         </div>
@@ -390,7 +429,20 @@ const AiTrackingDraftPanel = ({
 
               <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
                 <div className="space-y-4">
-                  {draft.events.map((event, index) => {
+                  {draft.status === 'generating' && (
+                    <div className="flex min-h-48 flex-col items-center justify-center gap-3 border border-border bg-muted/20 text-sm text-muted-foreground">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <span>{draft.summary || '正在生成埋点初稿，请稍候'}</span>
+                      <span className="text-xs">生成完成后本页面会自动刷新</span>
+                    </div>
+                  )}
+                  {draft.status === 'failed' && (
+                    <div className="border border-destructive/30 bg-destructive/5 px-4 py-4 text-sm text-destructive">
+                      <div className="font-medium">AI 埋点初稿生成失败</div>
+                      <div className="mt-2 whitespace-pre-wrap text-xs">{draft.failureMessage || '请稍后重新生成'}</div>
+                    </div>
+                  )}
+                  {draft.status === 'draft' && draft.events.map((event, index) => {
                     const diff = draft.diffs.find((item) => item.eventClientId === event.clientId);
                     return (
                       <section key={event.clientId} className="border border-border bg-card">
@@ -470,10 +522,10 @@ const AiTrackingDraftPanel = ({
                   <FileCheck2 className="h-4 w-4" />
                   已选择 {selectedIds.size} / {draft.events.length}
                 </div>
-                <Button type="button" variant="outline" className="rounded-sm" disabled={loading || applying} onClick={() => void handleGenerate()}>
+                <Button type="button" variant="outline" className="rounded-sm" disabled={loading || applying || draft.status === 'generating'} onClick={() => void handleGenerate()}>
                   <RefreshCw className="h-4 w-4" />生成新版
                 </Button>
-                <Button type="button" className="rounded-sm" disabled={!selectedIds.size || applying} onClick={() => void handleApply()}>
+                <Button type="button" className="rounded-sm" disabled={draft.status !== 'draft' || !selectedIds.size || applying} onClick={() => void handleApply()}>
                   {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   {applying ? '录入中...' : '确认并录入需求单'}
                 </Button>

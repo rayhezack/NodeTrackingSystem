@@ -542,7 +542,7 @@ export interface AiTrackingDraft {
   recordId: string;
   requestId?: string;
   version: number;
-  status: 'draft' | 'applying' | 'applied' | 'failed';
+  status: 'generating' | 'draft' | 'applying' | 'applied' | 'failed';
   createdAt: number;
   provider: string;
   model: string;
