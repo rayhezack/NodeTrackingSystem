@@ -4,13 +4,13 @@ import {
   Check,
   FileCheck2,
   FileSearch,
+  ExternalLink,
   Loader2,
+  Paperclip,
   RefreshCw,
-  ShieldCheck,
   Sparkles,
   TriangleAlert,
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
@@ -26,14 +26,15 @@ import {
 import {
   applyAiTrackingDraft,
   generateAiTrackingDraft,
-  getAiTrackingDraft,
   getAiFeishuAuthStatus,
+  getAiTrackingDraft,
   getLatestAiTrackingDraft,
   getAiTrackingConfig,
   startAiFeishuAuth,
 } from '@client/src/api/tracking';
 import type {
   AiFeishuAuthStatus,
+  AiTrackingContextFile,
   AiTrackingConfigStatus,
   AiTrackingDraft,
   TrackingDetail,
@@ -64,8 +65,10 @@ const AiTrackingDraftPanel = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [contextFiles, setContextFiles] = useState<AiTrackingContextFile[]>([]);
+  const contextFileInputRef = useRef<HTMLInputElement>(null);
   const pendingGenerateAfterAuthRef = useRef(false);
-  const authSuccessClosingRef = useRef(false);
+  const authWindowRef = useRef<Window | null>(null);
 
   const setActiveDraft = useCallback((nextDraft: AiTrackingDraft | null) => {
     setDraft(nextDraft);
@@ -103,7 +106,11 @@ const AiTrackingDraftPanel = ({
   const performGenerate = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await generateAiTrackingDraft(detail.recordId, { actorId, actorLarkId });
+      const result = await generateAiTrackingDraft(detail.recordId, {
+        actorId,
+        actorLarkId,
+        contextFiles,
+      });
       setActiveDraft(result.draft);
       setDraftDialogOpen(true);
     } catch (error) {
@@ -111,59 +118,75 @@ const AiTrackingDraftPanel = ({
     } finally {
       setLoading(false);
     }
-  }, [actorId, actorLarkId, detail.recordId, setActiveDraft]);
+  }, [actorId, actorLarkId, contextFiles, detail.recordId, setActiveDraft]);
 
   useEffect(() => {
     if (!authUrl || auth?.authorized || !authDialogOpen) return;
     const interval = window.setInterval(() => {
       void refreshAuthStatus().then((status) => {
-        if (status.authorized) {
-          authSuccessClosingRef.current = true;
-          setAuthDialogOpen(false);
-          setAuthUrl('');
-          window.setTimeout(() => {
-            authSuccessClosingRef.current = false;
-          }, 0);
-          toast.success('飞书文档已授权');
-          if (pendingGenerateAfterAuthRef.current) {
-            pendingGenerateAfterAuthRef.current = false;
-            void performGenerate();
-          }
+        if (!status.authorized) return;
+        authWindowRef.current?.close();
+        authWindowRef.current = null;
+        setAuthDialogOpen(false);
+        setAuthUrl('');
+        toast.success('飞书文档已授权，正在生成埋点初稿');
+        if (pendingGenerateAfterAuthRef.current) {
+          pendingGenerateAfterAuthRef.current = false;
+          void performGenerate();
         }
       }).catch(() => undefined);
     }, 2_000);
     return () => window.clearInterval(interval);
   }, [authUrl, auth?.authorized, authDialogOpen, performGenerate, refreshAuthStatus]);
 
-  const handleAuthorize = async () => {
+  useEffect(() => () => authWindowRef.current?.close(), []);
+
+  const handleAuthorizeAndGenerate = async () => {
     try {
-      const result = await startAiFeishuAuth({
-        recordId: detail.recordId,
-        actorId,
-        actorLarkId,
-      });
+      const popup = window.open('', 'feishu-ai-auth', 'width=520,height=720,resizable=yes,scrollbars=yes');
+      const result = await startAiFeishuAuth({ recordId: detail.recordId, actorId, actorLarkId });
       setAuthUrl(result.authorizationUrl);
       setAuthDialogOpen(true);
-      return true;
+      pendingGenerateAfterAuthRef.current = true;
+      if (popup) {
+        authWindowRef.current = popup;
+        popup.location.href = result.authorizationUrl;
+        popup.focus();
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '无法发起飞书授权');
-      return false;
     }
   };
 
   const handleAuthDialogOpenChange = useCallback((open: boolean) => {
     setAuthDialogOpen(open);
     if (!open) {
+      authWindowRef.current?.close();
+      authWindowRef.current = null;
       setAuthUrl('');
-      if (authSuccessClosingRef.current) {
-        authSuccessClosingRef.current = false;
-        return;
-      }
-      if (!auth?.authorized) {
-        pendingGenerateAfterAuthRef.current = false;
-      }
+      pendingGenerateAfterAuthRef.current = false;
     }
-  }, [auth?.authorized]);
+  }, []);
+
+  const handleContextFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const accepted = Array.from(files).slice(0, 5 - contextFiles.length);
+    const nextFiles: AiTrackingContextFile[] = [];
+    for (const file of accepted) {
+      if (!/\.(txt|md|markdown|json|csv)$/i.test(file.name)) {
+        toast.error(`${file.name} 暂不支持，补充上下文请上传 txt、md、json 或 csv 文件`);
+        continue;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error(`${file.name} 超过 2MB，无法作为补充上下文`);
+        continue;
+      }
+      const content = (await file.text()).trim();
+      if (!content) continue;
+      nextFiles.push({ name: file.name, content: content.slice(0, 20_000) });
+    }
+    setContextFiles((previous) => [...previous, ...nextFiles].slice(0, 5));
+  };
 
   const handleGenerate = async () => {
     const requirementLink = String(detail.requirementFields['需求链接'] || '').trim();
@@ -174,9 +197,7 @@ const AiTrackingDraftPanel = ({
     }
     const currentAuth = auth?.authorized ? auth : await refreshAuthStatus().catch(() => auth);
     if (!currentAuth?.authorized) {
-      pendingGenerateAfterAuthRef.current = true;
-      const started = await handleAuthorize();
-      if (!started) pendingGenerateAfterAuthRef.current = false;
+      await handleAuthorizeAndGenerate();
       return;
     }
     await performGenerate();
@@ -247,7 +268,7 @@ const AiTrackingDraftPanel = ({
                 )}
                 {auth?.authorized && (
                   <Badge variant="outline" className="h-5 rounded-sm border-emerald-200 px-1.5 text-[10px] font-normal text-emerald-700">
-                    <ShieldCheck className="mr-1 h-3 w-3" />已授权
+                    已授权
                   </Badge>
                 )}
               </div>
@@ -277,9 +298,44 @@ const AiTrackingDraftPanel = ({
               onClick={() => void handleGenerate()}
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {loading ? '生成中...' : draft ? '生成新版' : '生成初稿'}
+              {loading ? '生成中...' : draft ? '生成新版' : auth?.authorized ? '生成初稿' : '授权并生成初稿'}
             </Button>
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            ref={contextFileInputRef}
+            type="file"
+            accept=".txt,.md,.markdown,.json,.csv,text/plain,text/markdown,application/json,text/csv"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void handleContextFiles(event.target.files);
+              event.target.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-sm"
+            disabled={!canEdit || loading || contextFiles.length >= 5}
+            onClick={() => contextFileInputRef.current?.click()}
+          >
+            <Paperclip className="h-3.5 w-3.5" />补充上下文文件
+          </Button>
+          <span className="text-xs text-muted-foreground">支持 txt、md、json、csv，最多 5 个文件</span>
+          {contextFiles.map((file) => (
+            <button
+              key={file.name}
+              type="button"
+              className="max-w-48 truncate rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+              title="移除补充上下文"
+              onClick={() => setContextFiles((previous) => previous.filter((item) => item !== file))}
+            >
+              {file.name} ×
+            </button>
+          ))}
         </div>
         {config && !ready && (
           <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
@@ -298,19 +354,24 @@ const AiTrackingDraftPanel = ({
         <DialogContent className="max-w-md rounded-sm">
           <DialogHeader>
             <DialogTitle className="text-base">飞书文档授权</DialogTitle>
-            <DialogDescription>请使用飞书扫码授权，仅用于读取当前账号可访问的 PRD 正文。授权完成后会自动继续生成。</DialogDescription>
+            <DialogDescription>
+              首次使用需要授权当前飞书账号读取需求单 PRD。点击下方按钮后会打开飞书授权页，授权成功后自动继续生成；授权失败或文档无权限时不会调用 AI。
+            </DialogDescription>
           </DialogHeader>
-          {authUrl && (
-            <div className="flex flex-col items-center gap-3 py-3">
-              <div className="border border-border bg-white p-3">
-                <QRCodeSVG value={authUrl} size={176} title="飞书文档授权二维码" />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                等待扫码授权
-              </div>
+          <div className="flex flex-col gap-3 py-3">
+            {authUrl && (
+              <Button
+                type="button"
+                className="w-full rounded-sm"
+                onClick={() => window.open(authUrl, '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink className="h-4 w-4" />前往飞书授权
+              </Button>
+            )}
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />等待授权完成
             </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 

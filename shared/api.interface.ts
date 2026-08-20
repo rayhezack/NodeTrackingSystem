@@ -480,6 +480,13 @@ export interface StartAiFeishuAuthResponse {
 export interface GenerateAiTrackingDraftRequest {
   actorId?: string;
   actorLarkId?: string;
+  contextFiles?: AiTrackingContextFile[];
+}
+
+/** 生成初稿时由分析师补充的文本上下文文件。文件内容只用于本次生成，不写入 Base。 */
+export interface AiTrackingContextFile {
+  name: string;
+  content: string;
 }
 
 export interface AiTrackingDraftParam {

@@ -71,7 +71,9 @@ describe('AI 埋点草稿', () => {
     };
     const oauth = {
       configured: true,
+      documentAccessConfigured: true,
       getAccessToken: jest.fn().mockResolvedValue('user-token'),
+      getDocumentAccessToken: jest.fn().mockResolvedValue('user-token'),
     };
     const documents = {
       fetchPrd: jest.fn().mockResolvedValue({
@@ -346,6 +348,24 @@ describe('AI 埋点草稿', () => {
     expect(promptShape).not.toContain('"metricScenario"');
     expect(promptShape).not.toContain('"evidence"');
     expect(promptShape).not.toContain('"uncertainties"');
+  });
+
+  it('补充上下文文件只进入本次提示词，并限制文件数量和内容长度', async () => {
+    const { service, model } = createFixture();
+    await service.generateDraft('app:rec_1', {
+      actorId: 'actor_1',
+      contextFiles: [
+        { name: 'context.md', content: '补充业务上下文' },
+        ...Array.from({ length: 6 }, (_, index) => ({ name: `extra-${index}.txt`, content: 'x' })),
+      ],
+    });
+
+    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    const userPrompt = messages.find((message) => message.role === 'user')?.content || '';
+    expect(userPrompt).toContain('context.md');
+    expect(userPrompt).toContain('补充业务上下文');
+    expect(userPrompt).toContain('extra-3.txt');
+    expect(userPrompt).not.toContain('extra-4.txt');
   });
 
   it('空白占位事件只在人工应用后写入，重复应用不应重复写入', async () => {

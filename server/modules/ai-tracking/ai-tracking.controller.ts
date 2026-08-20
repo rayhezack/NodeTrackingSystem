@@ -37,8 +37,7 @@ export class AiTrackingController {
     if (!actor) throw new UnauthorizedException('无法识别当前妙搭用户，不能发起飞书文档授权');
     return this.aiTracking.startAuth({
       recordId: body.recordId,
-      actorId: request.userContext?.userId || body.actorId || actor,
-      actorLarkId: body.actorLarkId,
+      actorId: actor,
     });
   }
 
@@ -140,9 +139,11 @@ export class AiTrackingController {
     fallbackActorId?: string,
     fallbackActorLarkId?: string,
   ): string | undefined {
-    return fallbackActorLarkId ||
-      request.userContext?.userId ||
+    // 妙搭服务端注入的 userId 是可信主体。不能让浏览器传入的 larkId
+    // 覆盖它，否则授权存储和后续生成会落到两个不同的用户 Key。
+    return request.userContext?.userId ||
       fallbackActorId ||
+      fallbackActorLarkId ||
       this.oauth.getSessionActor(request.headers.cookie);
   }
 }

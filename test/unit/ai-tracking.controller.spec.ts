@@ -47,7 +47,7 @@ describe('AI 埋点控制器身份解析', () => {
       actorLarkId?: string,
     ) => Promise<unknown>)(request, 'client_actor', 'ou_client');
 
-    expect(aiTracking.getAuthStatus).toHaveBeenCalledWith('ou_client');
+    expect(aiTracking.getAuthStatus).toHaveBeenCalledWith('platform_user_1');
   });
 
   it('即使存在旧的授权 Cookie，也不应覆盖当前请求中的妙搭用户', async () => {
@@ -87,7 +87,6 @@ describe('AI 埋点控制器身份解析', () => {
     expect(aiTracking.startAuth).toHaveBeenCalledWith({
       recordId: 'web:rec_1',
       actorId: 'platform_user_1',
-      actorLarkId: 'ou_client',
     });
   });
 
@@ -100,7 +99,7 @@ describe('AI 埋点控制器身份解析', () => {
     expect(aiTracking.generateDraft).toHaveBeenCalledWith(
       'web:rec_1',
       body,
-      'ou_client',
+      'platform_user_1',
     );
   });
 
@@ -122,7 +121,7 @@ describe('AI 埋点控制器身份解析', () => {
       'web:rec_1',
       'client_actor',
       'ou_client',
-      'ou_client',
+      'platform_user_1',
     );
   });
 
@@ -153,7 +152,7 @@ describe('AI 埋点控制器身份解析', () => {
       'draft_1',
       'client_actor',
       'ou_client',
-      'ou_client',
+      'platform_user_1',
     );
   });
 });

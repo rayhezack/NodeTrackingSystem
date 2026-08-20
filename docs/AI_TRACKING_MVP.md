@@ -10,8 +10,8 @@
 | `AI_BASE_URL` | `https://api.openai.com/v1` | 如公司有兼容网关，可在妙搭中覆盖 |
 | `AI_MODEL` | `gpt-5.6-terra` | 埋点初稿默认模型 |
 | `AI_REASONING_EFFORT` | `high` | 埋点初稿使用高推理强度 |
-| `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | 必须与飞书开放平台安全设置完全一致 |
-| `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 用户文档授权范围；服务端会强制补齐这组最小权限，避免环境配置漂移 |
+| `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | OAuth 授权回调，必须与飞书开放平台安全设置完全一致 |
+| `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 当前用户的文档读取授权范围 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
 
 现有 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 继续复用，不要重复创建应用。
@@ -23,18 +23,19 @@ GPT Terra 默认走 OpenAI 兼容接口，`AI_BASE_URL` 只在公司有代理网
 1. 在当前自建应用的「安全设置」添加与 `FEISHU_OAUTH_REDIRECT_URI` 完全一致的重定向 URL。
 2. 在权限管理中申请并发布 `docx:document:readonly`、`wiki:node:read`、`auth:user.id:read` 和 `offline_access`。服务端调用的是 `docx/v1`，旧的 `docs:document.content:read` 不能替代新版文档只读权限。
 3. 发布新的飞书应用版本，并确保数据分析师在应用可用范围内。
-4. 回到妙搭重启服务，再在需求详情的埋点设计阶段授权。
+4. 回到妙搭重启服务。分析师点击“授权并生成初稿”后，会在浏览器打开飞书授权页；授权成功后自动继续生成。
 
-权限新增或变化后，历史 `user_access_token` 不会自动获得新权限。系统会将缺少必需 scope 的旧 Token 标记为“需要重新授权”，分析师必须重新完成一次授权。
+权限新增或变化后，历史 `user_access_token` 不会自动获得新权限，系统会提示重新授权。
 
-正常情况下，每位分析师只需授权一次：回调会话封装在经过 AES-GCM 认证加密的 OAuth `state` 中，不依赖单个服务实例的内存；授权成功后，Token 加密写入 App Base，服务重启或回调切换实例不会丢失授权。只有权限范围变化、Refresh Token 失效/被撤销，或更换 `FEISHU_TOKEN_ENCRYPTION_KEY` 时需重新授权。
+正常情况下，每位分析师只需授权一次：授权状态按妙搭可信用户身份持久化，服务重启后仍可恢复。只有权限范围变化、Refresh Token 失效/被撤销，或更换 `FEISHU_TOKEN_ENCRYPTION_KEY` 时需重新授权。
 
 ## MVP 安全边界
 
 - 模型 Key 只在服务端读取，前端接口只返回“是否已配置”。
-- PRD 使用分析师自己的 `user_access_token` 读取，权限范围与该用户在飞书中的文档权限一致。
+- PRD 使用当前分析师自己的 `user_access_token` 读取，权限与该用户在飞书中的文档权限一致。
 - AI 只生成服务端草稿；分析师确认后才通过现有 TrackingService 写入 Base。
-- PRD 链接在新建需求、详情修改、推进到埋点设计和 AI 生成四个入口强制校验；仅支持飞书 `wiki/docx`。
+- PRD 链接在新建需求、详情修改、推进到埋点设计和 AI 生成四个入口强制校验；仅支持飞书 `wiki/docx`。生成前会直接检查读取权限，失败时提示补充文档权限。
+- AI 生成面板支持补充 `txt/md/json/csv` 文本文件作为本次上下文，不写入 Base。
 - 草稿应用幂等；已应用草稿再次提交不会重复写入。
 - 重新生成创建新版本，不覆盖旧草稿。
 - App 与 Web 使用各自分库、端别和处理方枚举，模型提示词不得跨端混用。
