@@ -450,7 +450,7 @@ export type AiDraftParamSource = 'ai' | 'official' | 'official_modified';
 export interface AiTrackingConfigStatus {
   configured: boolean;
   missingKeys: string[];
-  provider: 'kimi' | 'openai';
+  provider: 'openai';
   model: string;
   reasoningEffort: string;
   feishuOAuthConfigured: boolean;

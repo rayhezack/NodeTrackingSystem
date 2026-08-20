@@ -6,28 +6,17 @@
 
 | key | 测试值 | 说明 |
 |---|---|---|
-| `AI_PROVIDER` | `kimi` | 当前模型供应商 |
-| `KIMI_API_KEY` | 轮换后的 Kimi Key | 仅存 Secret；不要提交到 Git |
-| `AI_BASE_URL` | `https://api.moonshot.cn/v1` | 国内 Kimi 控制台使用该地址 |
-| `AI_MODEL` | `kimi-k3` | 已通过当前 Kimi Key 的模型列表与请求接口验证 |
-| `AI_REASONING_EFFORT` | `medium` | 埋点初稿使用中等推理强度；兼顾设计质量和生成耗时 |
+| `OPENAI_API_KEY` | 公司 Secret | 仅存 Secret；不要提交到 Git |
+| `AI_BASE_URL` | `https://api.openai.com/v1` | 如公司有兼容网关，可在妙搭中覆盖 |
+| `AI_MODEL` | `gpt-5.6-terra` | 埋点初稿默认模型 |
+| `AI_REASONING_EFFORT` | `high` | 埋点初稿使用高推理强度 |
 | `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | 必须与飞书开放平台安全设置完全一致 |
 | `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 用户文档授权范围；服务端会强制补齐这组最小权限，避免环境配置漂移 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
 
 现有 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 继续复用，不要重复创建应用。
 
-Kimi 3 请求固定使用 `temperature=0.6` 并关闭深度思考，减少同步生成超过妙搭网关时限的风险。修改妙搭静态配置后必须重启服务才能生效。
-
-切换公司 OpenAI 配置时：
-
-| key | 正式值 |
-|---|---|
-| `AI_PROVIDER` | `openai` |
-| `OPENAI_API_KEY` | 公司 Secret |
-| `AI_BASE_URL` | `https://api.openai.com/v1` |
-| `AI_MODEL` | `gpt-5.6-terra` |
-| `AI_REASONING_EFFORT` | `medium` |
+GPT Terra 默认走 OpenAI 兼容接口，`AI_BASE_URL` 只在公司有代理网关时需要覆盖。修改妙搭静态配置后必须重启服务才能生效。
 
 ## 飞书应用配置
 
