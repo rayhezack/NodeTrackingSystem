@@ -6,7 +6,7 @@ describe('ModelGatewayService', () => {
 
   beforeEach(() => {
     process.env.AI_MODEL = 'gpt-5.5';
-    process.env.AI_REASONING_EFFORT = 'xhigh';
+    delete process.env.AI_REASONING_EFFORT;
     delete process.env.AI_WIRE_API;
     process.env.OPENAI_API_KEY = 'test-api-key';
   });
@@ -17,7 +17,7 @@ describe('ModelGatewayService', () => {
     jest.restoreAllMocks();
   });
 
-  it('GPT 5.5 埋点设计请求应使用 Responses API 和高推理强度', async () => {
+  it('GPT 5.5 埋点设计请求应使用高推理、低 verbosity 和输出预算', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -39,9 +39,10 @@ describe('ModelGatewayService', () => {
     const body = JSON.parse(String(request.body)) as Record<string, unknown>;
     expect(body).toMatchObject({
       model: 'gpt-5.5',
-      reasoning: { effort: 'xhigh' },
-      text: { format: { type: 'json_object' } },
+      reasoning: { effort: 'high' },
+      text: { format: { type: 'json_object' }, verbosity: 'low' },
       instructions: '你是埋点设计助手',
+      max_output_tokens: 12_000,
       stream: true,
       store: false,
     });
@@ -76,5 +77,16 @@ describe('ModelGatewayService', () => {
 
     await expect(service.generateJson([{ role: 'user', content: '生成 JSON' }]))
       .rejects.toThrow('大模型服务连接超时');
+  });
+
+  it('中转站提前关闭连接时应返回明确的连接中断提示', async () => {
+    const networkError = Object.assign(new TypeError('fetch failed'), {
+      cause: { code: 'UND_ERR_SOCKET' },
+    });
+    global.fetch = jest.fn().mockRejectedValue(networkError) as typeof fetch;
+    const service = new ModelGatewayService();
+
+    await expect(service.generateJson([{ role: 'user', content: '生成 JSON' }]))
+      .rejects.toThrow('AI 中转站连接中断');
   });
 });

@@ -201,14 +201,15 @@ describe('AI 埋点草稿', () => {
     await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
 
     expect(documents.fetchPrd).toHaveBeenCalledWith(prdUrl, 'user-token');
-    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 });
-    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'app', pageSize: 500 });
-    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([webOfficialEvent, appOfficialEvent]);
+    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 }, { cacheTtlMs: 300_000 });
+    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'app', pageSize: 500 }, { cacheTtlMs: 300_000 });
+    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([webOfficialEvent, appOfficialEvent], { cacheTtlMs: 300_000 });
     const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
     const prompt = messages.find((message) => message.role === 'user')?.content || '';
     expect(prompt).toContain('正式埋点查询 + 正式参数查询参考');
     expect(prompt).toContain('"paramName": "entry_source"');
     expect(prompt).toContain('"paramName": "agent_entry_type"');
+    expect(prompt).not.toContain('"paramLink"');
   });
 
   it('Web 需求应使用 Web 端提示词并生成 Web 字段枚举', async () => {
@@ -403,6 +404,22 @@ describe('AI 埋点草稿', () => {
     expect(userPrompt).toContain('补充业务上下文');
     expect(userPrompt).toContain('extra-3.txt');
     expect(userPrompt).not.toContain('extra-4.txt');
+  });
+
+  it('补充上下文文件应受总字符预算限制', async () => {
+    const { service, model } = createFixture();
+    await service.generateDraft('app:rec_1', {
+      actorId: 'actor_1',
+      contextFiles: Array.from({ length: 5 }, (_, index) => ({
+        name: `context-${index}.txt`,
+        content: String(index).repeat(20_000),
+      })),
+    });
+
+    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    const userPrompt = messages.find((message) => message.role === 'user')?.content || '';
+    const contextSection = userPrompt.split('补充上下文文件')[1] || '';
+    expect(contextSection.length).toBeLessThan(26_000);
   });
 
   it('空白占位事件只在人工应用后写入，重复应用不应重复写入', async () => {

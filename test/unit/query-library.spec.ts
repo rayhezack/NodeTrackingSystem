@@ -2,6 +2,21 @@ import { BitableService } from '../../server/modules/bitable/bitable.service';
 import { QueryLibraryService } from '../../server/modules/query-library/query-library.service';
 
 describe('正式查询库参数读取', () => {
+  it('AI 上下文在 TTL 内不应重复整表扫描正式库', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [{ id: 'rec_event_1', record: { evt_id: 'event_one', 事件中文名: '事件一' } }],
+        hasMore: false,
+      }),
+    };
+    const service = new QueryLibraryService(bitable as unknown as BitableService);
+
+    await service.getEvents({ source: 'app', pageSize: 500 }, { cacheTtlMs: 300_000 });
+    await service.getEvents({ source: 'app', pageSize: 500 }, { cacheTtlMs: 300_000 });
+
+    expect(bitable.searchRecords).toHaveBeenCalledTimes(1);
+  });
+
   it('AI 候选上下文应一次扫描正式参数表并按事件归组', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({

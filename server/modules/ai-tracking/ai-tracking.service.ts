@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -61,9 +62,13 @@ const modelResponseSchema = z.object({
 });
 
 const GENERATION_HANDOFF_TIMEOUT_MS = 8_000;
+const AI_CONTEXT_CACHE_TTL_MS = 5 * 60_000;
+const MAX_CONTEXT_FILE_CHARS = 24_000;
+const MAX_HISTORY_EVENT_COUNT = 10;
 
 @Injectable()
 export class AiTrackingService {
+  private readonly logger = new Logger(AiTrackingService.name);
   private readonly drafts = new Map<string, AiTrackingDraft>();
   private readonly versions = new Map<string, number>();
   private readonly latestDraftIds = new Map<string, string>();
@@ -170,6 +175,7 @@ export class AiTrackingService {
     contextFiles: AiTrackingContextFile[],
   ): Promise<void> {
     try {
+      const generationStartedAt = Date.now();
       const prd = await this.documents.fetchPrd(requirementUrl, accessToken);
       draft.prd = {
         url: prd.url,
@@ -178,25 +184,53 @@ export class AiTrackingService {
         truncated: prd.truncated,
       };
       draft.summary = '正在读取正式埋点查询和正式参数查询';
+      this.logger.log(JSON.stringify({
+        message: 'AI tracking draft PRD loaded',
+        recordId: detail.recordId,
+        draftId: draft.id,
+        durationMs: Date.now() - generationStartedAt,
+        prdChars: prd.content.length,
+      }));
 
       const [currentParams, appLibrary, webLibrary] = await Promise.all([
         this.tracking.getParams(detail.recordId),
-        this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }),
-        this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }),
+        this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS }),
+        this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS }),
       ]);
       const candidates = selectOfficialAssetCandidates(detail, prd.content, {
         app: appLibrary.items,
         web: webLibrary.items,
       }, 16);
-      const historicalContexts = await this.queryLibrary.getEventContexts(candidates);
+      const historicalContexts = await this.queryLibrary.getEventContexts(candidates, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS });
+      this.logger.log(JSON.stringify({
+        message: 'AI tracking draft official context loaded',
+        recordId: detail.recordId,
+        draftId: draft.id,
+        durationMs: Date.now() - generationStartedAt,
+        appEventCount: appLibrary.items.length,
+        webEventCount: webLibrary.items.length,
+        candidateCount: candidates.length,
+        historyParamCount: historicalContexts.reduce((total, context) => total + context.params.length, 0),
+      }));
       draft.summary = '正在调用大模型生成埋点初稿';
+      const modelStartedAt = Date.now();
       const raw = await this.model.generateJson([
         { role: 'system', content: TRACKING_DESIGN_GUIDELINES },
         {
           role: 'user',
           content: buildPrompt(detail, currentParams.items, prd, historicalContexts, contextFiles),
         },
-      ]);
+      ], {
+        onProgress: (stage) => {
+          if (stage === 'connected') draft.summary = '大模型已连接，正在生成结构化埋点初稿';
+        },
+      });
+      this.logger.log(JSON.stringify({
+        message: 'AI tracking draft model stage completed',
+        recordId: detail.recordId,
+        draftId: draft.id,
+        durationMs: Date.now() - modelStartedAt,
+      }));
       const parsed = modelResponseSchema.safeParse(raw);
       if (!parsed.success) {
         throw new BadRequestException(`AI 草稿结构校验失败：${parsed.error.issues[0]?.message || '未知错误'}`);
@@ -218,6 +252,12 @@ export class AiTrackingService {
       draft.status = 'failed';
       draft.summary = 'AI 埋点初稿生成失败';
       draft.failureMessage = error instanceof Error ? error.message : 'AI 埋点初稿生成失败，请稍后重试';
+      this.logger.error(JSON.stringify({
+        message: 'AI tracking draft generation failed',
+        recordId: detail.recordId,
+        draftId: draft.id,
+        failureMessage: draft.failureMessage,
+      }));
       throw error;
     }
   }
@@ -407,7 +447,36 @@ function buildPrompt(
   const currentEvents = detail.relatedEvents.map((event) => ({
     evtId: event.evtId,
     eventName: event.eventName,
-    design: event.detail?.designFields,
+    platform: event.detail?.platform,
+    design: compactDesignFields(event.detail?.designFields),
+  }));
+  const compactParams = currentParams.map((param) => ({
+    paramName: param.paramName,
+    paramType: param.paramType,
+    requiredRule: param.requiredRule,
+    triggerCondition: param.triggerCondition,
+    enumRange: param.enumRange,
+    definition: param.definition,
+    defaultValue: param.defaultValue,
+    example: param.example,
+    platform: param.platform,
+  }));
+  const compactHistory = historicalContexts.slice(0, MAX_HISTORY_EVENT_COUNT).map((context) => ({
+    source: context.event.source,
+    evtId: context.event.evtId,
+    eventName: context.event.eventName,
+    platform: context.event.platform,
+    eventDefinition: context.event.eventDefinition,
+    triggerTiming: context.event.triggerTiming,
+    params: context.params.slice(0, 20).map((param) => ({
+      paramName: param.paramName,
+      paramType: param.paramType,
+      requiredRule: param.requiredRule,
+      enumRange: param.enumRange,
+      definition: param.definition,
+      example: param.example,
+      platform: param.platform,
+    })),
   }));
   return `
 请为下面这笔 ${sourceLabel} 埋点需求生成初稿。只输出 JSON，不要 Markdown。
@@ -422,11 +491,11 @@ ${JSON.stringify({
   metricScenario: detail.requirementFields['指标/使用场景'],
   platform: detail.platform,
   currentEvents,
-  currentParams,
+  currentParams: compactParams,
 }, null, 2)}
 
 正式埋点查询 + 正式参数查询参考（App/Web 两套表都会读取；用于判断是否复用已有事件和参数，并统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
-${JSON.stringify(historicalContexts, null, 2)}
+${JSON.stringify(compactHistory, null, 2)}
 
 PRD 标题：${prd.title}
 PRD 是否截断：${prd.truncated ? '是，必须标记信息风险' : '否'}
@@ -468,16 +537,23 @@ ${contextFiles.length ? JSON.stringify(contextFiles, null, 2) : '[]'}
 
 function normalizeContextFiles(files?: AiTrackingContextFile[]): AiTrackingContextFile[] {
   if (!Array.isArray(files)) return [];
-  return files
+  const normalized = files
     .filter((file): file is AiTrackingContextFile => Boolean(
       file && typeof file.name === 'string' && typeof file.content === 'string',
     ))
     .slice(0, 5)
     .map((file) => ({
       name: file.name.trim().slice(0, 160) || '未命名文件',
-      content: file.content.trim().slice(0, 20_000),
+      content: file.content.trim().slice(0, 8_000),
     }))
     .filter((file) => file.content.length > 0);
+  let remaining = MAX_CONTEXT_FILE_CHARS;
+  return normalized.flatMap((file) => {
+    if (remaining <= 0) return [];
+    const content = file.content.slice(0, remaining);
+    remaining -= content.length;
+    return [{ ...file, content }];
+  });
 }
 
 function selectOfficialCandidates(
@@ -509,8 +585,8 @@ function selectOfficialAssetCandidates(
   const primarySource = detail.source;
   const secondarySource = primarySource === 'web' ? 'app' : 'web';
   return uniqueOfficialCandidates([
-    ...selectOfficialCandidates(detail, prdContent, libraries[primarySource], 10),
-    ...selectOfficialCandidates(detail, prdContent, libraries[secondarySource], 8),
+    ...selectOfficialCandidates(detail, prdContent, libraries[primarySource], 6),
+    ...selectOfficialCandidates(detail, prdContent, libraries[secondarySource], 4),
   ]).slice(0, limit);
 }
 
@@ -521,6 +597,13 @@ function uniqueOfficialCandidates(items: OfficialEvent[]): OfficialEvent[] {
     if (!map.has(key)) map.set(key, item);
   }
   return Array.from(map.values());
+}
+
+function compactDesignFields(fields?: Record<string, unknown>): Record<string, string> {
+  const names = ['事件定义', '触发时机', '处理方', '公共属性要求', '版本', '最低版本', '变更类型'];
+  return Object.fromEntries(names
+    .map((name) => [name, textValue(fields?.[name])])
+    .filter(([, value]) => Boolean(value)));
 }
 
 function textTokens(value: string): string[] {

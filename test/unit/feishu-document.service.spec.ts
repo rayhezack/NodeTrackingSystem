@@ -102,4 +102,30 @@ describe('FeishuDocumentService', () => {
       'user-access-token',
     )).rejects.toThrow('飞书文档服务暂时不可用，请稍后重试');
   });
+
+  it('超长 PRD 应保留首尾并限制模型输入长度', async () => {
+    const content = `HEAD-${'a'.repeat(45_000)}-TAIL`;
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ code: 0, data: { document: { title: '长 PRD', revision_id: 1 } } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ code: 0, data: { content } }),
+      }) as typeof fetch;
+
+    const result = await new FeishuDocumentService().fetchPrd(
+      'https://example.feishu.cn/docx/doc_token',
+      'user-access-token',
+    );
+
+    expect(result.truncated).toBe(true);
+    expect(result.content.length).toBeLessThanOrEqual(36_100);
+    expect(result.content).toContain('HEAD-');
+    expect(result.content).toContain('-TAIL');
+    expect(result.content).toContain('中间内容已截断');
+  });
 });

@@ -42,12 +42,12 @@ export class FeishuDocumentService {
     );
     const content = String(raw.content || '').trim();
     if (!content) throw new BadRequestException('PRD 正文为空，无法生成埋点草稿');
-    const maxChars = 60_000;
+    const maxChars = 36_000;
     return {
       url,
       title: document.document?.title || title || '未命名 PRD',
       revision: document.document?.revision_id != null ? String(document.document.revision_id) : undefined,
-      content: content.slice(0, maxChars),
+      content: limitDocumentContent(content, maxChars),
       truncated: content.length > maxChars,
     };
   }
@@ -87,6 +87,13 @@ export class FeishuDocumentService {
     }
     return payload.data;
   }
+}
+
+function limitDocumentContent(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  const headChars = Math.floor(maxChars * 0.72);
+  const tailChars = maxChars - headChars;
+  return `${content.slice(0, headChars)}\n\n[中间内容已截断，前后文保留]\n\n${content.slice(-tailChars)}`;
 }
 
 function parseFeishuDocumentUrl(value: string): { type: 'wiki' | 'docx'; token: string } {

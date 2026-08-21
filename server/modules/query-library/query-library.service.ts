@@ -32,16 +32,27 @@ const WEB_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), '
 const APP_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
 const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 
+interface QueryCacheOptions {
+  cacheTtlMs?: number;
+}
+
+interface QueryCacheEntry {
+  expiresAt: number;
+  records: BitableRecord[];
+}
+
 @Injectable()
 export class QueryLibraryService {
+  private readonly searchCache = new Map<string, QueryCacheEntry>();
+
   constructor(private readonly bitable: BitableService) {}
 
-  async getEvents(params: GetOfficialEventsParams): Promise<GetOfficialEventsResponse> {
+  async getEvents(params: GetOfficialEventsParams, options: QueryCacheOptions = {}): Promise<GetOfficialEventsResponse> {
     const source = normalizeSource(params.source);
     const pageSize = Number(params.pageSize || 50);
     const offset = Number(params.pageToken || 0);
     const keyword = (params.keyword || '').trim().toLowerCase();
-    const records = await this.searchAllRecords(queryLibraryKey(source), officialFields(source));
+    const records = await this.searchAllRecords(queryLibraryKey(source), officialFields(source), options.cacheTtlMs);
     const filtered = records
       .map((record) => this.toOfficialEvent(record, source))
       .filter((event) => {
@@ -80,7 +91,7 @@ export class QueryLibraryService {
     return { items: params, total: params.length, baseLink };
   }
 
-  async getEventContexts(events: OfficialEvent[]): Promise<OfficialEventContext[]> {
+  async getEventContexts(events: OfficialEvent[], options: QueryCacheOptions = {}): Promise<OfficialEventContext[]> {
     if (!events.length) return [];
     const sources = Array.from(new Set(events.map((event) => event.source)));
     const recordsBySource = new Map<TrackingSource, BitableRecord[]>();
@@ -88,6 +99,7 @@ export class QueryLibraryService {
       const records = await this.searchAllRecords(
         officialParamDetailKey(source),
         officialParamFields(source),
+        options.cacheTtlMs,
       );
       recordsBySource.set(source, records);
     }));
@@ -137,7 +149,10 @@ export class QueryLibraryService {
     };
   }
 
-  private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[]): Promise<BitableRecord[]> {
+  private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[], cacheTtlMs = 0): Promise<BitableRecord[]> {
+    const cacheKey = `${instanceKey}:${fieldNames.join('|')}`;
+    const cached = this.searchCache.get(cacheKey);
+    if (cacheTtlMs > 0 && cached && cached.expiresAt > Date.now()) return cached.records;
     const records: BitableRecord[] = [];
     let pageToken: string | undefined;
 
@@ -151,6 +166,9 @@ export class QueryLibraryService {
       pageToken = result.hasMore ? result.pageToken : undefined;
     } while (pageToken);
 
+    if (cacheTtlMs > 0) {
+      this.searchCache.set(cacheKey, { expiresAt: Date.now() + cacheTtlMs, records });
+    }
     return records;
   }
 }

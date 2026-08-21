@@ -9,7 +9,7 @@
 | `OPENAI_API_KEY` | 公司 Secret | 仅存 Secret；不要提交到 Git |
 | `AI_BASE_URL` | `https://api.openai.com/v1` | 如公司有兼容网关，可在妙搭中覆盖 |
 | `AI_MODEL` | `gpt-5.6-terra` | 埋点初稿默认模型 |
-| `AI_REASONING_EFFORT` | `high` | 埋点初稿使用高推理强度 |
+| `AI_REASONING_EFFORT` | `high` | 埋点初稿使用高推理强度；不建议使用 `xhigh`，会显著增加等待时间 |
 | `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | OAuth 授权回调，必须与飞书开放平台安全设置完全一致 |
 | `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 当前用户的文档读取授权范围 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
