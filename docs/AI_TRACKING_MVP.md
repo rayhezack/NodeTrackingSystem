@@ -6,17 +6,16 @@
 
 | key | 测试值 | 说明 |
 |---|---|---|
-| `OPENAI_API_KEY` | 公司 Secret | 仅存 Secret；不要提交到 Git |
-| `AI_BASE_URL` | `https://api.openai.com/v1` | 如公司有兼容网关，可在妙搭中覆盖 |
-| `AI_MODEL` | `gpt-5.6-terra` | 埋点初稿默认模型 |
-| `AI_REASONING_EFFORT` | `high` | 埋点初稿使用高推理强度；不建议使用 `xhigh`，会显著增加等待时间 |
+| `KIMI_API_KEY` | 公司 Secret | 仅存 Secret；不要提交到 Git |
+| `AI_BASE_URL` | `https://api.moonshot.cn/v1` | 如公司有 Kimi 兼容网关，可在妙搭中覆盖 |
+| `AI_MODEL` | `kimi-k3` | 埋点初稿模型；必须使用 Kimi Chat Completions 协议 |
 | `FEISHU_OAUTH_REDIRECT_URI` | `https://bcn0tgplxp2e.feishuapp.com/app/app_17apvbcusvs/api/tracking/ai/feishu-auth/callback` | OAuth 授权回调，必须与飞书开放平台安全设置完全一致 |
 | `FEISHU_OAUTH_SCOPES` | `offline_access auth:user.id:read docx:document:readonly wiki:node:read` | 当前用户的文档读取授权范围 |
 | `FEISHU_TOKEN_ENCRYPTION_KEY` | 独立生成的 32 字节以上随机值 | 仅存 Secret；用于加密 Base 中的 OAuth Token |
 
 现有 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 继续复用，不要重复创建应用。
 
-GPT Terra 默认走 OpenAI 兼容接口，`AI_BASE_URL` 只在公司有代理网关时需要覆盖。修改妙搭静态配置后必须重启服务才能生效。
+Kimi K3 使用 `/chat/completions` 接口。K3 始终启用推理，不能传 K2 专用的 `thinking` 开关；本系统固定使用 `reasoning_effort=low` 控制响应时延，并限制最大输出长度。不要配置 `OPENAI_API_KEY`、`AI_WIRE_API` 或 `AI_REASONING_EFFORT`。修改妙搭静态配置后必须重启服务才能生效。
 
 ## 飞书应用配置
 

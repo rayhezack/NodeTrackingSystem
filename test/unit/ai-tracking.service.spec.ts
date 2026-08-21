@@ -87,9 +87,9 @@ describe('AI 埋点草稿', () => {
     const model = {
       status: {
         configured: true,
-        provider: 'openai',
-        model: 'gpt-5.6-terra',
-        reasoningEffort: 'high',
+        provider: 'kimi',
+        model: 'kimi-k3',
+        reasoningEffort: 'low',
       },
       generateJson: jest.fn().mockResolvedValue({
         summary: '生成一个任务发起事件',
