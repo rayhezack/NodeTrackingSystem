@@ -20,12 +20,16 @@ describe('ModelGatewayService', () => {
     jest.restoreAllMocks();
   });
 
-  it('应使用 Kimi K3 Chat Completions、低推理强度和 JSON Mode', async () => {
+  it('应使用 Kimi K3 Chat Completions、低推理强度、JSON Mode 和流式响应', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      text: async () => JSON.stringify({ choices: [{ message: { content: '{"events":[]}' } }] }),
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      text: async () => [
+        'data: {"choices":[{"delta":{"role":"assistant","content":"{\\"events\\":"}}]}',
+        'data: {"choices":[{"delta":{"content":"[]}"}}]}',
+        'data: [DONE]',
+      ].join('\n\n'),
     }) as typeof fetch;
     const service = new ModelGatewayService();
 
@@ -45,6 +49,7 @@ describe('ModelGatewayService', () => {
       reasoning_effort: 'low',
       max_completion_tokens: 12_000,
       response_format: { type: 'json_object' },
+      stream: true,
       messages: [
         { role: 'system', content: '你是埋点设计助手' },
         { role: 'user', content: '生成 JSON' },
@@ -54,6 +59,7 @@ describe('ModelGatewayService', () => {
     expect(body).not.toHaveProperty('thinking');
     expect(body).not.toHaveProperty('reasoning');
     expect(body).not.toHaveProperty('input');
+    expect(request.headers).toMatchObject({ Accept: 'text/event-stream' });
   });
 
   it('Kimi 网关不支持 JSON Mode 时应只兼容重试一次', async () => {

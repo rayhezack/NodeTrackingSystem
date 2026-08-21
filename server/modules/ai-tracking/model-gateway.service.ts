@@ -10,6 +10,14 @@ interface KimiResponse {
   error?: { message?: string };
 }
 
+interface KimiStreamChunk {
+  choices?: Array<{
+    delta?: { content?: string };
+    message?: { content?: string | Array<{ text?: string }> };
+  }>;
+  error?: { message?: string };
+}
+
 export interface ModelGenerationOptions {
   onProgress?: (stage: 'connected' | 'completed') => void;
 }
@@ -62,7 +70,8 @@ export class ModelGatewayService {
     options.onProgress?.('connected');
 
     let rawBody = await readResponseBody(response, requestId, startedAt, this.logger);
-    let payload = parseModelResponse(rawBody);
+    let parsedResponse = parseKimiResponse(rawBody, response.headers.get('content-type'));
+    let payload = parsedResponse.payload;
 
     // Some Kimi-compatible gateways do not implement JSON mode. Retry once
     // without response_format, while keeping Kimi's model-specific reasoning setting.
@@ -78,7 +87,8 @@ export class ModelGatewayService {
         throw modelNetworkError(error);
       }
       rawBody = await readResponseBody(response, requestId, startedAt, this.logger);
-      payload = parseModelResponse(rawBody);
+      parsedResponse = parseKimiResponse(rawBody, response.headers.get('content-type'));
+      payload = parsedResponse.payload;
     }
 
     if (!response.ok) {
@@ -90,10 +100,15 @@ export class ModelGatewayService {
         providerRequestId: response.headers.get('x-request-id') || '',
         errorMessage: payload.error?.message || '',
       }));
-      throw new ServiceUnavailableException(payload.error?.message || `大模型请求失败（HTTP ${response.status}）`);
+      throw new ServiceUnavailableException(
+        parsedResponse.errorMessage || payload.error?.message || `大模型请求失败（HTTP ${response.status}）`,
+      );
     }
 
-    const content = extractContent(payload);
+    if (parsedResponse.errorMessage) {
+      throw new ServiceUnavailableException(parsedResponse.errorMessage);
+    }
+    const content = parsedResponse.content || extractContent(payload);
     if (!content) throw new ServiceUnavailableException('大模型未返回可解析内容');
     try {
       const parsed = JSON.parse(stripCodeFence(content));
@@ -121,11 +136,11 @@ export class ModelGatewayService {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
-        Accept: 'application/json',
+        Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(300_000),
     });
   }
 
@@ -157,6 +172,7 @@ function buildKimiBody(
     messages,
     reasoning_effort: reasoningEffort,
     max_completion_tokens: 12_000,
+    stream: true,
     ...(omitJsonMode ? {} : { response_format: { type: 'json_object' } }),
   };
 }
@@ -176,6 +192,45 @@ function parseModelResponse(value: string): KimiResponse {
   } catch {
     return {};
   }
+}
+
+function parseKimiResponse(value: string, contentType: string | null): {
+  content?: string;
+  errorMessage?: string;
+  payload: KimiResponse;
+} {
+  if (!contentType?.toLowerCase().includes('text/event-stream')) {
+    return { payload: parseModelResponse(value) };
+  }
+
+  let content = '';
+  let errorMessage: string | undefined;
+  let payload: KimiResponse = {};
+
+  for (const block of value.split(/\r?\n\r?\n/)) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('\n');
+    if (!data || data === '[DONE]') continue;
+
+    try {
+      const chunk = JSON.parse(data) as KimiStreamChunk;
+      if (chunk.error?.message) {
+        errorMessage = chunk.error.message;
+        payload = { error: chunk.error };
+        continue;
+      }
+      const choice = chunk.choices?.[0];
+      if (typeof choice?.delta?.content === 'string') content += choice.delta.content;
+      if (choice?.message) payload = { choices: [{ message: choice.message }] };
+    } catch {
+      // Ignore non-JSON heartbeat events.
+    }
+  }
+
+  return { content: content || undefined, errorMessage, payload };
 }
 
 function isJsonModeCompatibilityError(status: number, payload: KimiResponse): boolean {
