@@ -8,21 +8,18 @@ import { getParams } from '@client/src/api/tracking';
 import type { ParamDetail, TrackingDetail, TrackingDetailSnapshot } from '@shared/api.interface';
 import ParamSpecTable from './param-designer/ParamSpecTable';
 import { buildParamClipboardText } from './param-designer/param-display.utils';
-import { getHandoffEvents, type HandoffEvent } from './design-handoff.utils';
+import UiImageField from './UiImageField';
+import {
+  getHandoffEvents,
+  getHandoffPresentation,
+  handoffTextValue,
+  toAttachmentTextArray,
+  type HandoffEvent,
+} from './design-handoff.utils';
 
 interface DesignHandoffPanelProps {
   detail: TrackingDetail;
 }
-
-const DESIGN_SUMMARY_FIELDS = [
-  { key: 'evt_id', label: 'evt_id' },
-  { key: '事件中文名', label: '事件名' },
-  { key: '端', label: '适用端' },
-  { key: '处理方', label: '处理方' },
-  { key: '版本', label: '版本' },
-  { key: '最低版本', label: '最低版本' },
-  { key: '变更类型', label: '变更类型' },
-] as const;
 
 const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
   const events = useMemo(() => getHandoffEvents(detail), [detail]);
@@ -66,18 +63,10 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
     loadParams();
   }, [loadParams]);
 
-  const summaryItems = useMemo(() => {
-    const fields = selectedDetail?.designFields || {};
-    return DESIGN_SUMMARY_FIELDS.map((field) => ({
-      label: field.label,
-      value:
-        field.key === 'evt_id'
-          ? selectedDetail?.evtId || selectedEvent?.evtId || textValue(fields[field.key])
-          : field.key === '事件中文名'
-            ? selectedDetail?.eventName || selectedEvent?.eventName || textValue(fields[field.key])
-            : textValue(fields[field.key]),
-    })).filter((item) => item.value);
-  }, [selectedDetail, selectedEvent]);
+  const presentation = useMemo(
+    () => selectedDetail ? getHandoffPresentation(selectedDetail) : { summaryItems: [], uiImages: [] },
+    [selectedDetail],
+  );
 
   const handleCopy = async () => {
     try {
@@ -136,15 +125,25 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       )}
 
       <div className="mb-4 grid gap-3 md:grid-cols-4">
-        {summaryItems.map((item) => (
+        {presentation.summaryItems.map((item) => (
           <SummaryCell key={item.label} label={item.label} value={item.value} />
         ))}
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">
-        <LongSpec label="事件定义" value={textValue(selectedDetail?.designFields['事件定义'])} />
-        <LongSpec label="触发时机" value={textValue(selectedDetail?.designFields['触发时机'])} />
-        <LongSpec label="公共属性要求" value={textValue(selectedDetail?.designFields['公共属性要求'])} />
+        <LongSpec label="事件定义" value={handoffTextValue(selectedDetail?.designFields['事件定义'])} />
+        <LongSpec label="触发时机" value={handoffTextValue(selectedDetail?.designFields['触发时机'])} />
+        <LongSpec label="公共属性要求" value={handoffTextValue(selectedDetail?.designFields['公共属性要求'])} />
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground">
+          UI 图
+          <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+            {presentation.uiImages.length} 张
+          </Badge>
+        </div>
+        <UiImageField value={presentation.uiImages} readOnly />
       </div>
 
       {loading ? (
@@ -165,7 +164,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
           </Button>
         </div>
       ) : items.length ? (
-        <ParamSpecTable items={items} source={detail.source} />
+        <ParamSpecTable items={items} source={selectedDetail?.source || detail.source} />
       ) : (
         <div className="rounded-sm border border-dashed border-border bg-card py-8 text-center text-xs text-muted-foreground">
           暂无参数说明，请先在埋点设计阶段补充参数。
@@ -236,15 +235,17 @@ function buildDesignHandoffText(detail: TrackingDetail | TrackingDetailSnapshot,
   const lines = [
     `埋点开发说明：${detail.evtId || '-'}`,
     `事件名：${detail.eventName || '-'}`,
-    `端：${textValue(detail.designFields['端']) || detail.platform || '-'}`,
-    `处理方：${textValue(detail.designFields['处理方']) || '-'}`,
-    `版本：${textValue(detail.designFields['版本']) || '-'}`,
-    `最低版本：${textValue(detail.designFields['最低版本']) || '-'}`,
-    `变更类型：${textValue(detail.designFields['变更类型']) || '-'}`,
+    `优先级：${detail.priority || handoffTextValue(detail.designFields['优先级']) || '-'}`,
+    `端：${handoffTextValue(detail.designFields['端']) || detail.platform || '-'}`,
+    `处理方：${handoffTextValue(detail.designFields['处理方']) || '-'}`,
+    `版本：${handoffTextValue(detail.designFields['版本']) || '-'}`,
+    `最低版本：${handoffTextValue(detail.designFields['最低版本']) || '-'}`,
+    `变更类型：${handoffTextValue(detail.designFields['变更类型']) || '-'}`,
     '',
-    `事件定义：${textValue(detail.designFields['事件定义']) || '-'}`,
-    `触发时机：${textValue(detail.designFields['触发时机']) || '-'}`,
-    `公共属性要求：${textValue(detail.designFields['公共属性要求']) || '-'}`,
+    `事件定义：${handoffTextValue(detail.designFields['事件定义']) || '-'}`,
+    `触发时机：${handoffTextValue(detail.designFields['触发时机']) || '-'}`,
+    `公共属性要求：${handoffTextValue(detail.designFields['公共属性要求']) || '-'}`,
+    `UI图：${toAttachmentTextArray(detail.designFields['UI图']).join('、') || '-'}`,
     '',
     buildParamClipboardText(params, detail.source, '参数说明'),
   ];
@@ -257,27 +258,6 @@ function formatPlatform(value: string): string {
   if (normalized === 'Web') return 'Web（前端）';
   if (normalized === 'App') return 'App';
   return normalized;
-}
-
-function textValue(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(textValue).filter(Boolean).join('、');
-  }
-  if (typeof value === 'object') {
-    const objectValue = value as Record<string, unknown>;
-    return textValue(
-      objectValue.text ||
-      objectValue.name ||
-      objectValue.link ||
-      objectValue.url ||
-      objectValue.id,
-    );
-  }
-  return '';
 }
 
 async function copyText(text: string): Promise<void> {
