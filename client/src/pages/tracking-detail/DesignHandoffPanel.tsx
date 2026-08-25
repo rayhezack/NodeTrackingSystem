@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ClipboardList, Copy, Loader2 } from 'lucide-react';
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
 import { getParams } from '@client/src/api/tracking';
-import type { ParamDetail, TrackingDetail } from '@shared/api.interface';
+import type { ParamDetail, TrackingDetail, TrackingDetailSnapshot } from '@shared/api.interface';
 import ParamSpecTable from './param-designer/ParamSpecTable';
 import { buildParamClipboardText } from './param-designer/param-display.utils';
+import { getHandoffEvents, type HandoffEvent } from './design-handoff.utils';
 
 interface DesignHandoffPanelProps {
   detail: TrackingDetail;
@@ -16,7 +17,7 @@ interface DesignHandoffPanelProps {
 const DESIGN_SUMMARY_FIELDS = [
   { key: 'evt_id', label: 'evt_id' },
   { key: '事件中文名', label: '事件名' },
-  { key: '端', label: '端' },
+  { key: '端', label: '适用端' },
   { key: '处理方', label: '处理方' },
   { key: '版本', label: '版本' },
   { key: '最低版本', label: '最低版本' },
@@ -24,45 +25,64 @@ const DESIGN_SUMMARY_FIELDS = [
 ] as const;
 
 const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
+  const events = useMemo(() => getHandoffEvents(detail), [detail]);
+  const [selectedRecordId, setSelectedRecordId] = useState(detail.recordId);
   const [items, setItems] = useState<ParamDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const paramsRequestId = useRef(0);
+  const selectedEvent = events.find((event) => event.recordId === selectedRecordId) || events[0];
+  const selectedDetail = selectedEvent?.detail;
+  const selectedEventRecordId = selectedEvent?.recordId;
+
+  useEffect(() => {
+    if (selectedEvent && selectedEvent.recordId !== selectedRecordId) {
+      setSelectedRecordId(selectedEvent.recordId);
+    }
+  }, [selectedEvent, selectedRecordId]);
 
   const loadParams = useCallback(async () => {
+    if (!selectedEventRecordId) return;
+    const requestId = ++paramsRequestId.current;
     setLoading(true);
     setError(null);
     try {
-      const res = await getParams(detail.recordId);
+      const res = await getParams(selectedEventRecordId);
+      if (requestId !== paramsRequestId.current) return;
       setItems(res.items || []);
     } catch (err) {
+      if (requestId !== paramsRequestId.current) return;
       const msg = err instanceof Error ? err.message : '加载失败';
       setError(msg);
       logger.error('加载研发对接参数失败', err);
     } finally {
-      setLoading(false);
+      if (requestId === paramsRequestId.current) {
+        setLoading(false);
+      }
     }
-  }, [detail.recordId]);
+  }, [selectedEventRecordId]);
 
   useEffect(() => {
     loadParams();
   }, [loadParams]);
 
   const summaryItems = useMemo(() => {
-    const fields = detail.designFields || {};
+    const fields = selectedDetail?.designFields || {};
     return DESIGN_SUMMARY_FIELDS.map((field) => ({
       label: field.label,
       value:
         field.key === 'evt_id'
-          ? detail.evtId || textValue(fields[field.key])
+          ? selectedDetail?.evtId || selectedEvent?.evtId || textValue(fields[field.key])
           : field.key === '事件中文名'
-            ? detail.eventName || textValue(fields[field.key])
+            ? selectedDetail?.eventName || selectedEvent?.eventName || textValue(fields[field.key])
             : textValue(fields[field.key]),
     })).filter((item) => item.value);
-  }, [detail]);
+  }, [selectedDetail, selectedEvent]);
 
   const handleCopy = async () => {
     try {
-      await copyText(buildDesignHandoffText(detail, items));
+      if (!selectedDetail) return;
+      await copyText(buildDesignHandoffText(selectedDetail, items));
       toast.success('研发对接说明已复制');
     } catch {
       toast.error('复制失败，请手动选择复制');
@@ -76,6 +96,9 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-medium text-foreground">研发对接速览</h3>
+            <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+              {events.length} 个事件
+            </Badge>
             <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
               {items.length} 个参数
             </Badge>
@@ -96,6 +119,22 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
         </Button>
       </div>
 
+      {events.length > 1 && (
+        <div className="mb-4 rounded-sm border border-border bg-card p-3">
+          <div className="mb-2 text-xs font-medium text-foreground">同需求埋点事件</div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {events.map((event) => (
+              <EventSelector
+                key={event.recordId}
+                event={event}
+                selected={event.recordId === selectedEvent?.recordId}
+                onClick={() => setSelectedRecordId(event.recordId)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 grid gap-3 md:grid-cols-4">
         {summaryItems.map((item) => (
           <SummaryCell key={item.label} label={item.label} value={item.value} />
@@ -103,9 +142,9 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">
-        <LongSpec label="事件定义" value={textValue(detail.designFields['事件定义'])} />
-        <LongSpec label="触发时机" value={textValue(detail.designFields['触发时机'])} />
-        <LongSpec label="公共属性要求" value={textValue(detail.designFields['公共属性要求'])} />
+        <LongSpec label="事件定义" value={textValue(selectedDetail?.designFields['事件定义'])} />
+        <LongSpec label="触发时机" value={textValue(selectedDetail?.designFields['触发时机'])} />
+        <LongSpec label="公共属性要求" value={textValue(selectedDetail?.designFields['公共属性要求'])} />
       </div>
 
       {loading ? (
@@ -138,6 +177,41 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
 
 export default DesignHandoffPanel;
 
+function EventSelector({
+  event,
+  selected,
+  onClick,
+}: {
+  event: HandoffEvent;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`min-w-0 rounded-sm border px-3 py-2 text-left transition-colors ${
+        selected
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border bg-background text-foreground hover:bg-accent'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 break-all font-mono text-xs font-medium">
+          {event.evtId || '待填写 evt_id'}
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {formatPlatform(event.platform)}
+        </span>
+      </div>
+      <div className="mt-1 truncate text-xs text-muted-foreground">
+        {event.eventName || '未命名事件'}
+      </div>
+    </button>
+  );
+}
+
 function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-sm border border-border bg-card px-3 py-2">
@@ -158,7 +232,7 @@ function LongSpec({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buildDesignHandoffText(detail: TrackingDetail, params: ParamDetail[]): string {
+function buildDesignHandoffText(detail: TrackingDetail | TrackingDetailSnapshot, params: ParamDetail[]): string {
   const lines = [
     `埋点开发说明：${detail.evtId || '-'}`,
     `事件名：${detail.eventName || '-'}`,
@@ -175,6 +249,14 @@ function buildDesignHandoffText(detail: TrackingDetail, params: ParamDetail[]): 
     buildParamClipboardText(params, detail.source, '参数说明'),
   ];
   return lines.join('\n');
+}
+
+function formatPlatform(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) return '未指定端';
+  if (normalized === 'Web') return 'Web（前端）';
+  if (normalized === 'App') return 'App';
+  return normalized;
 }
 
 function textValue(value: unknown): string {
@@ -213,4 +295,3 @@ async function copyText(text: string): Promise<void> {
   document.execCommand('copy');
   document.body.removeChild(textarea);
 }
-
