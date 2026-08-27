@@ -16,7 +16,7 @@ describe('阶段映射工具', () => {
       expect(getUiStageFromBase('埋点设计', '评审中')).toBe('埋点评审');
       expect(getUiStageFromBase('评审通过')).toBe('埋点开发');
       expect(getUiStageFromBase('埋点开发')).toBe('埋点开发');
-      expect(getUiStageFromBase('数据验收')).toBe('埋点校验');
+      expect(getUiStageFromBase('数据验收')).toBe('埋点验收');
       expect(getUiStageFromBase('上线监控')).toBe('埋点上线');
       expect(getUiStageFromBase('稳定归档')).toBe('归档');
       expect(getUiStageFromBase('已废弃')).toBe('归档');

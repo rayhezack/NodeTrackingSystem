@@ -481,7 +481,7 @@ export class BitableService {
     actionKey: string,
     error: unknown,
   ): never {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = errorText(error);
     const errorName = error instanceof Error ? error.name : 'UnknownError';
 
     this.logger.error(
@@ -649,9 +649,13 @@ function toDateTimeCell(value: unknown): number | undefined {
 
 function toUrlCell(value: unknown): { text: string; link: string } | undefined {
   if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    return toUrlCell(value.find((item) => item != null && item !== ''));
+  }
   if (typeof value === 'object' && !Array.isArray(value)) {
     const objectValue = value as Record<string, unknown>;
-    const link = cellText(objectValue.link || objectValue.url || objectValue.href).trim();
+    const linkValue = objectValue.link || objectValue.Link || objectValue.url || objectValue.href;
+    const link = cellText(linkValue).trim();
     const text = cellText(objectValue.text || objectValue.name || link).trim();
     if (!link) return undefined;
     assertHttpUrl(link);
@@ -761,7 +765,23 @@ function errorText(error: unknown): string {
   if (error instanceof Error) {
     parts.push(error.message, error.name);
   } else if (error != null) {
-    parts.push(String(error));
+    if (typeof error === 'object') {
+      const objectError = error as Record<string, unknown>;
+      for (const key of ['message', 'error', 'detail', 'details']) {
+        const value = objectError[key];
+        if (typeof value === 'string' && value.trim()) parts.push(value.trim());
+        else if (value && typeof value === 'object') parts.push(JSON.stringify(value));
+      }
+      if (!parts.length) {
+        try {
+          parts.push(JSON.stringify(error));
+        } catch {
+          parts.push(String(error));
+        }
+      }
+    } else {
+      parts.push(String(error));
+    }
   }
 
   const maybeException = error as { getResponse?: () => unknown; response?: unknown };

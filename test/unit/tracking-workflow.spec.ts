@@ -150,6 +150,38 @@ describe('工作流 Base 回写', () => {
     ]);
   });
 
+  it('埋点校验人使用 open_id 登录时也应拥有验收提交权限', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_acceptance',
+        record: {
+          evt_id: 'acceptance_event',
+          流程阶段: '数据验收',
+          DS验收人: [{ id: '1855461847682347', name: '吴欣欣' }],
+          通知身份快照: JSON.stringify({
+            DS验收人: [{ user_id: '1855461847682347', larkUserId: 'ou_wu_xinxin', name: '吴欣欣' }],
+          }),
+        },
+      }),
+      batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_acceptance' }]),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await service.updateRecord('app:rec_acceptance', {
+      actorLarkId: 'ou_wu_xinxin',
+      stageId: 'acceptance',
+      fields: { DS验收状态: '通过', DS验收证据: '校验通过' },
+    });
+
+    expect(bitable.batchUpdateRecords).toHaveBeenCalledWith('workbench', [
+      {
+        id: 'rec_acceptance',
+        record: { DS验收状态: '通过', DS验收证据: '校验通过', 埋点开发状态: '已开发', 评审状态: '已通过' },
+      },
+    ]);
+  });
+
   it('应在同一次 Base 更新中写入设计字段和目标阶段', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({

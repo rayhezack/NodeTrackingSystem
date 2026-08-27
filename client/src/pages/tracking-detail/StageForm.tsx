@@ -574,11 +574,11 @@ function getCompletionCopy(stageId: string, stageLabel: string) {
     dev: {
       buttonLabel: '完成开发',
       title: '确认完成埋点开发？',
-      description: '开发状态将转为“已开发”，并进入埋点校验。',
+      description: '开发状态将转为“已开发”，并进入埋点验收。',
     },
     acceptance: {
       buttonLabel: '完成验收',
-      title: '确认完成数据验收？',
+      title: '确认完成埋点验收？',
       description: '将记录验收状态和当前时间，并进入埋点上线。',
     },
     launch: {

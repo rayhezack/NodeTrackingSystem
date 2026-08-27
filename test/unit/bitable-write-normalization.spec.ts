@@ -86,6 +86,40 @@ describe('Base 写入值标准化', () => {
     });
   });
 
+  it.each(['workbench', 'webWorkbench'] as const)(
+    '%s URL 字段应始终写入飞书要求的链接对象',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchUpdateRecords(instanceKey, [
+        {
+          id: 'rec_1',
+          record: {
+            需求链接: [{ Link: 'https://example.feishu.cn/wiki/test_prd' }],
+          },
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchUpdateRecords', {
+        records: [
+          {
+            id: 'rec_1',
+            record: {
+              需求链接: {
+                text: 'https://example.feishu.cn/wiki/test_prd',
+                link: 'https://example.feishu.cn/wiki/test_prd',
+              },
+            },
+          },
+        ],
+      });
+    },
+  );
+
   it.each(['queryLibrary', 'webQueryLibrary'] as const)(
     '%s 应标准化归档负责人和稳定归档时间',
     async (instanceKey) => {
@@ -197,4 +231,18 @@ describe('Base 写入值标准化', () => {
       expect(call).not.toHaveBeenCalled();
     },
   );
+
+  it('Base 返回对象错误时应保留真实错误内容', async () => {
+    const call = jest.fn().mockRejectedValue({ error: { message: "the value of 'Link' must be an object" } });
+    const capabilityService = {
+      loadWithConfig: jest.fn().mockReturnValue({ call }),
+    };
+    const service = new BitableService(capabilityService as never);
+
+    await expect(
+      service.batchUpdateRecords('workbench', [
+        { id: 'rec_1', record: { DS验收状态: '通过' } },
+      ]),
+    ).rejects.toThrow("the value of 'Link' must be an object");
+  });
 });

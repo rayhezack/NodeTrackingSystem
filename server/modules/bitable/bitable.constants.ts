@@ -1810,7 +1810,7 @@ export const STAGE_UI_MAP: Record<string, string> = {
   埋点设计: '埋点设计',
   评审通过: '埋点开发',
   埋点开发: '埋点开发',
-  数据验收: '埋点校验',
+  数据验收: '埋点验收',
   上线监控: '埋点上线',
   稳定归档: '归档',
   已废弃: '归档',
@@ -1822,6 +1822,7 @@ export const STAGE_BASE_MAP: Record<string, string> = {
   埋点设计: '埋点设计',
   埋点评审: '埋点设计',
   埋点开发: '埋点开发',
+  埋点验收: '数据验收',
   埋点校验: '数据验收',
   埋点上线: '上线监控',
   归档: '稳定归档',
@@ -1831,7 +1832,7 @@ export const STAGE_BASE_MAP: Record<string, string> = {
 export const STAGE_ORDER = ['需求录入', '埋点设计', '评审通过', '埋点开发', '数据验收', '上线监控', '稳定归档', '已废弃'];
 
 // 7 个 UI 业务节点顺序
-export const UI_STAGE_NODES = ['埋点提需', '埋点设计', '埋点评审', '埋点开发', '埋点校验', '埋点上线', '归档'];
+export const UI_STAGE_NODES = ['埋点提需', '埋点设计', '埋点评审', '埋点开发', '埋点验收', '埋点上线', '归档'];
 
 // 优先级排序权重
 export const PRIORITY_WEIGHT: Record<string, number> = {

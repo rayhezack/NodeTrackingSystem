@@ -42,7 +42,7 @@ export function isStageTransitionValid(
 }
 
 export function getUiNodeIndex(uiStage: string): number {
-  return UI_STAGE_NODES.indexOf(uiStage);
+  return UI_STAGE_NODES.indexOf(uiStage === '埋点校验' ? '埋点验收' : uiStage);
 }
 
 export function getCurrentUiNode(baseStage: string, reviewStatus = ''): string {
@@ -71,7 +71,7 @@ export function isUiNodeActive(
   reviewStatus = '',
 ): boolean {
   const currentUiStage = getUiStageFromBase(baseStage, reviewStatus);
-  return currentUiStage === uiNode;
+  return currentUiStage === (uiNode === '埋点校验' ? '埋点验收' : uiNode);
 }
 
 export interface StagePermissions {

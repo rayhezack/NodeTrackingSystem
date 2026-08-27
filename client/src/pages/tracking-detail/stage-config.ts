@@ -113,7 +113,7 @@ export const UI_STAGE_NODES = [
   { key: '埋点设计', label: '埋点设计' },
   { key: '埋点评审', label: '埋点评审' },
   { key: '埋点开发', label: '埋点开发' },
-  { key: '埋点校验', label: '埋点校验' },
+  { key: '埋点验收', label: '埋点验收' },
   { key: '埋点上线', label: '埋点上线' },
   { key: '归档', label: '归档' },
 ];
@@ -184,8 +184,8 @@ export const SIDEBAR_STAGES: StageConfig[] = [
   },
   {
     id: 'acceptance',
-    label: '数据验收',
-    uiNode: '埋点校验',
+    label: '埋点验收',
+    uiNode: '埋点验收',
     baseStages: ['数据验收'],
     permissionKey: 'canEditAcceptance',
     fields: [
@@ -228,7 +228,7 @@ export const STAGE_UI_MAP: Record<string, string> = {
   '埋点设计': '埋点设计',
   '评审通过': '埋点开发',
   '埋点开发': '埋点开发',
-  '数据验收': '埋点校验',
+  '数据验收': '埋点验收',
   '上线监控': '埋点上线',
   '稳定归档': '归档',
   '已废弃': '归档',
@@ -262,13 +262,13 @@ const UI_NODE_ORDER = [
   '埋点设计',
   '埋点评审',
   '埋点开发',
-  '埋点校验',
+  '埋点验收',
   '埋点上线',
   '归档',
 ];
 
 export function getUiNodeIndex(uiNode: string): number {
-  return UI_NODE_ORDER.indexOf(uiNode);
+  return UI_NODE_ORDER.indexOf(uiNode === '埋点校验' ? '埋点验收' : uiNode);
 }
 
 // 判断 UI 节点是否已完成
@@ -300,6 +300,6 @@ export function isUiNodeActive(
 ): boolean {
   return (
     !isUiNodeCompleted(baseStage, uiNode, reviewStatus, officialStatus) &&
-    getCurrentUiNode(baseStage, reviewStatus, officialStatus) === uiNode
+    getCurrentUiNode(baseStage, reviewStatus, officialStatus) === (uiNode === '埋点校验' ? '埋点验收' : uiNode)
   );
 }

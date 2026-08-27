@@ -2296,6 +2296,10 @@ export class TrackingService {
     const dataOwner = recordUsers(record, '数据负责人');
     const devOwner = recordUsers(record, '研发负责人');
     const dsAcceptor = recordUsers(record, 'DS验收人');
+    const requesterPermissionIds = permissionIdentityIds(record, '需求提出人', requester.items);
+    const dataOwnerPermissionIds = permissionIdentityIds(record, '数据负责人', dataOwner.items);
+    const devOwnerPermissionIds = permissionIdentityIds(record, '研发负责人', devOwner.items);
+    const dsAcceptorPermissionIds = permissionIdentityIds(record, 'DS验收人', dsAcceptor.items);
     const actor = actorId || actorLarkId || '';
     const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
     const stage = cellText(record.record['流程阶段']) || '需求录入';
@@ -2340,7 +2344,7 @@ export class TrackingService {
       archiveFields: pickFields(record.record, ['正式状态', '稳定归档时间']),
       relatedEvents: [],
       permissions: actor
-        ? calculateRecordPermissions(actor, actorCandidates, requester.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, stage)
+        ? calculateRecordPermissions(actor, actorCandidates, requesterPermissionIds, dataOwnerPermissionIds, devOwnerPermissionIds, dsAcceptorPermissionIds, permissionConfig, stage)
         : calculatePermissions('', [], [], []),
     };
   }
@@ -2690,6 +2694,10 @@ function mergeRecordUsers(records: BitableRecord[], fieldName: string): { ids: s
   return toUserCollection(users);
 }
 
+function mergeRecordUserIdentityIds(records: BitableRecord[], fieldName: string): string[] {
+  return uniqueStrings(records.flatMap((record) => recordUserIdentityIds(record.record[fieldName])));
+}
+
 function mergeRecordDisplayUsers(records: BitableRecord[], fieldName: string): { ids: string[]; names: string[] } {
   return toDisplayUserCollection(mergeRecordUserRefs(records, fieldName));
 }
@@ -2727,12 +2735,12 @@ function toUserCollection(users: TrackingUserRef[]): { ids: string[]; names: str
 function mergeRecordUserRefs(records: BitableRecord[], fieldName: string): TrackingUserRef[] {
   const idToUser = new Map<string, TrackingUserRef>();
   for (const record of records) {
-    const baseUsers = cellUsers(record.record[fieldName]).items.map(enrichDefaultProjectUser);
+    const baseUsers = cellUsers(record.record[fieldName]).items;
     mergeUserRefsIntoMap(idToUser, baseUsers);
     const snapshotUsers = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || [];
     mergeUserRefsIntoMap(idToUser, filterSnapshotUsersForBaseUsers(snapshotUsers, baseUsers));
   }
-  return Array.from(idToUser.values());
+  return Array.from(idToUser.values()).map(enrichDefaultProjectUser);
 }
 
 function mergeUserRefsIntoMap(idToUser: Map<string, TrackingUserRef>, users: TrackingUserRef[]): void {
@@ -3174,6 +3182,36 @@ function cellUsers(value: Cell): {
       items: [] as TrackingUserRef[],
     },
   );
+}
+
+function recordUserIdentityIds(value: Cell): string[] {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return uniqueStrings(values.flatMap((item) => {
+    if (typeof item === 'string' || typeof item === 'number') return [String(item)];
+    if (!item || typeof item !== 'object') return [];
+    const user = item as Record<string, unknown>;
+    return [
+      'user_id', 'userId', 'userID', 'miaoda_user_id', 'miaodaUserID',
+      'employee_id', 'employeeID', 'id', 'open_id', 'openId',
+      'larkUserId', 'larkUserID', 'larkID', 'lark_user_id', 'lark_id',
+    ].map((key) => user[key]).filter(
+      (candidate): candidate is string | number =>
+        (typeof candidate === 'string' && candidate.trim().length > 0) || typeof candidate === 'number',
+    ).map(String);
+  }));
+}
+
+function userRefIdentityIds(users: TrackingUserRef[]): string[] {
+  return uniqueStrings(users.flatMap((user) => [user.user_id || '', user.larkUserId || '', normalizeSnapshotEmail(user.email)]));
+}
+
+function permissionIdentityIds(record: BitableRecord, fieldName: string, users: TrackingUserRef[]): string[] {
+  const snapshotUsers = parseNotificationIdentitySnapshot(record.record[NOTIFICATION_IDENTITY_FIELD])[fieldName] || [];
+  return uniqueStrings([
+    ...recordUserIdentityIds(record.record[fieldName]),
+    ...userRefIdentityIds(users),
+    ...userRefIdentityIds(snapshotUsers),
+  ]);
 }
 
 function localizedText(value: unknown): string {
@@ -3882,10 +3920,14 @@ function calculateRawRecordPermissions(record: Record<string, Cell>, actorId?: s
   const dataOwner = recordUsers(currentRecord, '数据负责人');
   const devOwner = recordUsers(currentRecord, '研发负责人');
   const dsAcceptor = recordUsers(currentRecord, 'DS验收人');
+  const requesterIds = permissionIdentityIds(currentRecord, '需求提出人', requester.items);
+  const dataOwnerIds = permissionIdentityIds(currentRecord, '数据负责人', dataOwner.items);
+  const devOwnerIds = permissionIdentityIds(currentRecord, '研发负责人', devOwner.items);
+  const dsAcceptorIds = permissionIdentityIds(currentRecord, 'DS验收人', dsAcceptor.items);
   const actor = actorId || actorLarkId || '';
   const actorCandidates = uniqueStrings([actorId || '', actorLarkId || '']);
 
-  return calculateRecordPermissions(actor, actorCandidates, requester.ids, dataOwner.ids, devOwner.ids, dsAcceptor.ids, permissionConfig, cellText(record['流程阶段']) || '需求录入');
+  return calculateRecordPermissions(actor, actorCandidates, requesterIds.length ? requesterIds : requester.ids, dataOwnerIds.length ? dataOwnerIds : dataOwner.ids, devOwnerIds.length ? devOwnerIds : devOwner.ids, dsAcceptorIds.length ? dsAcceptorIds : dsAcceptor.ids, permissionConfig, cellText(record['流程阶段']) || '需求录入');
 }
 
 function getRequiredPermissionsForUpdate(body: UpdateTrackingRecordRequest): PermissionKey[] {
@@ -3930,10 +3972,10 @@ function mergePermissions(items: StagePermissions[]): StagePermissions {
 
 function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRecord, actorCandidates: string[]): { stage: string; targetStage: string; todoRole: string } | null {
   const baseStage = cellText(workflowRecord.record['流程阶段']);
-  const requesters = mergeRecordUsers(records, '需求提出人').ids;
-  const dataOwners = mergeRecordUsers(records, '数据负责人').ids;
-  const devOwners = mergeRecordUsers(records, '研发负责人').ids;
-  const dsAcceptors = mergeRecordUsers(records, 'DS验收人').ids;
+  const requesters = mergeRecordUserIdentityIds(records, '需求提出人');
+  const dataOwners = mergeRecordUserIdentityIds(records, '数据负责人');
+  const devOwners = mergeRecordUserIdentityIds(records, '研发负责人');
+  const dsAcceptors = mergeRecordUserIdentityIds(records, 'DS验收人');
 
   const isRequester = intersects(actorCandidates, requesters);
   const isDataOwner = intersects(actorCandidates, dataOwners);
@@ -4001,7 +4043,7 @@ function getGroupTodoAction(records: BitableRecord[], workflowRecord: BitableRec
     case '数据验收':
       if (isProjectParticipant) {
         return {
-          stage: '埋点校验',
+          stage: '埋点验收',
           targetStage: 'acceptance',
           todoRole: getFirstRole([
             [isDataOwner, '数据负责人'],
@@ -4047,7 +4089,7 @@ function getAdminTodoAction(record: BitableRecord): { stage: string; targetStage
       return { stage: '埋点开发', targetStage: 'dev', todoRole: '管理员' };
     case '数据验收':
       return {
-        stage: '埋点校验',
+        stage: '埋点验收',
         targetStage: 'acceptance',
         todoRole: '管理员',
       };
@@ -4345,15 +4387,15 @@ const WORKFLOW_NOTIFICATION_BY_TARGET_BASE_STAGE: Record<string, Omit<WorkflowNo
     recipientFields: ['研发负责人'],
   },
   数据验收: {
-    toStage: '埋点校验',
+    toStage: '埋点验收',
     targetStageId: 'acceptance',
-    actionText: '埋点开发已完成，请进行数据验收。',
+    actionText: '埋点开发已完成，请进行埋点验收。',
     recipientFields: ['数据负责人', 'DS验收人'],
   },
   上线监控: {
     toStage: '埋点上线',
     targetStageId: 'launch',
-    actionText: '数据验收已通过，请关注上线监控。',
+    actionText: '埋点验收已通过，请关注上线监控。',
     recipientFields: PROJECT_PARTICIPANT_NOTIFICATION_FIELDS,
   },
   稳定归档: {
