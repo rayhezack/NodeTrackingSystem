@@ -244,12 +244,13 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     records: Record<string, unknown>[],
   ): Promise<{ id: string }[]> {
-    const config = this.getInstanceConfig(instanceKey);
+    let config = this.getInstanceConfig(instanceKey);
     this.invalidateSearchCache(instanceKey);
     const safeRecords = records.map((record) =>
       this.normalizeRecordForInstance(instanceKey, record),
     );
     let missingFieldRetryCount = 0;
+    let urlFieldRetryCount = 0;
 
     try {
       while (true) {
@@ -263,6 +264,25 @@ export class BitableService {
         } catch (error) {
           if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
             return this.localFallback.batchAddRecords(instanceKey, safeRecords);
+          }
+          if (
+            isUrlFieldMetadataError(error) &&
+            !hasFieldValue(safeRecords, '需求链接') &&
+            !hasFieldValue(safeRecords, '参数明细入口') &&
+            urlFieldRetryCount < 1
+          ) {
+            const configWithoutUrlFields = withoutUrlFields(config);
+            if (configWithoutUrlFields) {
+              urlFieldRetryCount += 1;
+              config = configWithoutUrlFields;
+              this.logger.warn(
+                JSON.stringify({
+                  message: 'Retrying bitable add without URL field metadata',
+                  instanceKey,
+                }),
+              );
+              continue;
+            }
           }
           const missingFieldName = extractMissingFieldName(error);
           const removedFromRecords = removeFieldFromRecords(safeRecords, missingFieldName);
@@ -297,13 +317,14 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     updates: { id: string; record: Record<string, unknown> }[],
   ): Promise<{ id: string }[]> {
-    const config = this.getInstanceConfig(instanceKey);
+    let config = this.getInstanceConfig(instanceKey);
     this.invalidateSearchCache(instanceKey);
     const safeUpdates = updates.map((update) => ({
       ...update,
       record: this.normalizeRecordForInstance(instanceKey, update.record),
     }));
     let missingFieldRetryCount = 0;
+    let urlFieldRetryCount = 0;
 
     try {
       while (true) {
@@ -315,6 +336,25 @@ export class BitableService {
         } catch (error) {
           if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
             return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
+          }
+          if (
+            isUrlFieldMetadataError(error) &&
+            !safeUpdates.some((update) => hasFieldValue([update.record], '需求链接')) &&
+            !safeUpdates.some((update) => hasFieldValue([update.record], '参数明细入口')) &&
+            urlFieldRetryCount < 1
+          ) {
+            const configWithoutUrlFields = withoutUrlFields(config);
+            if (configWithoutUrlFields) {
+              urlFieldRetryCount += 1;
+              config = configWithoutUrlFields;
+              this.logger.warn(
+                JSON.stringify({
+                  message: 'Retrying bitable update without URL field metadata',
+                  instanceKey,
+                }),
+              );
+              continue;
+            }
           }
           const missingFieldName = extractMissingFieldName(error);
           const removedFromRecords = removeFieldFromUpdates(safeUpdates, missingFieldName);
@@ -564,6 +604,31 @@ function removeFieldFromUpdates(
     updates.map((update) => update.record),
     fieldName,
   );
+}
+
+function withoutUrlFields<T extends BitablePluginConfig>(config: T): T | null {
+  const fields = config.formValue.fields;
+  if (!fields?.length) return null;
+  const filteredFields = fields.filter((field) => field.type !== 15);
+  if (filteredFields.length === fields.length) return null;
+  return {
+    ...config,
+    formValue: {
+      ...config.formValue,
+      fields: filteredFields,
+    },
+  } as T;
+}
+
+function hasFieldValue(
+  records: Record<string, unknown>[],
+  fieldName: string,
+): boolean {
+  return records.some((record) => Object.prototype.hasOwnProperty.call(record, fieldName));
+}
+
+function isUrlFieldMetadataError(error: unknown): boolean {
+  return /value of ['"]link['"] must be an object/i.test(errorText(error));
 }
 
 function normalizeCellValue(

@@ -245,4 +245,30 @@ describe('Base 写入值标准化', () => {
       ]),
     ).rejects.toThrow("the value of 'Link' must be an object");
   });
+
+  it('批量更新不涉及 URL 时应兼容移除 URL 字段元数据后重试', async () => {
+    const firstCall = jest
+      .fn()
+      .mockRejectedValue({ error: { message: "the value of 'Link' must be an object" } });
+    const secondCall = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+    const loadWithConfig = jest
+      .fn()
+      .mockReturnValueOnce({ call: firstCall })
+      .mockReturnValueOnce({ call: secondCall });
+    const capabilityService = { loadWithConfig };
+    const service = new BitableService(capabilityService as never);
+
+    await service.batchUpdateRecords('webWorkbench', [
+      { id: 'rec_1', record: { DS验收状态: '通过' } },
+    ]);
+
+    expect(loadWithConfig).toHaveBeenCalledTimes(2);
+    const retryConfig = loadWithConfig.mock.calls[1][0] as {
+      formValue: { fields: { name: string; type: number }[] };
+    };
+    expect(retryConfig.formValue.fields.some((field) => field.type === 15)).toBe(false);
+    expect(secondCall).toHaveBeenCalledWith('batchUpdateRecords', {
+      records: [{ id: 'rec_1', record: { DS验收状态: '通过' } }],
+    });
+  });
 });
