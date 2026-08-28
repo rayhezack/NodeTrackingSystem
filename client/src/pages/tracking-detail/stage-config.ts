@@ -85,10 +85,8 @@ export const QUALITY_GATE_OPTIONS = [
 
 export const MONITOR_STATUS_OPTIONS = [
   { value: '未开始', label: '未开始' },
-  { value: '监控中', label: '监控中' },
   { value: '通过', label: '通过' },
-  { value: '异常', label: '异常' },
-  { value: '豁免', label: '豁免' },
+  { value: '不通过', label: '不通过' },
 ];
 
 export const PUBLISH_STATUS_OPTIONS = [
@@ -201,12 +199,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
     baseStages: ['上线监控'],
     permissionKey: 'canEditLaunch',
     fields: [
-      { key: 'qualityGateStatus', label: '发布门禁状态', type: 'select', baseField: '发布门禁状态', options: QUALITY_GATE_OPTIONS },
-      { key: 'qualityGateReason', label: '门禁失败原因', type: 'textarea', baseField: '发布门禁失败原因', placeholder: '如未通过，请填写失败原因...' },
-      { key: 'publishStatus', label: '发布状态', type: 'select', baseField: '发布状态', options: PUBLISH_STATUS_OPTIONS },
-      { key: 'publishError', label: '发布错误', type: 'textarea', baseField: '发布错误', placeholder: '如发布失败，请填写错误原因...' },
       { key: 'monitorStatus', label: '上线监控状态', type: 'select', baseField: '上线监控状态', options: MONITOR_STATUS_OPTIONS },
-      { key: 'monitorConclusion', label: '上线监控结论', type: 'textarea', baseField: '上线监控结论', placeholder: '填写上线后的数据监控结论...' },
     ],
   },
   {

@@ -231,6 +231,10 @@ const StageForm = ({
 
   const handleComplete = async () => {
     if (!canEdit) return;
+    if (stageId === 'launch' && formData.monitorStatus !== '通过') {
+      toast.error('上线监控状态必须为“通过”才能完成上线');
+      return;
+    }
     setCompleting(true);
     try {
       const fields = serializeFields();

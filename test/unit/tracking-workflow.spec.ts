@@ -510,6 +510,32 @@ describe('工作流 Base 回写', () => {
     );
   });
 
+  it('上线监控不通过时后端也应阻止推进到稳定归档', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_launch_blocked',
+        record: {
+          evt_id: 'blocked_event',
+          流程阶段: '上线监控',
+          数据负责人: [{ id: '1867390536304713', name: '孙文' }],
+          上线监控状态: '不通过',
+        },
+      }),
+      batchUpdateRecords: jest.fn(),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    await expect(service.updateRecord('app:rec_launch_blocked', {
+      actorId: '1867390536304713',
+      actorLarkId: 'ou_dc88ea9baf066ba2f8b0b5fbcb59ca28',
+      stageId: 'launch',
+      fields: { 上线监控状态: '不通过' },
+      targetStage: '稳定归档',
+    })).rejects.toThrow('上线监控状态必须为“通过”才能完成上线');
+    expect(bitable.batchUpdateRecords).not.toHaveBeenCalled();
+  });
+
   it('正式查询库已有同 evt_id 时不应更新正式事件，也不重复新增', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({
@@ -1512,6 +1538,7 @@ describe('工作流 Base 回写', () => {
           评审状态: '已通过',
           埋点开发状态: '已开发',
           DS验收状态: '通过',
+          上线监控状态: '通过',
         },
       },
     ]);

@@ -184,6 +184,14 @@ describe('详情阶段表单状态', () => {
     });
   });
 
+  it('上线监控不通过时不应允许完成上线', () => {
+    expect(() => utils.buildStageCompletionRequest?.(
+      'launch',
+      { '上线监控状态': '不通过' },
+      new Set(['上线监控状态']),
+    )).toThrow('上线监控状态必须为“通过”才能完成上线');
+  });
+
   it('仅在归档完成后返回工作台', () => {
     expect(utils.shouldReturnToWorkbenchAfterCompletion?.('archive')).toBe(true);
     expect(utils.shouldReturnToWorkbenchAfterCompletion?.('launch')).toBe(false);

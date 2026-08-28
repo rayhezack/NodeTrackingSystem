@@ -1158,6 +1158,19 @@ export class TrackingService {
       if (!isStageTransitionValid(currentStage, targetStage)) {
         throw new BadRequestException(`非法状态跳转：${currentStage} -> ${targetStage}`);
       }
+      if (targetStage === '稳定归档') {
+        const monitorStatus = normalizeMonitorStatus(
+          cellText(
+            Object.prototype.hasOwnProperty.call(patch, '上线监控状态')
+              ? patch['上线监控状态']
+              : current.record['上线监控状态'],
+          ),
+        );
+        if (monitorStatus !== '通过') {
+          throw new BadRequestException('上线监控状态必须为“通过”才能完成上线');
+        }
+        patch['上线监控状态'] = monitorStatus;
+      }
       patch['流程阶段'] = targetStage;
       currentStage = targetStage;
     }
@@ -4278,9 +4291,7 @@ function normalizeWorkflowProgressPatch(patch: Record<string, unknown>, currentR
   }
   if (index >= getStageIndex('稳定归档')) {
     const publishStatus = cellText(patch['发布状态']) || cellText(currentRecord['发布状态']);
-    const monitorStatus = cellText(patch['上线监控状态']) || cellText(currentRecord['上线监控状态']);
     if (publishStatus !== '发布成功') patch['发布状态'] = '发布成功';
-    if (!['通过', '豁免'].includes(monitorStatus)) patch['上线监控状态'] = '通过';
   }
 }
 
@@ -4490,7 +4501,10 @@ function isSupportedFeishuPrdUrl(value: string): boolean {
 
 function normalizeMonitorStatus(value?: string): string {
   const raw = String(value || '').trim();
-  return ['未开始', '监控中', '通过', '异常', '豁免'].includes(raw) ? raw : '未开始';
+  if (raw === '豁免') return '通过';
+  if (raw === '异常') return '不通过';
+  if (raw === '监控中') return '未开始';
+  return ['未开始', '通过', '不通过'].includes(raw) ? raw : '未开始';
 }
 
 function normalizeGateStatus(value?: string): string {

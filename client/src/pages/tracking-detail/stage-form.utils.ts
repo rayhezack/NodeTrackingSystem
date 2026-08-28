@@ -56,7 +56,10 @@ export function buildStageCompletionRequest(
       };
     }
     case 'launch': {
-      const monitorStatus = fields['上线监控状态'] === '豁免' ? '豁免' : '通过';
+      const monitorStatus = fields['上线监控状态'] === '豁免' ? '通过' : fields['上线监控状态'];
+      if (monitorStatus !== '通过') {
+        throw new Error('上线监控状态必须为“通过”才能完成上线');
+      }
       return {
         stageId,
         fields: {
