@@ -246,29 +246,26 @@ describe('Base 写入值标准化', () => {
     ).rejects.toThrow("the value of 'Link' must be an object");
   });
 
-  it('批量更新不涉及 URL 时应兼容移除 URL 字段元数据后重试', async () => {
-    const firstCall = jest
+  it('验收证据触发 Link 错误时应指出 Base 字段配置漂移', async () => {
+    const call = jest
       .fn()
       .mockRejectedValue({ error: { message: "the value of 'Link' must be an object" } });
-    const secondCall = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
-    const loadWithConfig = jest
-      .fn()
-      .mockReturnValueOnce({ call: firstCall })
-      .mockReturnValueOnce({ call: secondCall });
+    const loadWithConfig = jest.fn().mockReturnValue({ call });
     const capabilityService = { loadWithConfig };
     const service = new BitableService(capabilityService as never);
 
-    await service.batchUpdateRecords('webWorkbench', [
-      { id: 'rec_1', record: { DS验收状态: '通过' } },
-    ]);
+    await expect(
+      service.batchUpdateRecords('webWorkbench', [
+        {
+          id: 'rec_1',
+          record: {
+            DS验收状态: '通过',
+            DS验收证据: 'SQL 校验通过，样本量 1024',
+          },
+        },
+      ]),
+    ).rejects.toThrow('DS验收证据');
 
-    expect(loadWithConfig).toHaveBeenCalledTimes(2);
-    const retryConfig = loadWithConfig.mock.calls[1][0] as {
-      formValue: { fields: { name: string; type: number }[] };
-    };
-    expect(retryConfig.formValue.fields.some((field) => field.type === 15)).toBe(false);
-    expect(secondCall).toHaveBeenCalledWith('batchUpdateRecords', {
-      records: [{ id: 'rec_1', record: { DS验收状态: '通过' } }],
-    });
+    expect(loadWithConfig).toHaveBeenCalledTimes(1);
   });
 });

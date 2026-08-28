@@ -244,13 +244,12 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     records: Record<string, unknown>[],
   ): Promise<{ id: string }[]> {
-    let config = this.getInstanceConfig(instanceKey);
+    const config = this.getInstanceConfig(instanceKey);
     this.invalidateSearchCache(instanceKey);
     const safeRecords = records.map((record) =>
       this.normalizeRecordForInstance(instanceKey, record),
     );
     let missingFieldRetryCount = 0;
-    let urlFieldRetryCount = 0;
 
     try {
       while (true) {
@@ -265,25 +264,7 @@ export class BitableService {
           if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
             return this.localFallback.batchAddRecords(instanceKey, safeRecords);
           }
-          if (
-            isUrlFieldMetadataError(error) &&
-            !hasFieldValue(safeRecords, '需求链接') &&
-            !hasFieldValue(safeRecords, '参数明细入口') &&
-            urlFieldRetryCount < 1
-          ) {
-            const configWithoutUrlFields = withoutUrlFields(config);
-            if (configWithoutUrlFields) {
-              urlFieldRetryCount += 1;
-              config = configWithoutUrlFields;
-              this.logger.warn(
-                JSON.stringify({
-                  message: 'Retrying bitable add without URL field metadata',
-                  instanceKey,
-                }),
-              );
-              continue;
-            }
-          }
+          assertNoAcceptanceEvidenceSchemaDrift(error, safeRecords);
           const missingFieldName = extractMissingFieldName(error);
           const removedFromRecords = removeFieldFromRecords(safeRecords, missingFieldName);
           const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
@@ -317,14 +298,13 @@ export class BitableService {
     instanceKey: BitableInstanceKey,
     updates: { id: string; record: Record<string, unknown> }[],
   ): Promise<{ id: string }[]> {
-    let config = this.getInstanceConfig(instanceKey);
+    const config = this.getInstanceConfig(instanceKey);
     this.invalidateSearchCache(instanceKey);
     const safeUpdates = updates.map((update) => ({
       ...update,
       record: this.normalizeRecordForInstance(instanceKey, update.record),
     }));
     let missingFieldRetryCount = 0;
-    let urlFieldRetryCount = 0;
 
     try {
       while (true) {
@@ -337,25 +317,10 @@ export class BitableService {
           if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
             return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
           }
-          if (
-            isUrlFieldMetadataError(error) &&
-            !safeUpdates.some((update) => hasFieldValue([update.record], '需求链接')) &&
-            !safeUpdates.some((update) => hasFieldValue([update.record], '参数明细入口')) &&
-            urlFieldRetryCount < 1
-          ) {
-            const configWithoutUrlFields = withoutUrlFields(config);
-            if (configWithoutUrlFields) {
-              urlFieldRetryCount += 1;
-              config = configWithoutUrlFields;
-              this.logger.warn(
-                JSON.stringify({
-                  message: 'Retrying bitable update without URL field metadata',
-                  instanceKey,
-                }),
-              );
-              continue;
-            }
-          }
+          assertNoAcceptanceEvidenceSchemaDrift(
+            error,
+            safeUpdates.map((update) => update.record),
+          );
           const missingFieldName = extractMissingFieldName(error);
           const removedFromRecords = removeFieldFromUpdates(safeUpdates, missingFieldName);
           const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
@@ -521,6 +486,9 @@ export class BitableService {
     actionKey: string,
     error: unknown,
   ): never {
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
     const errorMessage = errorText(error);
     const errorName = error instanceof Error ? error.name : 'UnknownError';
 
@@ -606,29 +574,21 @@ function removeFieldFromUpdates(
   );
 }
 
-function withoutUrlFields<T extends BitablePluginConfig>(config: T): T | null {
-  const fields = config.formValue.fields;
-  if (!fields?.length) return null;
-  const filteredFields = fields.filter((field) => field.type !== 15);
-  if (filteredFields.length === fields.length) return null;
-  return {
-    ...config,
-    formValue: {
-      ...config.formValue,
-      fields: filteredFields,
-    },
-  } as T;
-}
-
-function hasFieldValue(
+function assertNoAcceptanceEvidenceSchemaDrift(
+  error: unknown,
   records: Record<string, unknown>[],
-  fieldName: string,
-): boolean {
-  return records.some((record) => Object.prototype.hasOwnProperty.call(record, fieldName));
-}
-
-function isUrlFieldMetadataError(error: unknown): boolean {
-  return /value of ['"]link['"] must be an object/i.test(errorText(error));
+): void {
+  const writesAcceptanceEvidence = records.some((record) =>
+    Object.prototype.hasOwnProperty.call(record, 'DS验收证据'),
+  );
+  if (
+    writesAcceptanceEvidence &&
+    /value of ['"]link['"] must be an object/i.test(errorText(error))
+  ) {
+    throw new BadRequestException(
+      'Base 字段配置错误：「DS验收证据」必须为普通文本（style.type=plain），当前被配置为超链接。请修复对应工作台字段后重试。',
+    );
+  }
 }
 
 function normalizeCellValue(
