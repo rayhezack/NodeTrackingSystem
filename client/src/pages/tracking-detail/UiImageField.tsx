@@ -143,7 +143,7 @@ export default function UiImageField({
       )}
 
       <div className="mt-3 space-y-1.5">
-        <div className="text-xs font-medium text-foreground">对应网页链接</div>
+        <div className="text-xs font-medium text-foreground">UI图对应网页链接</div>
         {readOnly ? (
           pageUrl ? (
             <a
