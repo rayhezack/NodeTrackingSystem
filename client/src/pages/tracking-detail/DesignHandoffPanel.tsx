@@ -64,7 +64,9 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
   }, [loadParams]);
 
   const presentation = useMemo(
-    () => selectedDetail ? getHandoffPresentation(selectedDetail) : { summaryItems: [], uiImages: [] },
+    () => selectedDetail
+      ? getHandoffPresentation(selectedDetail)
+      : { summaryItems: [], uiImages: [], uiPageUrl: '' },
     [selectedDetail],
   );
 
@@ -143,7 +145,11 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
             {presentation.uiImages.length} 张
           </Badge>
         </div>
-        <UiImageField value={presentation.uiImages} readOnly />
+        <UiImageField
+          value={presentation.uiImages}
+          pageUrl={presentation.uiPageUrl}
+          readOnly
+        />
       </div>
 
       {loading ? (
@@ -246,6 +252,7 @@ function buildDesignHandoffText(detail: TrackingDetail | TrackingDetailSnapshot,
     `触发时机：${handoffTextValue(detail.designFields['触发时机']) || '-'}`,
     `公共属性要求：${handoffTextValue(detail.designFields['公共属性要求']) || '-'}`,
     `UI图：${toAttachmentTextArray(detail.designFields['UI图']).join('、') || '-'}`,
+    `UI图对应网页链接：${handoffTextValue(detail.designFields['UI图对应网页链接']) || '-'}`,
     '',
     buildParamClipboardText(params, detail.source, '参数说明'),
   ];

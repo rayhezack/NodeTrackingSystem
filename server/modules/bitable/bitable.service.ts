@@ -475,7 +475,9 @@ export class BitableService {
         .filter(([fieldName]) => fieldMap.get(fieldName)?.writeable !== false)
         .map(([fieldName, value]) => [
           fieldName,
-          normalizeCellValue(fieldMap.get(fieldName), value),
+          fieldName === 'UI图对应网页链接' && !cellText(value).trim()
+            ? null
+            : normalizeCellValue(fieldMap.get(fieldName), value),
         ] as const)
         .filter(([, value]) => value !== undefined),
     );

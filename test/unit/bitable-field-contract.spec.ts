@@ -66,6 +66,18 @@ describe('线上 Base 字段契约', () => {
       bizType: 'DateTime',
       writeable: true,
     });
+    expect(fieldByName('workbench', 'UI图对应网页链接')).toMatchObject({
+      id: 'fldy5mV9RA',
+      type: 15,
+      bizType: 'Url',
+      writeable: true,
+    });
+    expect(fieldByName('webWorkbench', 'UI图对应网页链接')).toMatchObject({
+      id: 'fldNJEF6vb',
+      type: 15,
+      bizType: 'Url',
+      writeable: true,
+    });
   });
 
   it('App 与 Web 参数表应使用同一套线上字段 ID', () => {

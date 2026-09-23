@@ -20,6 +20,9 @@ import type { TrackingAttachment } from '@shared/api.interface';
 interface UiImageFieldProps {
   value: TrackingAttachment[];
   onChange?: (value: TrackingAttachment[]) => void;
+  pageUrl?: string;
+  onPageUrlChange?: (value: string) => void;
+  pageUrlDisabled?: boolean;
   disabled?: boolean;
   placeholder?: string;
   readOnly?: boolean;
@@ -28,6 +31,9 @@ interface UiImageFieldProps {
 export default function UiImageField({
   value,
   onChange,
+  pageUrl = '',
+  onPageUrlChange,
+  pageUrlDisabled,
   disabled,
   placeholder,
   readOnly = false,
@@ -135,6 +141,35 @@ export default function UiImageField({
           </span>
         </div>
       )}
+
+      <div className="mt-3 space-y-1.5">
+        <div className="text-xs font-medium text-foreground">对应网页链接</div>
+        {readOnly ? (
+          pageUrl ? (
+            <a
+              href={pageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex max-w-full items-center gap-1 truncate text-xs text-primary hover:underline"
+              title={pageUrl}
+            >
+              <span className="truncate">{pageUrl}</span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          ) : (
+            <div className="text-xs text-muted-foreground">未填写</div>
+          )
+        ) : (
+          <Input
+            type="url"
+            value={pageUrl}
+            onChange={(event) => onPageUrlChange?.(event.target.value)}
+            disabled={pageUrlDisabled ?? disabled}
+            placeholder="粘贴当前 UI 图对应的网页链接（可选）"
+            className="h-8 rounded-sm text-sm"
+          />
+        )}
+      </div>
 
       {value.length > 0 ? (
         <div className={`grid gap-2 sm:grid-cols-2 ${readOnly ? '' : 'mt-3'}`}>

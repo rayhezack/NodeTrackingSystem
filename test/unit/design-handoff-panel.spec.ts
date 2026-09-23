@@ -67,6 +67,7 @@ describe('研发对接面板事件集合', () => {
           { file_path: 'tracking/event_1.png', name: '支付按钮.png' },
           'https://example.com/result.png',
         ],
+        UI图对应网页链接: 'https://example.com/checkout',
       },
     } as unknown as TrackingDetail;
     const presentation = getHandoffPresentation(detail);
@@ -76,5 +77,6 @@ describe('研发对接面板事件集合', () => {
       expect.objectContaining({ file_path: 'tracking/event_1.png', name: '支付按钮.png' }),
       expect.objectContaining({ url: 'https://example.com/result.png' }),
     ]);
+    expect(presentation.uiPageUrl).toBe('https://example.com/checkout');
   });
 });

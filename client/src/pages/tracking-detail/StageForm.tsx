@@ -313,7 +313,7 @@ const StageForm = ({
       )}
 
       <div className="grid gap-5 md:grid-cols-2">
-        {stageConfig.fields.map((field) => (
+        {stageConfig.fields.map((field) => field.key === 'uiPageUrl' ? null : (
           <div
             key={field.key}
             className={field.type === 'textarea' || field.type === 'attachment' ? 'md:col-span-2' : ''}
@@ -407,6 +407,9 @@ const StageForm = ({
                 onChange={(value) => handleChange(field.key, value)}
                 disabled={disabled}
                 placeholder={field.placeholder}
+                pageUrl={toTextValue(formData.uiPageUrl)}
+                onPageUrlChange={(value) => handleChange('uiPageUrl', value)}
+                pageUrlDisabled={disabled}
               />
             )}
           </div>

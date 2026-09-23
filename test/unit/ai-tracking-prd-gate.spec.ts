@@ -23,6 +23,18 @@ describe('AI 埋点 PRD 门禁', () => {
     }));
   });
 
+  it('埋点设计阶段应提供可选的 UI 图对应网页链接', () => {
+    const designStage = SIDEBAR_STAGES.find((stage) => stage.id === 'design');
+    const uiPageUrl = designStage?.fields.find((field) => field.key === 'uiPageUrl');
+
+    expect(uiPageUrl).toEqual(expect.objectContaining({
+      label: 'UI图对应网页链接',
+      type: 'url',
+      baseField: 'UI图对应网页链接',
+    }));
+    expect(uiPageUrl?.required).toBeFalsy();
+  });
+
   it('缺少 PRD 链接时应直接提示先补充文档', () => {
     const { getAiDraftGenerationBlockReason } = loadAiTrackingPrdUtils();
 

@@ -214,7 +214,7 @@ describe('Base 写入值标准化', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
-  it.each(['需求链接'])(
+  it.each(['需求链接', 'UI图对应网页链接'])(
     '应在调用 Base 前拒绝非法链接 %s',
     async (fieldName) => {
       const call = jest.fn();
@@ -229,6 +229,71 @@ describe('Base 写入值标准化', () => {
         ]),
       ).rejects.toThrow('链接格式错误');
       expect(call).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['workbench', 'webWorkbench'] as const)(
+    '%s 应将 UI 图对应网页链接标准化为链接对象',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchUpdateRecords(instanceKey, [
+        {
+          id: 'rec_1',
+          record: {
+            UI图对应网页链接: 'https://example.com/checkout',
+          },
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchUpdateRecords', {
+        records: [
+          {
+            id: 'rec_1',
+            record: {
+              UI图对应网页链接: {
+                text: 'https://example.com/checkout',
+                link: 'https://example.com/checkout',
+              },
+            },
+          },
+        ],
+      });
+    },
+  );
+
+  it.each(['workbench', 'webWorkbench'] as const)(
+    '%s 应支持清空 UI 图对应网页链接',
+    async (instanceKey) => {
+      const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
+      const capabilityService = {
+        loadWithConfig: jest.fn().mockReturnValue({ call }),
+      };
+      const service = new BitableService(capabilityService as never);
+
+      await service.batchUpdateRecords(instanceKey, [
+        {
+          id: 'rec_1',
+          record: {
+            UI图对应网页链接: '',
+          },
+        },
+      ]);
+
+      expect(call).toHaveBeenCalledWith('batchUpdateRecords', {
+        records: [
+          {
+            id: 'rec_1',
+            record: {
+              UI图对应网页链接: null,
+            },
+          },
+        ],
+      });
     },
   );
 

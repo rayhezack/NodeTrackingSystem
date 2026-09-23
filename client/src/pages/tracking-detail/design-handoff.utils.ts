@@ -39,6 +39,7 @@ export function getHandoffPresentation(detail: TrackingDetail | TrackingDetailSn
   return {
     summaryItems,
     uiImages: toTrackingAttachments(fields['UI图']),
+    uiPageUrl: handoffTextValue(fields['UI图对应网页链接']),
   };
 }
 
