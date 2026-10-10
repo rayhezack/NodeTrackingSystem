@@ -1,8 +1,8 @@
 # Pollo AI 埋点项目管理系统
 
-**核心结论：这是一个基于飞书妙搭 + 多维表格 Base 的埋点需求管理系统，用来把“提需求、做埋点设计、评审、开发、验收、上线、归档、查询”串成一条可追踪的闭环流程。**
+**核心结论：这是一个部署在 PolloCloud、以飞书多维表格 Base 为数据底座的埋点需求管理系统，用来把“提需求、做埋点设计、评审、开发、验收、上线、归档、查询”串成一条可追踪的闭环流程。**
 
-线上地址：[https://bcn0tgplxp2e.aiforce.cloud/app/app_17apvbcusvs](https://bcn0tgplxp2e.aiforce.cloud/app/app_17apvbcusvs)
+目标地址：`https://app-tracking-management.pollocloud.com`（完成环境变量绑定并发布后生效）
 
 ## 适用场景
 
@@ -70,7 +70,7 @@ flowchart LR
 - **通知对象：** 节点通知按责任人发送；上线监控完成后默认通知需求提出人、数据负责人、研发负责人和埋点校验人，并按人员去重。
 - **身份策略：** 使用深圳九瓴科技有限公司通讯录核验的邮箱，由机器人应用调用 `contact/v3/users/batch_get_id` 解析租户级 `user_id` 后投递。通知链路不再直接使用 `open_id`，也不把妙搭数字人员 ID 当作飞书 `user_id`。
 - **多人负责人：** 多个责任人会逐个独立发送；单人失败不会阻断其他责任人，前端会区分“全部送达、部分送达、全部失败”。
-- **Bot 可用范围：** 妙搭应用运行时可见范围与飞书开放平台机器人可用范围是两层配置；若飞书返回 `Bot has NO availability to this user`，需要在开放平台把机器人应用的可用范围加入该用户或所在部门，并重新发布应用版本。
+- **Bot 可用范围：** PolloCloud 员工登录范围与飞书开放平台机器人可用范围是两层配置；若飞书返回 `Bot has NO availability to this user`，需要在开放平台把机器人应用的可用范围加入该用户或所在部门，并重新发布应用版本。
 - **异常反馈：** 前端完成节点时会展示通知成功、跳过或失败原因，便于定位权限、身份或机器人可见性问题。
 - **归档回跳：** 完成归档后自动返回埋点工作台，避免继续停留在已结束的需求详情页。
 
@@ -101,9 +101,10 @@ flowchart LR
 | 层 | 技术 | 说明 |
 |---|---|---|
 | 前端 | React 19、Vite、Tailwind、Radix UI | 工作台、详情页、查询库、权限配置 |
-| 后端 | NestJS | 封装工作流、权限、Base 读写、归档同步 |
+| 后端 | PolloCloud Worker | 封装工作流、权限、Base 读写、归档同步、OAuth 与机器人通知 |
 | 数据 | 飞书多维表格 Base | 作为需求、参数和正式查询库的数据底座 |
-| 部署 | 飞书妙搭全栈应用 | 通过 `lark-cli apps +release-create` 发布 |
+| 状态数据 | PolloCloud D1 | 加密保存飞书 OAuth Token 与 AI 草稿 |
+| 部署 | PolloCloud | `npm run build:pollocloud && pollocloud deploy` |
 
 ## 本地开发
 
@@ -111,7 +112,7 @@ flowchart LR
 
 - Node.js `>=22.0.0`
 - npm `>=10.0.0`
-- 已初始化的妙搭本地项目与飞书 Base 访问权限
+- 飞书自建应用、Base 访问权限和 PolloCloud 账号
 
 ### 常用命令
 
@@ -139,26 +140,19 @@ npm run build:server
 npm run build:client
 ```
 
-## 发布流程
+## PolloCloud 发布流程
 
-**发布前必须确认本地提交已 push 到远端 `sprint/default`，因为妙搭 release 读取的是远端分支，不是本地工作区。**
-
-推荐流程：
+发布前先请平台管理员为 `app-tracking-management` 开通 D1，并按 [AI 配置](docs/AI_TRACKING_MVP.md) 用 `pollocloud secret set` 绑定 Worker 密钥。随后执行：
 
 ```bash
 git status --short
-git rev-parse --short HEAD
-git push origin sprint/default
-/Users/ray/.codex/skills/feishu-sunwen-cli/scripts/sunwen-lark-cli apps +release-create --as user --app-id app_17apvbcusvs --branch sprint/default
+npm run lint
+npm test -- --runInBand
+npm run build:pollocloud
+pollocloud whoami
+pollocloud list
+pollocloud deploy
 ```
-
-发布创建后使用 release ID 查询：
-
-```bash
-/Users/ray/.codex/skills/feishu-sunwen-cli/scripts/sunwen-lark-cli apps +release-get --as user --app-id app_17apvbcusvs --release-id <release_id>
-```
-
-只有当返回 `status=finished` 且 `commit_id` 对应本次提交时，才能确认本轮发布完成。
 
 ## 维护原则
 

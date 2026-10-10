@@ -13,7 +13,7 @@ import {
   createUnknownChat,
   extractIdsFromValue,
 } from '@client/src/components/business-ui/chat-select/utils';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import { logger } from '@client/src/lib/logger';
 
 export type UseChatValueResult = {
   /**

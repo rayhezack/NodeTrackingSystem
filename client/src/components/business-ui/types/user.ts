@@ -27,7 +27,7 @@ export interface User {
   /** 飞书企业内 user_id（向前兼容新增，optional） */
   employee_id?: string;
 
-  /** 妙搭用户全局唯一 ID，来源同 user_id（向前兼容新增，optional） */
+  /** 旧妙搭数据中的用户 ID，仅用于历史记录兼容。 */
   miaoda_user_id?: string;
 
   /** 飞书用户全局唯一 ID，来源同 larkUserId（向前兼容新增，optional） */
@@ -91,7 +91,7 @@ export interface User {
 export interface LeaderUser {
   /** 飞书企业内 user_id */
   employee_id?: string;
-  /** 妙搭用户全局唯一 ID */
+  /** 旧妙搭数据中的用户 ID，仅用于历史记录兼容。 */
   miaoda_user_id?: string;
 }
 

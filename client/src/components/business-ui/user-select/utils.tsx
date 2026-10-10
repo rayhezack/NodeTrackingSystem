@@ -1,8 +1,4 @@
-import type {
-  UserInfo,
-  SearchAvatar,
-  LeaderUser as SdkLeaderUser,
-} from '@lark-apaas/client-toolkit/tools/services';
+import type { UserInfo, SearchAvatar, LeaderUser as SdkLeaderUser } from '@client/src/components/business-ui/api/directory-types';
 
 import type { AccountType } from '@client/src/components/business-ui/api/users/service';
 import type {
@@ -127,65 +123,6 @@ export function searchUserInfoToUser(
     avatar: userInfo.avatar,
     raw: rawUser,
   };
-}
-
-declare global {
-  interface Window {
-    MIAODA_APP_ID?: string;
-    __platform__?: {
-      appId?: string;
-    };
-    appId?: string;
-  }
-}
-
-export function getAppId(path: string): string | null | undefined {
-  if (window?.__platform__?.appId) {
-    return window.__platform__.appId;
-  }
-
-  if (window.MIAODA_APP_ID) {
-    return window.MIAODA_APP_ID;
-  }
-
-  let prefix: string;
-
-  /**
-   * 从路径中提取 appId
-   * @example "/app/my-app/settings" → "my-app"
-   */
-  const appMatch = path.match(/\/app\/([^/]+)/);
-  if (appMatch) {
-    return appMatch[1];
-  }
-
-  // 检查路径是否以固定前缀开头
-  if (path.includes('/ai/feida/runtime/')) {
-    prefix = '/ai/feida/runtime/';
-  } else if (path.includes('/spark/r/')) {
-    prefix = '/spark/r/';
-  } else {
-    prefix = '/ai/miaoda/';
-  }
-
-  // 兼容全栈appId挂载在window上，作为兜底
-  const windowAppId = window.appId || null;
-
-  if (!path.startsWith(prefix)) {
-    return windowAppId;
-  }
-
-  // 截取前缀后的部分
-  const remainder = path.substring(prefix.length);
-
-  // 找到下一个斜杠的位置
-  const nextSlashIndex = remainder.indexOf('/');
-
-  // 如果没有斜杠，返回整个remainder；否则返回斜杠前的部分
-  if (nextSlashIndex === -1) {
-    return remainder || windowAppId;
-  }
-  return remainder.substring(0, nextSlashIndex) || windowAppId;
 }
 
 /**

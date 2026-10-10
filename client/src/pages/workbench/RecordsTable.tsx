@@ -361,18 +361,21 @@ const RecordsTable = ({
                         <OwnerDisplay
                           names={rec.requester}
                           ids={rec.requesterIds}
+                          avatars={rec.requesterAvatars}
                         />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         <OwnerDisplay
                           names={rec.dataOwner}
                           ids={rec.dataOwnerIds}
+                          avatars={rec.dataOwnerAvatars}
                         />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
                         <OwnerDisplay
                           names={rec.devOwner}
                           ids={rec.devOwnerIds}
+                          avatars={rec.devOwnerAvatars}
                         />
                       </TableCell>
                       <TableCell className="px-3 py-0 text-xs text-muted-foreground">
@@ -430,7 +433,7 @@ const RecordsTable = ({
 
 export default RecordsTable;
 
-function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
+function OwnerDisplay({ names, ids, avatars = [] }: { names: string[]; ids: string[]; avatars?: string[] }) {
   const readableNames = names.map(normalizeOwnerName);
 
   if (ids.length) {
@@ -439,6 +442,7 @@ function OwnerDisplay({ names, ids }: { names: string[]; ids: string[] }) {
         value={ids.map((id, index) => ({
           user_id: id,
           ...(readableNames[index] ? { name: readableNames[index] } : {}),
+          ...(avatars[index] ? { avatar: avatars[index] } : {}),
         }))}
         size="small"
         accountType="apaas"

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logger } from '@lark-apaas/client-toolkit/logger';
-import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
+import { logger } from '@client/src/lib/logger';
+import { useCurrentUser } from '@client/src/hooks/use-current-user';
 import { Plus } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 
@@ -24,7 +24,7 @@ const RECORDS_PAGE_SIZE = 10;
 
 const WorkbenchPage = () => {
   const navigate = useNavigate();
-  const userProfile = useCurrentUserProfile();
+  const userProfile = useCurrentUser();
   const actor = getCurrentActor(userProfile);
   const [createOpen, setCreateOpen] = useState(false);
   const canCreate = Boolean(actor.id || actor.larkId);

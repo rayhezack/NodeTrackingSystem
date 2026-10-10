@@ -1,4 +1,4 @@
-import type { DepartmentInfo } from '@lark-apaas/client-toolkit/tools/services';
+import type { DepartmentInfo } from '@client/src/components/business-ui/api/directory-types';
 
 import type { Department } from './types';
 

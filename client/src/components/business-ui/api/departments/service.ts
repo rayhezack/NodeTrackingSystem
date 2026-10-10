@@ -1,18 +1,12 @@
-import {
-  DepartmentService,
-  type SearchDepartmentsParams,
-  type SearchDepartmentsResponse,
-} from '@lark-apaas/client-toolkit/tools/services';
+import { axiosForBackend } from '@client/src/api/http';
+import type {
+  SearchDepartmentsParams,
+  SearchDepartmentsResponse,
+} from '@client/src/components/business-ui/api/directory-types';
 
-const departmentService = new DepartmentService();
-
-/**
- * 搜索部门
- */
-export async function searchDepartments(
-  params: SearchDepartmentsParams,
-): Promise<SearchDepartmentsResponse> {
-  return departmentService.searchDepartments(params);
+export async function searchDepartments(params: SearchDepartmentsParams): Promise<SearchDepartmentsResponse> {
+  const response = await axiosForBackend.get('/api/directory/departments', { params });
+  return response.data;
 }
 
 export type { SearchDepartmentsParams, SearchDepartmentsResponse };

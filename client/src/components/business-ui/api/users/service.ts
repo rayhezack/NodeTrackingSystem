@@ -1,43 +1,31 @@
-import {
-  UserService,
-  type AccountType,
-  type SearchUsersParams,
-  type SearchUsersResponse,
-  type BatchGetUsersResponse,
-  type ConvertExternalContactResponse,
-} from '@lark-apaas/client-toolkit/tools/services';
+import { axiosForBackend } from '@client/src/api/http';
+import type {
+  AccountType,
+  BatchGetUsersResponse,
+  ConvertExternalContactResponse,
+  SearchUsersParams,
+  SearchUsersResponse,
+} from '@client/src/components/business-ui/api/directory-types';
 
-const userService = new UserService();
-
-/**
- * 搜索用户
- */
-export async function searchUsers(
-  params: SearchUsersParams,
-): Promise<SearchUsersResponse> {
-  return userService.searchUsers({
-    ...params,
-    searchExternalContact: params.searchExternalContact ?? false,
-  });
+export async function searchUsers(params: SearchUsersParams): Promise<SearchUsersResponse> {
+  const response = await axiosForBackend.get('/api/directory/users', { params });
+  return response.data;
 }
 
-/**
- * 批量根据用户 ID 查询用户信息
- */
-export async function listUsersByIds(
-  userIds: string[],
-): Promise<BatchGetUsersResponse> {
-  const numericIds = userIds.filter((id) => !isNaN(Number(id)));
-  return userService.listUsersByIds(numericIds);
+export async function listUsersByIds(userIds: string[]): Promise<BatchGetUsersResponse> {
+  const response = await axiosForBackend.post('/api/directory/users/batch', { userIds });
+  return response.data;
 }
 
-/**
- * 调用开户接口，将外部联系人的 larkUserID 转换为已注册用户
- */
-export async function convertExternalContact(
-  larkUserID: string,
-): Promise<ConvertExternalContactResponse> {
-  return userService.convertExternalContact(larkUserID);
+export async function convertExternalContact(larkUserID: string): Promise<ConvertExternalContactResponse> {
+  const response = await axiosForBackend.post('/api/directory/users/convert-external', { larkUserID });
+  return response.data;
 }
 
-export type { AccountType, SearchUsersParams, SearchUsersResponse, BatchGetUsersResponse, ConvertExternalContactResponse };
+export type {
+  AccountType,
+  BatchGetUsersResponse,
+  ConvertExternalContactResponse,
+  SearchUsersParams,
+  SearchUsersResponse,
+};

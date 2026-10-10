@@ -382,8 +382,8 @@ const AiTrackingDraftPanel = ({
             <span>
               当前运行环境缺少：{config.missingKeys.join('、') || '未知配置'}。
               {window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-                ? ' 本地调试需写入 .env.local 并重启服务；妙搭静态配置仅对部署环境生效。'
-                : ' 请检查妙搭静态配置并重启服务。'}
+                ? ' 本地调试需写入 .env.local 并重启服务。'
+                : ' 请检查 PolloCloud Worker 环境变量配置。'}
             </span>
           </div>
         )}

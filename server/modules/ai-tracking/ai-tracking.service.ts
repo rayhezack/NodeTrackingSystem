@@ -192,23 +192,27 @@ export class AiTrackingService {
         prdChars: prd.content.length,
       }));
 
-      const [currentParams, appLibrary, webLibrary] = await Promise.all([
+      const [currentParams, officialLibrary] = await Promise.all([
         this.tracking.getParams(detail.recordId),
-        this.queryLibrary.getEvents({ source: 'app', pageSize: 500 }, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS }),
-        this.queryLibrary.getEvents({ source: 'web', pageSize: 500 }, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS }),
+        this.queryLibrary.getEvents(
+          { source: detail.source, pageSize: 500 },
+          { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS },
+        ),
       ]);
-      const candidates = selectOfficialAssetCandidates(detail, prd.content, {
-        app: appLibrary.items,
-        web: webLibrary.items,
-      }, 16);
+      const candidates = selectOfficialCandidates(
+        detail,
+        prd.content,
+        officialLibrary.items,
+        MAX_HISTORY_EVENT_COUNT,
+      );
       const historicalContexts = await this.queryLibrary.getEventContexts(candidates, { cacheTtlMs: AI_CONTEXT_CACHE_TTL_MS });
       this.logger.log(JSON.stringify({
         message: 'AI tracking draft official context loaded',
         recordId: detail.recordId,
         draftId: draft.id,
         durationMs: Date.now() - generationStartedAt,
-        appEventCount: appLibrary.items.length,
-        webEventCount: webLibrary.items.length,
+        source: detail.source,
+        officialEventCount: officialLibrary.items.length,
         candidateCount: candidates.length,
         historyParamCount: historicalContexts.reduce((total, context) => total + context.params.length, 0),
       }));
@@ -494,7 +498,7 @@ ${JSON.stringify({
   currentParams: compactParams,
 }, null, 2)}
 
-正式埋点查询 + 正式参数查询参考（App/Web 两套表都会读取；用于判断是否复用已有事件和参数，并统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
+${sourceLabel} 正式埋点查询 + 正式参数查询参考（只读取当前端正式库；用于判断是否复用已有事件和参数，并统一 evt_id、参数命名、类型、必传和枚举口径；不得把历史业务事实套用到当前需求）：
 ${JSON.stringify(compactHistory, null, 2)}
 
 PRD 标题：${prd.title}
@@ -574,29 +578,6 @@ function selectOfficialCandidates(
     .sort((left, right) => right.score - left.score || left.item.evtId.localeCompare(right.item.evtId))
     .slice(0, limit)
     .map(({ item }) => item);
-}
-
-function selectOfficialAssetCandidates(
-  detail: TrackingDetail,
-  prdContent: string,
-  libraries: Record<'app' | 'web', OfficialEvent[]>,
-  limit: number,
-): OfficialEvent[] {
-  const primarySource = detail.source;
-  const secondarySource = primarySource === 'web' ? 'app' : 'web';
-  return uniqueOfficialCandidates([
-    ...selectOfficialCandidates(detail, prdContent, libraries[primarySource], 6),
-    ...selectOfficialCandidates(detail, prdContent, libraries[secondarySource], 4),
-  ]).slice(0, limit);
-}
-
-function uniqueOfficialCandidates(items: OfficialEvent[]): OfficialEvent[] {
-  const map = new Map<string, OfficialEvent>();
-  for (const item of items) {
-    const key = `${item.source}:${item.evtId.trim().toLowerCase() || item.recordId}`;
-    if (!map.has(key)) map.set(key, item);
-  }
-  return Array.from(map.values());
 }
 
 function compactDesignFields(fields?: Record<string, unknown>): Record<string, string> {

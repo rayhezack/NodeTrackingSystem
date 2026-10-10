@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { logger } from '@lark-apaas/client-toolkit/logger';
-import { useCurrentUserProfile } from '@lark-apaas/client-toolkit/hooks/useCurrentUserProfile';
+import { logger } from '@client/src/lib/logger';
+import { useCurrentUser } from '@client/src/hooks/use-current-user';
 import { ArrowLeft, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
@@ -30,7 +30,7 @@ const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const userProfile = useCurrentUserProfile();
+  const userProfile = useCurrentUser();
   const actor = getCurrentActor(userProfile);
   const requestedStage = searchParams.get('stage');
 

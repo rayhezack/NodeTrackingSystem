@@ -1,23 +1,16 @@
-import {
-  UserProfileService,
-  getAssetsUrl,
-  type AccountType,
-  type UserProfileData,
-} from '@lark-apaas/client-toolkit/tools/services';
+import { axiosForBackend } from '@client/src/api/http';
+import type { AccountType, UserProfileData } from '@client/src/components/business-ui/api/directory-types';
 
-const userProfileService = new UserProfileService();
-
-/**
- * 获取用户 Profile 卡片数据
- */
 export async function fetchUserProfile(
   userId: string,
   accountType: AccountType = 'apaas',
   signal?: AbortSignal,
 ): Promise<UserProfileData> {
-  return userProfileService.getUserProfile(userId, accountType, signal);
+  const response = await axiosForBackend.get(`/api/directory/users/${encodeURIComponent(userId)}/profile`, {
+    params: { accountType },
+    signal,
+  });
+  return response.data;
 }
 
-// Re-export for convenience
-export { getAssetsUrl };
 export type { AccountType, UserProfileData };

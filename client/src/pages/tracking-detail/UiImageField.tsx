@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { getAppId } from '@lark-apaas/client-toolkit';
-import { getDefaultBucketId } from '@lark-apaas/client-toolkit/tools/storage';
 import { ExternalLink, Eye, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
@@ -15,10 +13,11 @@ import {
 } from '@client/src/components/ui/dialog';
 import { uploadFile } from '@client/src/components/business-ui/api/files/service';
 import { resolveUiImagePreview } from '@client/src/api/tracking';
-import type { TrackingAttachment } from '@shared/api.interface';
+import type { TrackingAttachment, TrackingSource } from '@shared/api.interface';
 
 interface UiImageFieldProps {
   value: TrackingAttachment[];
+  source: TrackingSource;
   onChange?: (value: TrackingAttachment[]) => void;
   pageUrl?: string;
   onPageUrlChange?: (value: string) => void;
@@ -30,6 +29,7 @@ interface UiImageFieldProps {
 
 export default function UiImageField({
   value,
+  source,
   onChange,
   pageUrl = '',
   onPageUrlChange,
@@ -94,11 +94,12 @@ export default function UiImageField({
     try {
       const uploaded = await Promise.all(
         selectedFiles.map(async (file) => {
-          const result = await uploadFile(file);
+          const result = await uploadFile(file, source);
           return {
             bucket_id: result.bucketId,
             file_path: result.filePath,
-            url: result.url || buildStorageObjectUrl(result.filePath, result.bucketId),
+            url: result.url,
+            file_token: result.fileToken,
             name: file.name,
           } satisfies TrackingAttachment;
         }),
@@ -305,8 +306,7 @@ function attachmentUrl(file: TrackingAttachment): string {
   if (!filePath) return '';
   if (isPreviewableUrl(filePath)) return filePath;
 
-  const bucketId = textValue(file.bucket_id || file.bucketId).trim() || getDefaultBucketId();
-  return buildStorageObjectUrl(filePath, bucketId);
+  return '';
 }
 
 function resolvedAttachmentUrl(
@@ -343,14 +343,6 @@ function attachmentPreviewKey(file: TrackingAttachment): string {
     .map((value) => textValue(value).trim())
     .filter(Boolean)
     .join('|');
-}
-
-function buildStorageObjectUrl(filePath: string, bucketId?: string): string {
-  const normalizedPath = filePath.trim().replace(/^\/+/, '');
-  const normalizedBucketId = (bucketId || '').trim();
-  const appId = getAppId();
-  if (!appId || !normalizedBucketId || !normalizedPath) return '';
-  return `/app/${appId}/runtime/api/v1/storage/object/${normalizedBucketId}/${encodeURIComponent(normalizedPath)}`;
 }
 
 function isPreviewableUrl(value: string): boolean {

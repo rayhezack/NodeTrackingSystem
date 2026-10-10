@@ -1,7 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { BarChart3, Search, ShieldCheck } from "lucide-react";
-import { useCurrentUserProfile } from "@lark-apaas/client-toolkit/hooks/useCurrentUserProfile";
-import { useAppInfo } from "@lark-apaas/client-toolkit/hooks/useAppInfo";
+import { useCurrentUser } from "@client/src/hooks/use-current-user";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@client/src/components/ui/dropdown-menu";
-import { logger } from "@lark-apaas/client-toolkit/logger";
-import { getDataloom } from "@lark-apaas/client-toolkit/dataloom";
 import { useState } from "react";
 
 const navItems = [
@@ -22,23 +19,16 @@ const navItems = [
 
 const Layout = () => {
   const { pathname } = useLocation();
-  const userInfo = useCurrentUserProfile();
-  const { appName } = useAppInfo();
+  const userInfo = useCurrentUser();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      const dataloom = await getDataloom();
-      const result = await dataloom.service.session.signOut();
-      if (result.error) {
-        logger.error("退出登录失败:", result.error.message);
-        return;
-      }
-      window.location.reload();
+      window.location.assign("/_pollocloud/logout");
     } catch (error) {
-      logger.error("退出登录异常:", error);
+      console.error("退出登录异常:", error);
     } finally {
       setLoggingOut(false);
     }
@@ -61,7 +51,7 @@ const Layout = () => {
                 P
               </div>
               <span className="hidden max-w-[180px] truncate text-sm font-semibold text-foreground md:inline">
-                {appName || "Pollo AI 埋点项目管理"}
+                Pollo AI 埋点项目管理
               </span>
             </div>
             <nav className="flex items-center gap-1">

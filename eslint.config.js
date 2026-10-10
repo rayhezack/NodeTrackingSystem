@@ -9,6 +9,9 @@ module.exports = tseslint.config(
     extends: [
       ...eslintPresetsOfSimple.client,
     ],
+    rules: {
+      '@lark-apaas/require-app-container': 'off',
+    },
     settings: {
       'import/resolver': {
         alias: {

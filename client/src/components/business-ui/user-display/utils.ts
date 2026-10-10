@@ -1,6 +1,6 @@
 import { normalizeUser, isValidUserId } from '@client/src/components/business-ui/utils/user';
 import type { User } from '@client/src/components/business-ui/types/user';
-import type { UserInfo } from '@lark-apaas/client-toolkit/tools/services';
+import type { UserInfo } from '@client/src/components/business-ui/api/directory-types';
 import type { AccountType } from '@client/src/components/business-ui/api/users/service';
 
 // 直接导出统一的函数

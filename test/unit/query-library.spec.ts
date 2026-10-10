@@ -2,6 +2,51 @@ import { BitableService } from '../../server/modules/bitable/bitable.service';
 import { QueryLibraryService } from '../../server/modules/query-library/query-library.service';
 
 describe('正式查询库参数读取', () => {
+  it('正式事件查询应排除已废弃和待治理记录', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec_online',
+            record: {
+              evt_id: 'online_event',
+              事件中文名: '在线事件',
+              端: ['Web'],
+              上线版本: '1.0.0',
+              状态: '已上线',
+            },
+          },
+          {
+            id: 'rec_deprecated',
+            record: {
+              evt_id: 'deprecated_event',
+              事件中文名: '废弃事件',
+              端: ['Web'],
+              上线版本: '1.0.0',
+              状态: '已废弃',
+            },
+          },
+          {
+            id: 'rec_governance',
+            record: {
+              evt_id: 'governance_event',
+              事件中文名: '待治理事件',
+              端: ['Web'],
+              上线版本: '1.0.0',
+              状态: '待治理',
+            },
+          },
+        ],
+        hasMore: false,
+      }),
+    };
+    const service = new QueryLibraryService(bitable as unknown as BitableService);
+
+    const result = await service.getEvents({ source: 'web', pageSize: 500 });
+
+    expect(result.items.map((item) => item.evtId)).toEqual(['online_event']);
+  });
+
   it('AI 上下文在 TTL 内不应重复整表扫描正式库', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({

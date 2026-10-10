@@ -1,5 +1,5 @@
-import { logger } from '@lark-apaas/client-toolkit/logger';
-import { axiosForBackend } from '@lark-apaas/client-toolkit/utils/getAxiosForBackend';
+import { logger } from '@client/src/lib/logger';
+import { axiosForBackend } from './http';
 import { toReadableError } from './error';
 import type {
   GetStageStatsResponse,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ClipboardList, Copy, Loader2 } from 'lucide-react';
-import { logger } from '@lark-apaas/client-toolkit/logger';
+import { logger } from '@client/src/lib/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
@@ -147,6 +147,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
         </div>
         <UiImageField
           value={presentation.uiImages}
+          source={selectedDetail?.source || detail.source}
           pageUrl={presentation.uiPageUrl}
           readOnly
         />

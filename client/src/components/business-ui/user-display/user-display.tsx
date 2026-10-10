@@ -7,7 +7,7 @@ import type { UserInput } from '@client/src/components/business-ui/types/user';
 import { UserWithAvatar } from '@client/src/components/business-ui/user-display/user-with-avatar';
 import { UserProfile } from '@client/src/components/business-ui/user-profile/user-profile';
 import { cn } from '@/lib/utils';
-import type { AccountType } from '@lark-apaas/client-toolkit/tools/services';
+import type { AccountType } from '@client/src/components/business-ui/api/directory-types';
 import {
   Popover,
   PopoverContent,

@@ -404,6 +404,7 @@ const StageForm = ({
             {field.type === 'attachment' && (
               <UiImageField
                 value={toTrackingAttachments(formData[field.key])}
+                source={detail.source}
                 onChange={(value) => handleChange(field.key, value)}
                 disabled={disabled}
                 placeholder={field.placeholder}

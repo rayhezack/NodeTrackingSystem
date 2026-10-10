@@ -7,7 +7,7 @@ import {
   Database,
   Info,
 } from "lucide-react";
-import { logger } from "@lark-apaas/client-toolkit/logger";
+import { logger } from "@client/src/lib/logger";
 import { Input } from "@client/src/components/ui/input";
 import { Button } from "@client/src/components/ui/button";
 import { Badge } from "@client/src/components/ui/badge";

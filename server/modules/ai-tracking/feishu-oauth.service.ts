@@ -39,7 +39,6 @@ interface OAuthTokenResponse {
 
 const REQUIRED_OAUTH_SCOPES = [
   'offline_access',
-  'auth:user.id:read',
   'docx:document:readonly',
   'wiki:node:read',
 ] as const;

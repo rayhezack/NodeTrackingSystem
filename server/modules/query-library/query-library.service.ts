@@ -32,6 +32,8 @@ const WEB_OFFICIAL_PARAM_FIELDS = [...OFFICIAL_PARAM_BASE_FIELDS.slice(0, 13), '
 const APP_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
 const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 
+const EXCLUDED_OFFICIAL_EVENT_STATUSES = new Set(['已废弃', '待治理']);
+
 interface QueryCacheOptions {
   cacheTtlMs?: number;
 }
@@ -57,6 +59,7 @@ export class QueryLibraryService {
       .map((record) => this.toOfficialEvent(record, source))
       .filter((event) => {
         if (!event.evtId) return false;
+        if (EXCLUDED_OFFICIAL_EVENT_STATUSES.has(event.status)) return false;
         if (!keyword) return true;
         return `${event.evtId} ${event.eventName}`.toLowerCase().includes(keyword);
       });
@@ -149,7 +152,11 @@ export class QueryLibraryService {
     };
   }
 
-  private async searchAllRecords(instanceKey: BitableInstanceKey, fieldNames: readonly string[], cacheTtlMs = 0): Promise<BitableRecord[]> {
+  private async searchAllRecords(
+    instanceKey: BitableInstanceKey,
+    fieldNames: readonly string[],
+    cacheTtlMs = 0,
+  ): Promise<BitableRecord[]> {
     const cacheKey = `${instanceKey}:${fieldNames.join('|')}`;
     const cached = this.searchCache.get(cacheKey);
     if (cacheTtlMs > 0 && cached && cached.expiresAt > Date.now()) return cached.records;

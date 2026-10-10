@@ -60,7 +60,8 @@ export function isValidUserId(user_id: string | undefined): boolean {
 }
 
 export function shouldFetchUserAvatar(userId?: string, avatar?: string): boolean {
-  return Boolean(userId && /^\d+$/.test(userId) && !avatar);
+  const normalizedId = userId?.trim() || '';
+  return Boolean(normalizedId && !avatar && !/^(ou_|on_)/.test(normalizedId));
 }
 
 /**

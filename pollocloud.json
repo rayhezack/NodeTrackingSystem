@@ -1,0 +1,14 @@
+{
+  "name": "app-tracking-management",
+  "dir": "dist/pollocloud",
+  "spa": true,
+  "worker": "worker/index.ts",
+  "db": true,
+  "immutable": ["/assets/*"],
+  "vars": {
+    "AI_BASE_URL": "https://api.moonshot.cn/v1",
+    "AI_MODEL": "kimi-k3",
+    "FEISHU_OAUTH_REDIRECT_URI": "https://app-tracking-management.pollocloud.com/api/tracking/ai/feishu-auth/callback",
+    "TRACKING_APP_URL": "https://app-tracking-management.pollocloud.com"
+  }
+}

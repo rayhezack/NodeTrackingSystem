@@ -102,10 +102,13 @@ export interface TrackingRecord {
   platform: string;
   requester: string[];
   requesterIds: string[];
+  requesterAvatars?: string[];
   dataOwner: string[];
   dataOwnerIds: string[];
+  dataOwnerAvatars?: string[];
   devOwner: string[];
   devOwnerIds: string[];
+  devOwnerAvatars?: string[];
   expectedCompletionDate?: string;
   updatedAt: number;
 }
@@ -454,7 +457,7 @@ export interface AiTrackingConfigStatus {
   model: string;
   reasoningEffort: string;
   feishuOAuthConfigured: boolean;
-  tokenStorage: 'encrypted_base';
+  tokenStorage: 'encrypted_base' | 'encrypted_d1';
 }
 
 export interface AiFeishuAuthStatus {
@@ -463,7 +466,7 @@ export interface AiFeishuAuthStatus {
   scope?: string;
   reauthorizationRequired?: boolean;
   missingScopes?: string[];
-  tokenStorage: 'encrypted_base';
+  tokenStorage: 'encrypted_base' | 'encrypted_d1';
 }
 
 export interface StartAiFeishuAuthRequest {
