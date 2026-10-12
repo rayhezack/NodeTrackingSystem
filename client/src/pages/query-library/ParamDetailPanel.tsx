@@ -24,6 +24,10 @@ function CellValue({ value }: { value?: string }) {
   return url ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">打开链接 <ExternalLink className="h-3 w-3" /></a> : <>{value}</>;
 }
 
+function getParamName(param: OfficialParam) {
+  return param.paramName || param.paramKey.split(".").at(-1) || "-";
+}
+
 export function ParamDetailPanel({ rowData, keyword, onKeywordChange, onRetry }: Props) {
   if (rowData.loading) return <div className="flex items-center gap-2 p-6 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取参数...</div>;
   if (rowData.error) return <div className="space-y-3 p-6 text-xs"><p className="text-destructive">参数加载失败：{rowData.error}</p><Button size="sm" variant="outline" onClick={onRetry}><RefreshCw />重试</Button></div>;
@@ -38,10 +42,10 @@ export function ParamDetailPanel({ rowData, keyword, onKeywordChange, onRetry }:
     </div>
     <div className="overflow-x-auto border border-border">
       <table className="w-full min-w-[680px] border-collapse text-left text-xs">
-        <thead className="bg-muted/50 text-muted-foreground"><tr>{["参数 key / 名称", "类型 / 必传", "枚举 / 范围", "定义 / 备注"].map((label) => <th key={label} scope="col" className="border-b border-border px-3 py-2 font-medium">{label}</th>)}</tr></thead>
+        <thead className="bg-muted/50 text-muted-foreground"><tr>{["参数名称", "类型 / 必传", "枚举 / 范围", "定义 / 备注"].map((label) => <th key={label} scope="col" className="border-b border-border px-3 py-2 font-medium">{label}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">
           {items.map((param, index) => <tr key={`${param.paramKey}-${index}`} className="align-top hover:bg-accent/40">
-            <td className="w-[25%] px-3 py-2"><div className="break-all font-mono font-medium text-foreground">{param.paramKey || "-"}</div><div className="mt-1 text-muted-foreground">{param.paramName || "-"}</div>{param.platform && <div className="mt-1 text-muted-foreground">{param.platform}</div>}</td>
+            <td className="w-[25%] px-3 py-2"><div className="break-all font-mono font-medium text-foreground">{getParamName(param)}</div>{param.platform && <div className="mt-1 text-muted-foreground">{param.platform}</div>}</td>
             <td className="w-[18%] px-3 py-2"><div>{param.paramType || "-"}</div><div className="mt-1 text-muted-foreground">{param.requiredRule || (param.required ? "必传" : "非必传")}</div>{param.triggerCondition && <div className="mt-1 whitespace-pre-wrap text-muted-foreground">条件：{param.triggerCondition}</div>}</td>
             <td className="w-[25%] whitespace-pre-wrap break-words px-3 py-2 text-foreground"><CellValue value={param.enumRange} /></td>
             <td className="whitespace-pre-wrap break-words px-3 py-2"><CellValue value={param.definition} />{param.notes && <div className="mt-1 text-muted-foreground">备注：<CellValue value={param.notes} /></div>}{param.version && <div className="mt-1 text-muted-foreground">版本：{param.version}</div>}{param.sourceTable && <div className="mt-1 text-muted-foreground">来源：{param.sourceTable}</div>}</td>

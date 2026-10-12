@@ -92,8 +92,8 @@
   --pane: var(--card);
   --pane-edge: var(--border);
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   flex: none;
   display: grid;
   place-items: center;
@@ -102,10 +102,10 @@
 .fan-arc { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .fan-opt {
   position: absolute;
-  left: -24px;
-  top: -24px;
-  width: 48px;
-  height: 48px;
+  left: -18px;
+  top: -18px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: 1px solid var(--pane-edge);
@@ -145,8 +145,8 @@
 .fan-core {
   position: relative;
   z-index: 3;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border: 0;

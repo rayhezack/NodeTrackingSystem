@@ -100,7 +100,7 @@ export function RadialMenu({ actions }: { actions: RadialAction[] }) {
               type="button"
               className="fan-opt"
               data-live={aim === i}
-              style={{ transform: open ? `translate(${Math.cos(angle) * 78}px, ${Math.sin(angle) * 78}px)` : "translate(0, 0) scale(0.4)", transitionDelay: `${open ? i * 28 : 0}ms` }}
+              style={{ transform: open ? `translate(${Math.cos(angle) * 58}px, ${Math.sin(angle) * 58}px)` : "translate(0, 0) scale(0.4)", transitionDelay: `${open ? i * 28 : 0}ms` }}
               onClick={() => { action.onSelect(); setOpen(false); }}
               onPointerDown={(event) => event.stopPropagation()}
               aria-label={action.label}
@@ -108,7 +108,7 @@ export function RadialMenu({ actions }: { actions: RadialAction[] }) {
               tabIndex={open ? 0 : -1}
               disabled={action.disabled}
             >
-              <action.Icon size={19} strokeWidth={2} />
+              <action.Icon size={16} strokeWidth={2} />
               <span className="fan-label">{action.label}</span>
             </button>
           );
@@ -128,7 +128,7 @@ export function RadialMenu({ actions }: { actions: RadialAction[] }) {
         aria-expanded={open}
         title="快捷操作"
       >
-        <Plus size={22} strokeWidth={2} />
+        <Plus size={18} strokeWidth={2} />
       </button>
     </div>
   );
