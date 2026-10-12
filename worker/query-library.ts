@@ -50,6 +50,8 @@ const OFFICIAL_PARAM_BASE_FIELDS = [
 const APP_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/Kgy0b4bvmaJSK8sjQDscUrNJnOf?table=tblEYv9lGZeenbT2';
 const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws6PIHcKD20nqf?table=tblNAMKr5S38iXJQ';
 const EXCLUDED_EVENT_STATUSES = new Set(['已废弃', '待治理']);
+const OFFICIAL_EVENT_VIEW_ID = 'vewO0PlLph';
+const OFFICIAL_PARAM_VIEW_ID = 'vewiUagCFI';
 
 export async function getOfficialEvents(
   credentials: FeishuCredentials,
@@ -60,9 +62,9 @@ export async function getOfficialEvents(
   const pageSize = Math.min(Math.max(Math.trunc(Number(params.pageSize) || 50), 1), 100);
   const offset = Math.max(Math.trunc(Number(params.pageToken) || 0), 0);
   const keyword = (params.keyword || '').trim().toLocaleLowerCase();
-  const records = await searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, fetchImpl);
+  const records = await searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, OFFICIAL_EVENT_VIEW_ID, fetchImpl);
   const matchingParams = keyword
-    ? await searchAllRecords(credentials, officialParamDetailKey(source), officialParamFields(source), fetchImpl)
+    ? await searchAllRecords(credentials, officialParamDetailKey(source), officialParamFields(source), OFFICIAL_PARAM_VIEW_ID, fetchImpl)
     : [];
   const matchingEventIds = new Set<string>();
   const matchingRecordIds = new Set<string>();
@@ -112,6 +114,7 @@ export async function getOfficialParams(
     credentials,
     officialParamDetailKey(ref.source),
     officialParamFields(ref.source),
+    OFFICIAL_PARAM_VIEW_ID,
     fetchImpl,
   );
   const items = records
@@ -127,21 +130,29 @@ async function searchAllRecords(
   credentials: FeishuCredentials,
   instance: BitableInstanceKey,
   fieldNames: readonly string[],
+  viewId: string,
   fetchImpl: FetchLike,
 ): Promise<BitableRecord[]> {
   const records: BitableRecord[] = [];
   let pageToken: string | undefined;
-  for (let page = 0; page < 20; page += 1) {
+  const seenPageTokens = new Set<string>();
+  while (true) {
+    if (pageToken) {
+      if (seenPageTokens.has(pageToken)) {
+        throw new Error('Feishu bitable pagination returned a repeated page token');
+      }
+      seenPageTokens.add(pageToken);
+    }
     const result = await searchBitableRecordPage(credentials, instance, {
       fieldNames,
       pageSize: 500,
       pageToken,
+      viewId,
     }, fetchImpl);
     records.push(...result.records);
     if (!result.hasMore || !result.pageToken) return records;
     pageToken = result.pageToken;
   }
-  throw new Error('Feishu bitable pagination exceeded 20 pages');
 }
 
 function toOfficialEvent(record: BitableRecord, source: TrackingSource): OfficialEvent {

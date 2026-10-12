@@ -44,19 +44,17 @@ export async function searchBitableRecords(
 
   const token = await getFeishuTenantToken(env, fetchImpl);
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize || 100), 1), 500);
-  const body = {
-    page_size: pageSize,
-    ...(options.pageToken ? { page_token: options.pageToken } : {}),
-  };
+  const query = new URLSearchParams({ user_id_type: 'user_id', page_size: String(pageSize) });
+  if (options.pageToken) query.set('page_token', options.pageToken);
   const response = await fetchImpl(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?user_id_type=user_id`,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: '{}',
     },
   );
   const payload = await response.json() as { code?: number; msg?: string; data?: unknown };
@@ -69,18 +67,22 @@ export async function searchBitableRecords(
 export async function searchBitableRecordPage(
   env: FeishuCredentials,
   instance: BitableInstanceKey,
-  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[] } = {},
+  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecordPage> {
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
+  const query = new URLSearchParams({
+    user_id_type: 'user_id',
+    page_size: String(Math.min(Math.max(Math.trunc(options.pageSize || 500), 1), 500)),
+  });
+  if (options.pageToken) query.set('page_token', options.pageToken);
   const body = {
-    page_size: Math.min(Math.max(Math.trunc(options.pageSize || 500), 1), 500),
-    ...(options.pageToken ? { page_token: options.pageToken } : {}),
     ...(options.fieldNames?.length ? { field_names: [...options.fieldNames] } : {}),
+    ...(options.viewId ? { view_id: options.viewId } : {}),
   };
   const response = await fetchImpl(
-    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?user_id_type=user_id`,
+    `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

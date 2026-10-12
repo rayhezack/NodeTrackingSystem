@@ -34,6 +34,8 @@ describe('PolloCloud query library', () => {
       evtId: 'home_show',
       platform: 'iOS、Android',
     }));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(expect.objectContaining({ view_id: 'vewO0PlLph' }));
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewiUagCFI' }));
   });
 
   it('reads official parameters linked to an event', async () => {
@@ -87,6 +89,7 @@ describe('PolloCloud query library', () => {
       }),
     ]);
     expect(result.baseLink).toContain('tblEYv9lGZeenbT2');
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewiUagCFI' }));
   });
 
   it('finds events through parameter enum values and excludes retired parameters', async () => {
@@ -104,6 +107,29 @@ describe('PolloCloud query library', () => {
 
     const result = await getOfficialEvents(credentials, { source: 'app', keyword: 'referral' }, fetchMock as unknown as typeof fetch);
     expect(result.items.map((item) => item.evtId)).toEqual(['purchase_submit']);
+  });
+
+  it('reads Web events from the official view across cursor pages', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }));
+    for (let page = 0; page < 2; page += 1) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({
+        code: 0,
+        data: {
+          items: page === 0 ? [] : [{ record_id: 'event-1', fields: { evt_id: 'web_purchase', '事件中文名': 'Web 下单', '状态': '已上线' } }],
+          has_more: page === 0,
+          ...(page === 0 ? { page_token: 'cursor-1' } : {}),
+        },
+      }));
+    }
+
+    const result = await getOfficialEvents(credentials, { source: 'web' }, fetchMock as unknown as typeof fetch);
+
+    expect(result.items.map((item) => item.evtId)).toEqual(['web_purchase']);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(expect.objectContaining({ view_id: 'vewO0PlLph' }));
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(expect.objectContaining({ view_id: 'vewO0PlLph' }));
+    expect(new URL(fetchMock.mock.calls[2][0]).searchParams.get('page_token')).toBe('cursor-1');
   });
 });
 

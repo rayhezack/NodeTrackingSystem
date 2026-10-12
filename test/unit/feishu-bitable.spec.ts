@@ -26,7 +26,8 @@ describe('PolloCloud Feishu bitable read client', () => {
     expect(data).toEqual({ items: [{ record_id: 'rec-1' }], has_more: false });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toContain('/apps/Kgy0b4bvmaJSK8sjQDscUrNJnOf/tables/tblqHhr5aZwr4QOZ/records/search');
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ page_size: 20 });
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('page_size')).toBe('20');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({});
   });
 
   it('creates, updates and deletes records through the configured Base table', async () => {
