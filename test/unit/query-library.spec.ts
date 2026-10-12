@@ -70,6 +70,30 @@ describe('正式查询库参数读取', () => {
     expect(bitable.searchRecords).toHaveBeenCalledTimes(2);
   });
 
+  it('应通过一级分类匹配事件并支持分类与关键词组合筛选', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockImplementation((instanceKey: string) => Promise.resolve({
+        records: instanceKey === 'webQueryLibrary'
+          ? [
+            { id: 'rec_1', record: { evt_id: 'sub_start', 事件中文名: '订阅弹窗曝光', 一级分类: '支付链路', 状态: '已上线' } },
+            { id: 'rec_2', record: { evt_id: 'sub_result', 事件中文名: '订阅流程结果', 一级分类: '支付链路', 状态: '已上线' } },
+            { id: 'rec_3', record: { evt_id: 'signup_result', 事件中文名: '注册结果', 一级分类: '注册', 状态: '已上线' } },
+          ]
+          : [],
+        hasMore: false,
+      })),
+    };
+    const service = new QueryLibraryService(bitable as unknown as BitableService);
+
+    const byKeyword = await service.getEvents({ source: 'web', keyword: '支付' });
+    const combined = await service.getEvents({ source: 'web', keyword: '结果', category: '支付链路' });
+
+    expect(byKeyword.items.map((item) => item.evtId)).toEqual(['sub_start', 'sub_result']);
+    expect(byKeyword.categories).toEqual(['支付链路', '注册']);
+    expect(combined.items.map((item) => item.evtId)).toEqual(['sub_result']);
+    expect(combined.categories).toEqual(['支付链路', '注册']);
+  });
+
   it('AI 上下文在 TTL 内不应重复整表扫描正式库', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({

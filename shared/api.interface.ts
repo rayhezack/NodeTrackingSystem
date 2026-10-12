@@ -596,6 +596,7 @@ export interface OfficialEvent {
   source: TrackingSource;
   evtId: string;
   eventName: string;
+  category?: string;
   platform: string;
   version: string;
   status: string;
@@ -613,12 +614,14 @@ export interface OfficialEventContext {
 export interface GetOfficialEventsParams {
   source?: TrackingSource;
   keyword?: string;
+  category?: string;
   pageSize?: number;
   pageToken?: string;
 }
 
 export interface GetOfficialEventsResponse {
   items: OfficialEvent[];
+  categories: string[];
   hasMore: boolean;
   pageToken?: string;
   total: number;

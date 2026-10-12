@@ -268,6 +268,7 @@ export default {
         return json(await getOfficialEvents(env, {
           source: url.searchParams.get('source') === 'web' ? 'web' : 'app',
           keyword: url.searchParams.get('keyword') || undefined,
+          category: url.searchParams.get('category') || undefined,
           pageSize: Number(url.searchParams.get('pageSize') || 50),
           pageToken: url.searchParams.get('pageToken') || undefined,
         }));

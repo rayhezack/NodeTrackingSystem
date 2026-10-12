@@ -3,9 +3,9 @@ import type { GetOfficialEventsParams, GetOfficialEventsResponse, GetOfficialPar
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import type { BitableInstanceKey } from '../bitable/bitable.constants';
 
-const APP_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
+const APP_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '一级分类', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
 
-const WEB_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
+const WEB_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '一级分类', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
 
 const OFFICIAL_PARAM_BASE_FIELDS = [
   '参数主键',
@@ -54,6 +54,7 @@ export class QueryLibraryService {
     const pageSize = Number(params.pageSize || 50);
     const offset = Number(params.pageToken || 0);
     const keyword = (params.keyword || '').trim().toLowerCase();
+    const category = (params.category || '').trim();
     const records = await this.searchAllRecords(queryLibraryKey(source), officialFields(source), options.cacheTtlMs);
     const matchingParams = keyword
       ? await this.searchAllRecords(officialParamDetailKey(source), officialParamFields(source), options.cacheTtlMs)
@@ -72,13 +73,15 @@ export class QueryLibraryService {
       if (evtId) matchingEventIds.add(evtId);
       cellIds(param.record['关联事件']).forEach((id) => matchingRecordIds.add(id));
     }
-    const filtered = records
+    const officialEvents = records
       .map((record) => this.toOfficialEvent(record, source))
+      .filter((event) => event.evtId && !EXCLUDED_OFFICIAL_EVENT_STATUSES.has(event.status));
+    const categories = [...new Set(officialEvents.map((event) => event.category).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    const filtered = officialEvents
       .filter((event) => {
-        if (!event.evtId) return false;
-        if (EXCLUDED_OFFICIAL_EVENT_STATUSES.has(event.status)) return false;
+        if (category && event.category !== category) return false;
         if (!keyword) return true;
-        return [event.evtId, event.eventName, event.eventDefinition, event.triggerTiming, event.metricScenario]
+        return [event.evtId, event.eventName, event.category, event.eventDefinition, event.triggerTiming, event.metricScenario]
           .join(' ').toLowerCase().includes(keyword)
           || matchingEventIds.has(event.evtId)
           || matchingRecordIds.has(parseScopedRecordId(event.recordId).rawId);
@@ -88,6 +91,7 @@ export class QueryLibraryService {
 
     return {
       items: items.slice(offset, nextOffset),
+      categories,
       hasMore: nextOffset < items.length,
       pageToken: nextOffset < items.length ? String(nextOffset) : undefined,
       total: items.length,
@@ -144,6 +148,7 @@ export class QueryLibraryService {
       source,
       evtId: cellText(record.record['evt_id']),
       eventName: cellText(record.record['事件中文名']) || '未命名事件',
+      category: cellText(record.record['一级分类']),
       platform: cellText(record.record['端']) || '-',
       version: firstText(record.record['上线版本'], record.record['版本']) || '-',
       paramLink: cellText(record.record['参数明细入口']) || paramBaseLink(source),

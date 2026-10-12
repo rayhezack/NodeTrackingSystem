@@ -19,6 +19,7 @@ type FetchLike = typeof fetch;
 const OFFICIAL_FIELDS = [
   'evt_id',
   '事件中文名',
+  '一级分类',
   '端',
   '上线版本',
   '状态',
@@ -62,6 +63,7 @@ export async function getOfficialEvents(
   const pageSize = Math.min(Math.max(Math.trunc(Number(params.pageSize) || 50), 1), 100);
   const offset = Math.max(Math.trunc(Number(params.pageToken) || 0), 0);
   const keyword = (params.keyword || '').trim().toLocaleLowerCase();
+  const category = (params.category || '').trim();
   const records = await searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, OFFICIAL_EVENT_VIEW_ID, fetchImpl);
   const matchingParams = keyword
     ? await searchAllRecords(credentials, officialParamDetailKey(source), officialParamFields(source), OFFICIAL_PARAM_VIEW_ID, fetchImpl)
@@ -80,11 +82,14 @@ export async function getOfficialEvents(
     if (evtId) matchingEventIds.add(evtId);
     cellIds(param.record['关联事件']).forEach((id) => matchingRecordIds.add(id));
   }
-  const filtered = records
+  const officialEvents = records
     .map((record) => toOfficialEvent(record, source))
+    .filter((event) => event.evtId && !EXCLUDED_EVENT_STATUSES.has(event.status));
+  const categories = [...new Set(officialEvents.map((event) => event.category).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  const filtered = officialEvents
     .filter((event) => {
-      if (!event.evtId || EXCLUDED_EVENT_STATUSES.has(event.status)) return false;
-      return !keyword || [event.evtId, event.eventName, event.eventDefinition, event.triggerTiming, event.metricScenario]
+      if (category && event.category !== category) return false;
+      return !keyword || [event.evtId, event.eventName, event.category, event.eventDefinition, event.triggerTiming, event.metricScenario]
         .join(' ').toLocaleLowerCase().includes(keyword)
         || matchingEventIds.has(event.evtId)
         || matchingRecordIds.has(event.recordId.slice(source.length + 1));
@@ -93,6 +98,7 @@ export async function getOfficialEvents(
   const nextOffset = offset + pageSize;
   return {
     items: items.slice(offset, nextOffset),
+    categories,
     hasMore: nextOffset < items.length,
     pageToken: nextOffset < items.length ? String(nextOffset) : undefined,
     total: items.length,
@@ -161,6 +167,7 @@ function toOfficialEvent(record: BitableRecord, source: TrackingSource): Officia
     source,
     evtId: cellText(record.record.evt_id),
     eventName: cellText(record.record['事件中文名']) || '未命名事件',
+    category: cellText(record.record['一级分类']),
     platform: cellText(record.record['端']) || '-',
     version: firstText(record.record['上线版本'], record.record['版本']) || '-',
     status: firstText(record.record['状态'], record.record['正式状态'], record.record['生命周期状态'], record.record['流程阶段']) || '-',

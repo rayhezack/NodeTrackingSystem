@@ -109,6 +109,31 @@ describe('PolloCloud query library', () => {
     expect(result.items.map((item) => item.evtId)).toEqual(['purchase_submit']);
   });
 
+  it('matches the primary category and combines category selection with search', async () => {
+    const events = [
+      { record_id: 'event-1', fields: { evt_id: 'sub_start', '事件中文名': '订阅弹窗曝光', '一级分类': '支付链路', '状态': '已上线' } },
+      { record_id: 'event-2', fields: { evt_id: 'sub_result', '事件中文名': '订阅流程结果', '一级分类': '支付链路', '状态': '已上线' } },
+      { record_id: 'event-3', fields: { evt_id: 'signup_result', '事件中文名': '注册结果', '一级分类': '注册', '状态': '已上线' } },
+      { record_id: 'event-4', fields: { evt_id: 'old_payment', '事件中文名': '旧支付', '一级分类': '支付链路', '状态': '已废弃' } },
+    ];
+    const fetchMock = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/auth/')) return Promise.resolve(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }));
+      const viewId = JSON.parse(String(init?.body)).view_id;
+      return Promise.resolve(jsonResponse({ code: 0, data: { items: viewId === 'vewO0PlLph' ? events : [], has_more: false } }));
+    });
+
+    const byKeyword = await getOfficialEvents(credentials, { source: 'web', keyword: '支付' }, fetchMock as unknown as typeof fetch);
+    const byCategory = await getOfficialEvents(credentials, { source: 'web', category: '支付链路' }, fetchMock as unknown as typeof fetch);
+    const combined = await getOfficialEvents(credentials, { source: 'web', category: '支付链路', keyword: '结果' }, fetchMock as unknown as typeof fetch);
+
+    expect(byKeyword.items.map((item) => item.evtId)).toEqual(['sub_start', 'sub_result']);
+    expect(byKeyword.categories).toEqual(['支付链路', '注册']);
+    expect(byCategory.items.map((item) => item.evtId)).toEqual(['sub_start', 'sub_result']);
+    expect(combined.items.map((item) => item.evtId)).toEqual(['sub_result']);
+    expect(combined.categories).toEqual(['支付链路', '注册']);
+    expect(combined.items[0].category).toBe('支付链路');
+  });
+
   it('reads Web events from the official view across cursor pages', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }));
