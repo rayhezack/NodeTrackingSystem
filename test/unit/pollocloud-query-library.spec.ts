@@ -19,7 +19,8 @@ describe('PolloCloud query library', () => {
           ],
           has_more: false,
         },
-      }));
+      }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }));
 
     const result = await getOfficialEvents(
       credentials,
@@ -53,6 +54,10 @@ describe('PolloCloud query library', () => {
                 '参数名': 'page_id',
                 '数据类型': 'string',
                 '必传规则': '必传',
+                '条件说明': '仅登录用户',
+                '枚举/取值范围': 'home, search',
+                '版本': '8.2.0',
+                '备注': '默认值/示例：home',
                 'App适用性': 'iOS、Android',
                 '关联事件': [{ id: 'event-1' }],
               },
@@ -73,10 +78,32 @@ describe('PolloCloud query library', () => {
         paramKey: 'home_show.page_id',
         paramName: 'page_id',
         required: true,
+        triggerCondition: '仅登录用户',
+        enumRange: 'home, search',
+        version: '8.2.0',
+        notes: '默认值/示例：home',
+        example: 'home',
         platform: 'App通用',
       }),
     ]);
     expect(result.baseLink).toContain('tblEYv9lGZeenbT2');
+  });
+
+  it('finds events through parameter enum values and excludes retired parameters', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [
+        { record_id: 'event-1', fields: { evt_id: 'purchase_submit', '事件中文名': '提交订单', '状态': '已上线' } },
+        { record_id: 'event-2', fields: { evt_id: 'old_purchase', '事件中文名': '旧订单', '状态': '已废弃' } },
+      ], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [
+        { record_id: 'param-1', fields: { evt_id: 'purchase_submit', '参数名': 'channel', '枚举/取值范围': 'organic, referral', '参数状态': '已上线' } },
+        { record_id: 'param-2', fields: { evt_id: 'old_purchase', '参数名': 'channel', '枚举/取值范围': 'referral', '参数状态': '已上线' } },
+        { record_id: 'param-3', fields: { evt_id: 'another', '参数名': 'channel', '枚举/取值范围': 'referral', '参数状态': '已废弃' } },
+      ], has_more: false } }));
+
+    const result = await getOfficialEvents(credentials, { source: 'app', keyword: 'referral' }, fetchMock as unknown as typeof fetch);
+    expect(result.items.map((item) => item.evtId)).toEqual(['purchase_submit']);
   });
 });
 

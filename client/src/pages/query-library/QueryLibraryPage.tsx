@@ -1,400 +1,185 @@
-import { useState, useCallback, useEffect } from "react";
-import {
-  Search,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-  Database,
-  Info,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, ClipboardCopy, Database, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 import { logger } from "@client/src/lib/logger";
-import { Input } from "@client/src/components/ui/input";
 import { Button } from "@client/src/components/ui/button";
-import { Badge } from "@client/src/components/ui/badge";
-import { Skeleton } from "@client/src/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@client/src/components/ui/table";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyMedia,
-  EmptyTitle,
-} from "@client/src/components/ui/empty";
-import { getOfficialEvents } from "@client/src/api/query-library";
-import type { OfficialEvent, TrackingSource } from "@shared/api.interface";
+import { getOfficialEvents, getOfficialParams } from "@client/src/api/query-library";
+import type { OfficialEvent, OfficialParam, TrackingSource } from "@shared/api.interface";
+import { LabelInput } from "./LabelInput";
+import { RadialMenu } from "./RadialMenu";
+import { ParamDetailPanel } from "./ParamDetailPanel";
 
-// 状态 → 语义色映射
-function getStatusVariant(status: string): "default" | "secondary" | "outline" {
-  const s = status || "";
-  if (["上线", "已上线", "稳定", "稳定归档", "成功"].some((k) => s.includes(k))) {
-    return "default";
-  }
-  if (["废弃", "已废弃", "下线", "错误"].some((k) => s.includes(k))) {
-    return "secondary";
-  }
-  return "outline";
+interface ParamState {
+  loading: boolean;
+  error: string | null;
+  items: OfficialParam[];
+  total: number;
+  baseLink?: string;
 }
 
-function getStatusStyle(status: string): string {
-  const s = status || "";
-  if (["上线", "已上线", "稳定", "稳定归档", "成功"].some((k) => s.includes(k))) {
-    return "border-transparent text-[hsl(160_84%_39%)] bg-[hsl(160_84%_96%)]";
-  }
-  if (["评审", "待", "进行中", "开发"].some((k) => s.includes(k))) {
-    return "border-transparent text-[hsl(38_92%_50%)] bg-[hsl(38_92%_96%)]";
-  }
-  if (["废弃", "已废弃", "下线", "错误"].some((k) => s.includes(k))) {
-    return "border-transparent text-[hsl(0_84%_60%)] bg-[hsl(0_84%_96%)]";
-  }
-  return "";
+function statusClass(status: string) {
+  if (status.includes("上线") || status.includes("稳定")) return "bg-[var(--status-success-bg)] text-success";
+  if (status.includes("废弃") || status.includes("下线")) return "bg-[var(--status-error-bg)] text-destructive";
+  return "bg-[var(--status-warning-bg)] text-foreground";
 }
 
-const QueryLibraryPage = () => {
+export default function QueryLibraryPage() {
   const [source, setSource] = useState<TrackingSource>("app");
-  const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [keyword, setKeyword] = useState("");
   const [events, setEvents] = useState<OfficialEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [pageToken, setPageToken] = useState<string | undefined>(undefined);
-  const [total, setTotal] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pageToken, setPageToken] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [params, setParams] = useState<ParamState>({ loading: false, error: null, items: [], total: 0 });
+  const [paramKeyword, setParamKeyword] = useState("");
+  const request = useRef(0);
+  const selectedRef = useRef<string | null>(null);
+  const selected = events.find((event) => event.recordId === selectedId) || null;
 
-  const fetchEvents = useCallback(
-    async (kw: string, token?: string, append = false) => {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
-      try {
-        const res = await getOfficialEvents({
-          source,
-          keyword: kw || undefined,
-          pageSize: 20,
-          pageToken: token,
-        });
-        if (append) {
-          setEvents((prev) => [...prev, ...res.items]);
-        } else {
-          setEvents(res.items);
-        }
-        setHasMore(res.hasMore);
-        setPageToken(res.pageToken);
-        setTotal(res.total);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "加载失败";
-        setError(msg);
-        logger.error("获取正式事件列表失败", err);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [source],
-  );
+  const fetchEvents = useCallback(async (token?: string) => {
+    const append = Boolean(token);
+    const current = ++request.current;
+    if (append) setLoadingMore(true);
+    else { setLoading(true); setError(null); setEvents([]); setSelectedId(null); setParams({ loading: false, error: null, items: [], total: 0 }); }
+    try {
+      const response = await getOfficialEvents({ source, keyword: keyword || undefined, pageSize: 30, pageToken: token });
+      if (current !== request.current) return;
+      setEvents((previous) => append ? [...previous, ...response.items] : response.items);
+      if (!append) setSelectedId(response.items[0]?.recordId || null);
+      setHasMore(response.hasMore);
+      setPageToken(response.pageToken);
+      setTotal(response.total);
+    } catch (cause) {
+      if (current !== request.current) return;
+      const message = cause instanceof Error ? cause.message : "正式事件加载失败";
+      setError(message);
+      logger.error("获取正式事件列表失败", cause);
+    } finally {
+      if (current === request.current) { setLoading(false); setLoadingMore(false); }
+    }
+  }, [source, keyword]);
 
-  // 首次加载与 App/Web 分库切换
+  useEffect(() => { void fetchEvents(); }, [fetchEvents]);
+
+  const loadParams = useCallback(async (recordId: string) => {
+    setParams({ loading: true, error: null, items: [], total: 0 });
+    try {
+      const response = await getOfficialParams(recordId);
+      if (recordId === selectedRef.current) setParams({ loading: false, error: null, ...response });
+    } catch (cause) {
+      if (recordId === selectedRef.current) {
+        const message = cause instanceof Error ? cause.message : "正式参数加载失败";
+        setParams({ loading: false, error: message, items: [], total: 0 });
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    fetchEvents(keyword);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+    selectedRef.current = selectedId;
+    setParamKeyword("");
+    if (selectedId) void loadParams(selectedId);
+  }, [selectedId, loadParams]);
 
-  const handleSearch = useCallback(() => {
-    setKeyword(searchInput.trim());
-    fetchEvents(searchInput.trim());
-  }, [searchInput, fetchEvents]);
+  const search = () => {
+    const next = searchInput.trim();
+    if (next === keyword) void fetchEvents();
+    else setKeyword(next);
+  };
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        handleSearch();
-      }
-    },
-    [handleSearch],
-  );
+  const copy = async (content: unknown, success: string) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(content, null, 2));
+      toast.success(success);
+    } catch {
+      toast.error("复制失败，请检查浏览器剪贴板权限");
+    }
+  };
 
-  const handleLoadMore = useCallback(() => {
-    if (!hasMore || loadingMore) return;
-    fetchEvents(keyword, pageToken, true);
-  }, [hasMore, loadingMore, keyword, pageToken, fetchEvents]);
-
-  const handleRetry = useCallback(() => {
-    fetchEvents(keyword);
-  }, [fetchEvents, keyword]);
+  const copyAll = () => {
+    if (!selected || params.loading || params.error) return;
+    void copy({ event: selected, params: params.items }, "已复制事件及全部正式参数");
+  };
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* 搜索栏 */}
-      <div className="flex items-center gap-2 rounded-sm border border-border bg-card p-2">
-        <SourceSegment
-          value={source}
-          onChange={(nextSource) => {
-            setSource(nextSource);
-            setPageToken(undefined);
-          }}
-        />
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="搜索 evt_id 或事件名"
-            className="h-8 pl-8 text-sm rounded-sm"
-          />
+    <div className="query-library space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">正式查询库</h1>
+          <p className="mt-1 text-xs text-muted-foreground">查询已上线事件、参数定义与枚举值</p>
         </div>
-        <Button
-          size="sm"
-          onClick={handleSearch}
-          disabled={loading}
-          className="h-8 rounded-sm"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4" />
-          )}
-          搜索
-        </Button>
-        {keyword && (
-          <span className="text-xs text-muted-foreground">
-            共 {total} 条结果
-          </span>
-        )}
+        <div className="text-xs tabular-nums text-muted-foreground">{loading ? "正在查询" : `共 ${total} 个事件`}</div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-        <div className="space-y-0.5 text-xs">
-          <div className="font-medium text-foreground">
-            正式查询库按 App / Web 分库展示，是已上线埋点的只读资产目录
-          </div>
-          <div className="text-muted-foreground">
-            当前查看 {source === "web" ? "Web 正式库" : "App 正式库"}；用于按 evt_id / 事件名查询正式口径、上线状态和参数入口，需求设计、开发、校验仍从「埋点工作台」进入。
-          </div>
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
+        <div className="inline-flex h-10 shrink-0 border border-border bg-card" role="group" aria-label="正式库来源">
+          {(["app", "web"] as const).map((item) => (
+            <button key={item} type="button" aria-pressed={source === item} onClick={() => setSource(item)}
+              className={`min-w-16 px-3 text-xs focus-visible:outline-2 focus-visible:outline-primary ${source === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
+              {item === "app" ? "App" : "Web"}
+            </button>
+          ))}
         </div>
+        <LabelInput label="搜索事件、参数或枚举" value={searchInput} onChange={setSearchInput} onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
+        <Button className="h-10 rounded-sm" onClick={search} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : <Search />}搜索</Button>
+        {keyword && <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:text-primary hover:underline" onClick={() => { setSearchInput(""); setKeyword(""); }}>清除搜索</button>}
       </div>
 
-      {/* 表格 */}
-      <div className="rounded-sm border border-border bg-card shadow-none">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="w-48 text-xs font-medium text-muted-foreground">
-                evt_id
-              </TableHead>
-              <TableHead className="text-xs font-medium text-muted-foreground">
-                事件名
-              </TableHead>
-              <TableHead className="w-24 text-xs font-medium text-muted-foreground">
-                平台
-              </TableHead>
-              <TableHead className="w-24 text-xs font-medium text-muted-foreground">
-                版本
-              </TableHead>
-              <TableHead className="w-24 text-xs font-medium text-muted-foreground">
-                状态
-              </TableHead>
-              <TableHead className="w-28 text-xs font-medium text-muted-foreground">
-                参数 Base
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && events.length === 0 && (
-              <>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Skeleton className="h-4 w-32 rounded-sm" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-48 rounded-sm" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-12 rounded-sm" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-10 rounded-sm" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-5 w-14 rounded-sm" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-7 w-20 rounded-sm" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </>
-            )}
-
-            {error && events.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <Empty className="border-0">
-                    <EmptyMedia variant="icon">
-                      <RefreshCw className="h-5 w-5" />
-                    </EmptyMedia>
-                    <EmptyContent>
-                      <EmptyTitle>加载失败</EmptyTitle>
-                      <EmptyDescription>{error}</EmptyDescription>
-                      <Button
-                        size="sm"
-                        onClick={handleRetry}
-                        className="mt-2 rounded-sm"
-                      >
-                        重试
-                      </Button>
-                    </EmptyContent>
-                  </Empty>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading && !error && events.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <Empty className="border-0">
-                    <EmptyMedia variant="icon">
-                      <Database className="h-5 w-5" />
-                    </EmptyMedia>
-                    <EmptyContent>
-                      <EmptyTitle>暂无数据</EmptyTitle>
-                      <EmptyDescription>
-                        {keyword
-                          ? "未找到匹配的事件，请尝试其他关键词"
-                          : `${source === "web" ? "Web" : "App"} 查询库中暂无事件数据`}
-                      </EmptyDescription>
-                    </EmptyContent>
-                  </Empty>
-                </TableCell>
-              </TableRow>
-            )}
-
+      <div className="grid min-h-[560px] grid-cols-1 border border-border bg-card lg:grid-cols-[minmax(290px,370px)_minmax(0,1fr)]">
+        <section className="min-w-0 border-b border-border lg:border-b-0 lg:border-r" aria-label="事件搜索结果">
+          <div className="flex h-11 items-center justify-between border-b border-border px-3 text-xs font-medium text-muted-foreground"><span>事件列表</span><span className="tabular-nums">{events.length} / {total}</span></div>
+          {loading && events.length === 0 && <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取正式库...</div>}
+          {error && events.length === 0 && <div className="space-y-3 p-5 text-xs"><p className="text-destructive">{error}</p><Button variant="outline" size="sm" onClick={() => void fetchEvents()}><RefreshCw />重试</Button></div>}
+          {!loading && !error && events.length === 0 && <div className="p-6 text-center text-xs text-muted-foreground"><Database className="mx-auto mb-3 h-5 w-5" /><p>{keyword ? "没有匹配的正式事件" : "正式库暂无事件"}</p></div>}
+          <div className="max-h-[calc(100vh-250px)] min-h-0 overflow-y-auto max-lg:max-h-72">
             {events.map((event) => (
-              <EventRow key={event.recordId} event={event} />
+              <button key={event.recordId} type="button" onClick={() => setSelectedId(event.recordId)} aria-current={selectedId === event.recordId ? "true" : undefined}
+                className={`flex w-full flex-col gap-2 border-b border-border px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-primary ${selectedId === event.recordId ? "bg-[var(--status-info-bg)]" : "hover:bg-accent/60"}`}>
+                <span className="flex w-full items-start justify-between gap-2"><span className="min-w-0 break-all font-mono text-xs font-semibold text-foreground">{event.evtId}</span><span className={`shrink-0 px-1.5 py-0.5 text-[11px] ${statusClass(event.status)}`}>{event.status || "未知"}</span></span>
+                <span className="text-sm text-foreground">{event.eventName}</span>
+                <span className="text-xs text-muted-foreground">{event.platform || "端未标注"} · {event.version || "版本未标注"}</span>
+              </button>
             ))}
-          </TableBody>
-        </Table>
-
-        {/* 加载更多 */}
-        {!loading && !error && events.length > 0 && hasMore && (
-          <div className="flex justify-center border-t border-border p-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="rounded-sm"
-            >
-              {loadingMore ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  加载中...
-                </>
-              ) : (
-                "加载更多"
-              )}
-            </Button>
           </div>
-        )}
+          {hasMore && !loading && <div className="p-3"><Button variant="outline" size="sm" className="w-full rounded-sm" disabled={loadingMore} onClick={() => void fetchEvents(pageToken)}>{loadingMore ? <Loader2 className="animate-spin" /> : <ChevronDown />}加载更多</Button></div>}
+        </section>
 
-        {!loading && !error && events.length > 0 && !hasMore && (
-          <div className="border-t border-border p-3 text-center text-xs text-muted-foreground">
-            已加载全部 {total} 条
-          </div>
-        )}
+        <section className="min-w-0" aria-label="事件及参数详情">
+          {!selected && <div className="flex min-h-72 items-center justify-center text-xs text-muted-foreground">选择事件查看正式定义和参数</div>}
+          {selected && <>
+            <div className="border-b border-border px-4 py-4 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0"><div className="break-all font-mono text-xs text-primary">{selected.evtId}</div><h2 className="mt-1 text-base font-semibold text-foreground">{selected.eventName}</h2></div>
+                <Button size="sm" className="rounded-sm" disabled={params.loading || Boolean(params.error)} onClick={copyAll}><ClipboardCopy />复制 AI 上下文</Button>
+              </div>
+              <dl className="mt-4 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-3">
+                <Detail label="端" value={selected.platform} /><Detail label="上线版本" value={selected.version} /><Detail label="状态" value={selected.status} />
+                <Detail label="事件定义" value={selected.eventDefinition} wide /><Detail label="触发时机" value={selected.triggerTiming} wide /><Detail label="指标 / 使用场景" value={selected.metricScenario} wide />
+              </dl>
+              {params.baseLink && <a href={params.baseLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline">原始 Base <ExternalLink className="h-3 w-3" /></a>}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
+              <div className="flex items-baseline gap-2"><h3 className="text-sm font-semibold">正式参数</h3><span className="text-xs text-muted-foreground tabular-nums">{params.loading ? "读取中" : `${params.total} 个`}</span></div>
+              <div className="flex items-center gap-2">
+                <RadialMenu actions={[
+                  { key: "event", label: "复制事件", Icon: ClipboardCopy, onSelect: () => void copy(selected, "已复制事件信息") },
+                  { key: "params", label: "复制参数", Icon: Check, disabled: params.loading || Boolean(params.error), onSelect: () => void copy(params.items, "已复制正式参数") },
+                  { key: "all", label: "复制全部", Icon: Database, disabled: params.loading || Boolean(params.error), onSelect: copyAll },
+                ]} />
+              </div>
+            </div>
+            <ParamDetailPanel rowData={params} keyword={paramKeyword} onKeywordChange={setParamKeyword} onRetry={() => void loadParams(selected.recordId)} />
+          </>}
+        </section>
       </div>
     </div>
   );
-};
-
-interface EventRowProps {
-  event: OfficialEvent;
 }
 
-function SourceSegment({
-  value,
-  onChange,
-}: {
-  value: TrackingSource;
-  onChange: (value: TrackingSource) => void;
-}) {
-  const options: Array<{ value: TrackingSource; label: string }> = [
-    { value: "app", label: "App" },
-    { value: "web", label: "Web" },
-  ];
-
-  return (
-    <div className="flex h-8 shrink-0 overflow-hidden rounded-sm border border-border bg-muted/20">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={`px-3 text-xs transition-colors ${
-            value === option.value
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
+function Detail({ label, value, wide = false }: { label: string; value?: string; wide?: boolean }) {
+  return <div className={wide ? "sm:col-span-3" : ""}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-foreground">{value || "-"}</dd></div>;
 }
-
-function EventRow({ event }: EventRowProps) {
-  return (
-    <TableRow className="hover:bg-accent/50">
-      <TableCell className="font-mono text-xs text-foreground">
-        {event.evtId || "-"}
-      </TableCell>
-      <TableCell className="text-sm text-foreground">
-        {event.eventName || "-"}
-      </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {event.platform || "-"}
-      </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {event.version || "-"}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={getStatusVariant(event.status)}
-          className={`rounded-sm ${getStatusStyle(event.status)}`}
-        >
-          {event.status || "-"}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        {event.paramLink ? (
-          <a
-            href={event.paramLink}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-7 items-center gap-1 rounded-sm border border-border px-2 text-xs text-primary underline-offset-2 hover:bg-accent hover:underline"
-          >
-            打开参数
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        ) : (
-          <span className="text-xs text-muted-foreground">-</span>
-        )}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-export default QueryLibraryPage;

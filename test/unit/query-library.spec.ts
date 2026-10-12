@@ -47,6 +47,29 @@ describe('正式查询库参数读取', () => {
     expect(result.items.map((item) => item.evtId)).toEqual(['online_event']);
   });
 
+  it('应通过正式参数枚举匹配事件，并排除已废弃参数', async () => {
+    const bitable = {
+      searchRecords: jest.fn().mockImplementation((instanceKey: string) => Promise.resolve({
+        records: instanceKey === 'queryLibrary'
+          ? [
+            { id: 'rec_live', record: { evt_id: 'purchase_submit', 事件中文名: '提交订单', 状态: '已上线' } },
+            { id: 'rec_old', record: { evt_id: 'old_event', 事件中文名: '旧事件', 状态: '已废弃' } },
+          ]
+          : [
+            { id: 'param_live', record: { evt_id: 'purchase_submit', 参数名: 'channel', '枚举/取值范围': 'organic, referral', 参数状态: '正式' } },
+            { id: 'param_old', record: { evt_id: 'old_event', 参数名: 'channel', '枚举/取值范围': 'referral', 参数状态: '正式' } },
+          ],
+        hasMore: false,
+      })),
+    };
+    const service = new QueryLibraryService(bitable as unknown as BitableService);
+
+    const result = await service.getEvents({ source: 'app', keyword: 'referral' });
+
+    expect(result.items.map((item) => item.evtId)).toEqual(['purchase_submit']);
+    expect(bitable.searchRecords).toHaveBeenCalledTimes(2);
+  });
+
   it('AI 上下文在 TTL 内不应重复整表扫描正式库', async () => {
     const bitable = {
       searchRecords: jest.fn().mockResolvedValue({
@@ -285,6 +308,8 @@ describe('正式查询库参数读取', () => {
         paramName: 'button_name',
         required: true,
         status: '正式',
+        notes: '默认值/示例：submit',
+        example: 'submit',
       }),
     ]);
     expect(result.total).toBe(1);

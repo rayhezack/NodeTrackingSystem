@@ -630,9 +630,13 @@ export interface OfficialParam {
   paramType: string;
   required: boolean;
   requiredRule: string;
+  triggerCondition?: string;
   enumRange?: string;
   definition: string;
   example: string;
+  notes?: string;
+  version?: string;
+  sourceTable?: string;
   platform?: string;
   status?: string;
 }

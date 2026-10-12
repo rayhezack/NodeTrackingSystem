@@ -55,13 +55,33 @@ export class QueryLibraryService {
     const offset = Number(params.pageToken || 0);
     const keyword = (params.keyword || '').trim().toLowerCase();
     const records = await this.searchAllRecords(queryLibraryKey(source), officialFields(source), options.cacheTtlMs);
+    const matchingParams = keyword
+      ? await this.searchAllRecords(officialParamDetailKey(source), officialParamFields(source), options.cacheTtlMs)
+      : [];
+    const matchingEventIds = new Set<string>();
+    const matchingRecordIds = new Set<string>();
+    for (const param of matchingParams) {
+      if (cellText(param.record['参数状态']) === '已废弃') continue;
+      const searchable = [
+        param.record['参数主键'], param.record['参数名'], param.record['数据类型'],
+        param.record['条件说明'], param.record['枚举/取值范围'],
+        param.record['参数定义'], param.record['备注'], param.record['来源表'],
+      ].map(cellText).join(' ').toLowerCase();
+      if (!searchable.includes(keyword)) continue;
+      const evtId = cellText(param.record['evt_id']);
+      if (evtId) matchingEventIds.add(evtId);
+      cellIds(param.record['关联事件']).forEach((id) => matchingRecordIds.add(id));
+    }
     const filtered = records
       .map((record) => this.toOfficialEvent(record, source))
       .filter((event) => {
         if (!event.evtId) return false;
         if (EXCLUDED_OFFICIAL_EVENT_STATUSES.has(event.status)) return false;
         if (!keyword) return true;
-        return `${event.evtId} ${event.eventName}`.toLowerCase().includes(keyword);
+        return [event.evtId, event.eventName, event.eventDefinition, event.triggerTiming, event.metricScenario]
+          .join(' ').toLowerCase().includes(keyword)
+          || matchingEventIds.has(event.evtId)
+          || matchingRecordIds.has(parseScopedRecordId(event.recordId).rawId);
       });
     const items = dedupeOfficialEvents(filtered);
     const nextOffset = offset + pageSize;
@@ -138,15 +158,20 @@ export class QueryLibraryService {
     const requiredRule = cellText(record.record['必传规则']);
     const evtId = cellText(record.record['evt_id']);
     const paramName = cellText(record.record['参数名']);
+    const notes = cellText(record.record['备注']);
     return {
       paramKey: cellText(record.record['参数主键']) || buildParamKey(evtId, paramName),
       paramName,
       paramType: cellText(record.record['数据类型']) || '-',
       required: requiredRule === '必传' || requiredRule === '条件必传',
       requiredRule: requiredRule || '非必传',
+      triggerCondition: cellText(record.record['条件说明']),
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
-      example: cellText(record.record['备注']),
+      example: /^默认值\/示例[:：]\s*/.test(notes) ? notes.replace(/^默认值\/示例[:：]\s*/, '') : '',
+      notes,
+      version: cellText(record.record['版本']),
+      sourceTable: cellText(record.record['来源表']),
       platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
       status: cellText(record.record['参数状态']),
     };
