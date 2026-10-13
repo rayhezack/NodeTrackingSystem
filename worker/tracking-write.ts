@@ -323,9 +323,10 @@ export async function updateTrackingRecord(
     const params = await listParams(credentials, ref.source, ref.rawId, text(current.record.evt_id), fetchImpl);
     if (params.length) await updateBitableRecords(credentials, paramKey(ref.source), params.map((item) => ({ id: item.id, record: { evt_id: text(patch.evt_id) } })), fetchImpl);
   }
+  const officialSyncCache: OfficialSyncCache = {};
   for (const [id, itemPatch] of updates) {
     const original = related.find((item) => item.id === id)?.record || (id === current.id ? current.record : {});
-    await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl);
+    await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl, officialSyncCache);
   }
   const notification = await notifyTransition(credentials, ref.source, recordId, current.record, nextRecord, body, related, fetchImpl);
   return { success: true, recordId, currentStage, ...(notification ? { notification } : {}) };
@@ -703,12 +704,19 @@ async function notifyTransition(credentials: WorkerCredentials, source: Tracking
   }, fetchImpl);
 }
 
+interface OfficialSyncCache {
+  events?: BitableRecord[];
+  params?: BitableRecord[];
+  enums?: BitableRecord[];
+}
+
 async function syncOfficialLibrary(
   credentials: WorkerCredentials,
   source: TrackingSource,
   designId: string,
   record: Record<string, unknown>,
   fetchImpl: FetchLike,
+  cache: OfficialSyncCache = {},
 ): Promise<void> {
   const stage = text(record['流程阶段']);
   const officialStatus = text(record['正式状态']);
@@ -720,7 +728,7 @@ async function syncOfficialLibrary(
   const shouldPublish = officialStatus === '已上线' || stage === '稳定归档' || (stage === '上线监控' && publishStatus === '发布成功' && ['通过', '豁免'].includes(monitorStatus));
   if (!shouldDeprecate && !shouldPublish) return;
 
-  const officialEvents = await listAll(credentials, queryLibraryKey(source), fetchImpl);
+  const officialEvents = cache.events || (cache.events = await listAll(credentials, queryLibraryKey(source), fetchImpl));
   const existingEvent = officialEvents.find((item) => text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase());
   if (shouldDeprecate) {
     await syncDeprecatedLibrary(credentials, source, designId, record, existingEvent, fetchImpl);
@@ -751,11 +759,13 @@ async function syncOfficialLibrary(
   if (!existingEvent) {
     const [created] = await createBitableRecords(credentials, queryLibraryKey(source), [eventFields], fetchImpl);
     officialEventId = created?.id;
+    if (created?.id) cache.events.push({ id: created.id, record: { ...eventFields, ...created.record } });
   }
   if (!officialEventId) return;
 
   const designParams = (await listParams(credentials, source, designId, evtId, fetchImpl)).filter((item) => !['废弃', '已废弃'].includes(text(item.record['参数状态'])) && !['废弃', '删除'].includes(text(item.record['变更类型'])));
-  const officialParams = await listAll(credentials, officialParamKey(source), fetchImpl);
+  const officialEventName = text(existingEvent?.record['事件中文名']) || text(eventFields['事件中文名']);
+  const officialParams = cache.params || (cache.params = await listAll(credentials, officialParamKey(source), fetchImpl));
   const existingByKey = new Map(officialParams.map((item) => [text(item.record['参数主键']).toLocaleLowerCase(), item]));
   const updates: Array<{ id: string; record: Record<string, unknown> }> = [];
   const creates: Array<Record<string, unknown>> = [];
@@ -765,7 +775,7 @@ async function syncOfficialLibrary(
     if (!paramName) continue;
     const paramKeyValue = `${evtId}.${paramName}`;
     const fields = {
-      参数主键: paramKeyValue, evt_id: evtId, 事件中文名: text(record['事件中文名']), 参数名: paramName,
+      参数主键: paramKeyValue, evt_id: evtId, 事件中文名: officialEventName, 参数名: paramName,
       数据类型: normalizeParamType(designParam.record['数据类型']), 必传规则: normalizeRequiredRule(designParam.record['必传规则']),
       条件说明: text(designParam.record['条件说明']), '枚举/取值范围': text(designParam.record['枚举/取值范围']), 参数定义: text(designParam.record['参数定义']),
       版本: text(record['版本'] || record['最低版本'] || designParam.record['版本']) || '1.0.0', 参数状态: '正式',
@@ -775,8 +785,10 @@ async function syncOfficialLibrary(
     };
     const existing = existingByKey.get(paramKeyValue.toLocaleLowerCase());
     if (existing) {
-      updates.push({ id: existing.id, record: fields });
-      enumSyncTargets.push({ id: existing.id, record: { ...existing.record, ...fields } });
+      const appendOnly = mergeOfficialParamRecord(existing.record, fields);
+      if (Object.keys(appendOnly.patch).length) updates.push({ id: existing.id, record: appendOnly.patch });
+      existing.record = appendOnly.effectiveRecord;
+      enumSyncTargets.push({ id: existing.id, record: appendOnly.effectiveRecord });
     }
     else creates.push(fields);
   }
@@ -784,9 +796,11 @@ async function syncOfficialLibrary(
   if (creates.length) {
     const createdParams = await createBitableRecords(credentials, officialParamKey(source), creates, fetchImpl);
     assertCreatedCount(createdParams, creates, '正式埋点参数');
-    enumSyncTargets.push(...createdParams.map((item, index) => ({ id: item.id, record: creates[index] })));
+    const createdTargets = createdParams.map((item, index) => ({ id: item.id, record: { ...creates[index], ...item.record } }));
+    cache.params.push(...createdTargets);
+    enumSyncTargets.push(...createdTargets);
   }
-  await syncEnumDictionary(credentials, source, 'official', enumSyncTargets, fetchImpl);
+  await syncEnumDictionary(credentials, source, 'official', enumSyncTargets, fetchImpl, cache);
 }
 
 async function syncDeprecatedLibrary(
@@ -904,12 +918,60 @@ function designParamIdentity(record: Record<string, unknown>): string {
 
 type EnumLinkMode = 'design' | 'official';
 
+function mergeOfficialParamRecord(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): { patch: Record<string, unknown>; effectiveRecord: Record<string, unknown> } {
+  const existingEnumRange = text(existing['枚举/取值范围']);
+  const mergedEnumRange = mergeEnumRangeText(existingEnumRange, text(incoming['枚举/取值范围']));
+  const patch: Record<string, unknown> = {};
+  if (mergedEnumRange !== existingEnumRange) patch['枚举/取值范围'] = mergedEnumRange;
+  return { patch, effectiveRecord: { ...existing, ...patch } };
+}
+
+function mergeEnumRangeText(existingText: string, incomingText: string): string {
+  const items = [...splitEnumRange(existingText), ...splitEnumRange(incomingText)];
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = enumRangeItemKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  if (!merged.length) return incomingText || existingText || '';
+  return merged.join(enumRangeDelimiter(existingText || incomingText));
+}
+
+function splitEnumRange(value: string): string[] {
+  const normalized = value.replace(/\r/g, '\n').trim();
+  if (!normalized) return [];
+  return normalized.includes('\n')
+    ? normalized.split('\n')
+    : normalized.includes('//')
+      ? [normalized]
+      : normalized.split(/[,，、/|]+/);
+}
+
+function enumRangeItemKey(item: string): string {
+  const match = item.trim().match(/^(.+?)\s*(?:\/\/|#|：|:)\s*(.+)$/);
+  return text(match?.[1] || item).toLocaleLowerCase();
+}
+
+function enumRangeDelimiter(value: string): string {
+  if (value.includes('\n') || value.includes('//')) return '\n';
+  if (value.includes('，')) return '，';
+  if (value.includes(',')) return ', ';
+  return '\n';
+}
+
 async function syncEnumDictionary(
   credentials: WorkerCredentials,
   source: TrackingSource,
   mode: EnumLinkMode,
   targets: BitableRecord[],
   fetchImpl: FetchLike,
+  cache: OfficialSyncCache = {},
 ): Promise<void> {
   const prepared = targets.map((target) => ({
     ...target,
@@ -923,7 +985,7 @@ async function syncEnumDictionary(
   const instance = enumDictionaryKey(source);
   const paramInstance = mode === 'design' ? paramKey(source) : officialParamKey(source);
   const linkedField = mode === 'design' ? '关联设计参数' : '关联正式参数';
-  const existingRecords = await listAll(credentials, instance, fetchImpl);
+  const existingRecords = cache.enums || (cache.enums = await listAll(credentials, instance, fetchImpl));
   const existingByKey = new Map<string, BitableRecord>(
     existingRecords
       .map((record): [string, BitableRecord] => [text(record.record['枚举主键']).toLocaleLowerCase(), record])
@@ -939,7 +1001,7 @@ async function syncEnumDictionary(
     const status = removed ? '已废弃' : mode === 'official' ? '正式' : '草稿';
     const version = text(target.record['版本']) || '1.0.0';
     const entries = parseEnumDictionaryEntries(target.evtId, target.paramName, target.enumText);
-    const linkedIds: string[] = [];
+    const linkedIds: string[] = entries.length ? [] : [...target.previousLinkedIds];
 
     for (const entry of entries) {
       const key = entry.key.toLocaleLowerCase();
@@ -991,10 +1053,17 @@ async function syncEnumDictionary(
       for (const paramId of pendingParamIds.get(chunk[offset][0]) || []) {
         linkedByParam.set(paramId, [...(linkedByParam.get(paramId) || []), record.id]);
       }
+      cache.enums?.push({ id: record.id, record: { ...chunk[offset][1], ...record.record } });
     });
   }
 
-  const paramUpdates = prepared.map((target) => ({ id: target.id, record: { 枚举字典: unique(linkedByParam.get(target.id) || []) } }));
+  const paramUpdates = prepared.flatMap((target) => {
+    const previousIds = unique(target.previousLinkedIds);
+    const nextIds = unique(linkedByParam.get(target.id) || []);
+    return previousIds.length === nextIds.length && previousIds.every((id, index) => id === nextIds[index])
+      ? []
+      : [{ id: target.id, record: { 枚举字典: nextIds } }];
+  });
   for (let index = 0; index < paramUpdates.length; index += 500) {
     await updateBitableRecords(credentials, paramInstance, paramUpdates.slice(index, index + 500), fetchImpl);
   }

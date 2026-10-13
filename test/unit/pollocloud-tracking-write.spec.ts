@@ -162,6 +162,48 @@ describe('PolloCloud tracking write service', () => {
     }));
   });
 
+  it('keeps existing official parameter fields immutable and only appends enum values', async () => {
+    const archivedRecord = {
+      record_id: 'rec-1',
+      fields: {
+        ...workbenchRecord.fields,
+        '流程阶段': '稳定归档',
+        '正式状态': '已上线',
+        '版本': '2.0.0',
+        '上线监控状态': '通过',
+      },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: archivedRecord } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [archivedRecord], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'official-1', fields: { evt_id: 'home_show', '事件中文名': '正式首页曝光', 状态: '已上线' } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'design-param-1', fields: { evt_id: 'home_show', 参数名: 'page_id', 数据类型: 'NUMBER', 必传规则: '非必传', 参数定义: '设计稿误改定义', '枚举/取值范围': 'old // 原枚举\nnew // 新枚举', '来源设计记录ID': 'rec-1' } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'official-param-1', fields: { 参数主键: 'home_show.page_id', evt_id: 'home_show', 事件中文名: '正式首页曝光', 参数名: 'page_id', 数据类型: 'STRING', 必传规则: '必传', 参数定义: '正式定义', '枚举/取值范围': 'old // 原枚举', 版本: '1.0.0', 参数状态: '正式', 关联事件: ['official-1'] } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'enum-old', fields: { 枚举主键: 'home_show.page_id.old', evt_id: 'home_show', 参数名: 'page_id', 枚举值: 'old', 枚举中文名: '原枚举', 枚举状态: '正式', 关联正式参数: [] } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'enum-old', fields: {} }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'enum-new', fields: {} }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }));
+
+    await updateTrackingRecord(credentials, 'app:rec-1', {
+      stageId: 'archive',
+      fields: { '正式状态': '已上线' },
+    }, 'data-owner', fetchMock as unknown as typeof fetch);
+
+    const officialParamUpdates = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('/tables/tblEYv9lGZeenbT2/records/batch_update'))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(officialParamUpdates).toEqual([
+      { records: [{ record_id: 'official-param-1', fields: { '枚举/取值范围': 'old // 原枚举\nnew // 新枚举' } }] },
+      { records: [{ record_id: 'official-param-1', fields: { 枚举字典: ['enum-old', 'enum-new'] } }] },
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/tables/tblAhScEFQYAJC2g/records/batch_update'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/tables/tblQ8Ph3N8GJHeVA/records/batch_create'))).toBe(true);
+  });
+
   it('syncs parameter enum values and writes their links back to the design parameter', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
