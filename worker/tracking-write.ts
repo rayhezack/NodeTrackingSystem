@@ -37,6 +37,7 @@ import {
   type BitableInstanceKey,
   type BitableRecord,
 } from './feishu-bitable';
+import { getDirectoryUserByOpenId, resolveDirectoryUserByName } from './feishu-directory';
 import { sendWorkflowNotification, type WorkflowNotificationRecipient } from './feishu-notification';
 import type { FeishuCredentials } from './feishu-token';
 
@@ -49,6 +50,10 @@ const LEGACY_ADMIN_ID_MAP: Record<string, string> = {
   '1867390536304713': 'sunwen-1663469',
   '1855461847682347': '24915dag',
   '1874638956515561': '2727dbe3',
+};
+const LEGACY_FEISHU_USER_ID_MAP: Record<string, string> = {
+  '1867390536304713': 'sunwen-1663469',
+  '1855461847682347': '24915dag',
 };
 const PERMISSION_RECORD_EVT_ID = '__system_permissions__';
 const USER_FIELDS = ['需求提出人', '需求录入人', '数据负责人', '研发负责人', 'DS验收人'] as const;
@@ -219,11 +224,12 @@ export async function createTrackingRecord(
   if (!requirementLink) throw new TrackingWriteError('PRD 文档链接不能为空；没有 PRD 文档无法进行埋点设计', 400);
   if (!isFeishuPrdUrl(requirementLink)) throw new TrackingWriteError('MVP 目前仅支持飞书 wiki 或 docx 文档链接', 400);
 
-  const requester = normalizeUsers(body.requesterIds?.length ? body.requesterIds : [actor]);
-  const recorder = normalizeUsers(body.recorderIds?.length ? body.recorderIds : requester);
-  const dataOwner = normalizeUsers(body.dataOwnerIds?.length ? body.dataOwnerIds : [DEFAULT_DATA_OWNER]);
-  const devOwner = normalizeUsers(body.devOwnerIds || []);
-  const dsAcceptor = normalizeUsers(body.dsAcceptorIds?.length ? body.dsAcceptorIds : DEFAULT_TRACKING_VALIDATORS);
+  const userResolutionCache = new Map<string, Promise<TrackingUserRef>>();
+  const requester = await resolveBaseUsers(credentials, normalizeUsers(body.requesterIds?.length ? body.requesterIds : [actor]), fetchImpl, userResolutionCache);
+  const recorder = await resolveBaseUsers(credentials, normalizeUsers(body.recorderIds?.length ? body.recorderIds : requester), fetchImpl, userResolutionCache);
+  const dataOwner = await resolveBaseUsers(credentials, normalizeUsers(body.dataOwnerIds?.length ? body.dataOwnerIds : [DEFAULT_DATA_OWNER]), fetchImpl, userResolutionCache);
+  const devOwner = await resolveBaseUsers(credentials, normalizeUsers(body.devOwnerIds || []), fetchImpl, userResolutionCache);
+  const dsAcceptor = await resolveBaseUsers(credentials, normalizeUsers(body.dsAcceptorIds?.length ? body.dsAcceptorIds : DEFAULT_TRACKING_VALIDATORS), fetchImpl, userResolutionCache);
   const requestId = createRequestId(source);
   const evtId = text(body.evtId);
   const version = text(body.version) || '1.0.0';
@@ -305,7 +311,12 @@ export async function updateTrackingRecord(
   }
   if ('需求名称' in patch && !text(patch['需求名称'])) throw new TrackingWriteError('需求名称不能为空', 400);
   if ('需求链接' in patch && !isFeishuPrdUrl(text(patch['需求链接']))) throw new TrackingWriteError('MVP 目前仅支持飞书 wiki 或 docx 文档链接', 400);
-  for (const field of USER_FIELDS) if (field in patch) patch[field] = userCells(normalizeUsers(patch[field] as TrackingUserInput[]));
+  const userResolutionCache = new Map<string, Promise<TrackingUserRef>>();
+  for (const field of USER_FIELDS) {
+    if (field in patch) {
+      patch[field] = userCells(await resolveBaseUsers(credentials, normalizeUsers(patch[field] as TrackingUserInput[]), fetchImpl, userResolutionCache));
+    }
+  }
   normalizeProgress(patch, current.record);
 
   const nextRecord = { ...current.record, ...patch };
@@ -1156,6 +1167,74 @@ function normalizeUsers(value: TrackingUserInput[] | TrackingUserInput | undefin
     if (typeof item === 'string') return item.trim() ? [{ user_id: item.trim() }] : [];
     const id = text(item.user_id || item.larkUserId);
     return id ? [{ ...item, user_id: id }] : [];
+  });
+}
+
+async function resolveBaseUsers(
+  credentials: WorkerCredentials,
+  users: TrackingUserRef[],
+  fetchImpl: FetchLike,
+  cache: Map<string, Promise<TrackingUserRef>>,
+): Promise<TrackingUserRef[]> {
+  const resolved = await Promise.all(users.map((user) => {
+    const key = [user.user_id, user.larkUserId, user.email, user.name].map(text).join('|').toLocaleLowerCase();
+    const pending = cache.get(key);
+    if (pending) return pending;
+    const next = resolveBaseUser(credentials, user, fetchImpl);
+    cache.set(key, next);
+    return next;
+  }));
+  return uniqueUserRefs(resolved);
+}
+
+async function resolveBaseUser(
+  credentials: WorkerCredentials,
+  user: TrackingUserRef,
+  fetchImpl: FetchLike,
+): Promise<TrackingUserRef> {
+  const currentId = text(user.user_id);
+  const mappedId = LEGACY_FEISHU_USER_ID_MAP[currentId];
+  if (mappedId) return { ...user, user_id: mappedId };
+  if (currentId && !/^\d+$/.test(currentId) && !currentId.startsWith('ou_')) return user;
+
+  const openId = text(user.larkUserId).startsWith('ou_') ? text(user.larkUserId) : currentId.startsWith('ou_') ? currentId : '';
+  if (openId) {
+    const matchedByOpenId = await getDirectoryUserByOpenId(credentials, openId, fetchImpl);
+    if (matchedByOpenId?.user_id) {
+      return {
+        ...user,
+        user_id: matchedByOpenId.user_id,
+        ...(matchedByOpenId.open_id ? { larkUserId: matchedByOpenId.open_id } : {}),
+        ...(matchedByOpenId.email ? { email: matchedByOpenId.email } : {}),
+        ...(matchedByOpenId.name ? { name: matchedByOpenId.name } : {}),
+      };
+    }
+  }
+
+  const name = text(user.name);
+  if (name) {
+    const matchedByName = await resolveDirectoryUserByName(credentials, name, fetchImpl);
+    if (matchedByName?.user_id) {
+      return {
+        ...user,
+        user_id: matchedByName.user_id,
+        ...(matchedByName.open_id ? { larkUserId: matchedByName.open_id } : {}),
+        ...(matchedByName.email ? { email: matchedByName.email } : {}),
+        ...(matchedByName.name ? { name: matchedByName.name } : {}),
+      };
+    }
+  }
+
+  throw new TrackingWriteError(`参与人“${name || currentId || '未知用户'}”无法转换为飞书用户，请重新选择`, 400);
+}
+
+function uniqueUserRefs(users: TrackingUserRef[]): TrackingUserRef[] {
+  const seen = new Set<string>();
+  return users.filter((user) => {
+    const id = text(user.user_id);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
   });
 }
 

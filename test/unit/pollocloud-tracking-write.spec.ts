@@ -83,6 +83,26 @@ describe('PolloCloud tracking write service', () => {
     }));
   });
 
+  it('converts selected Feishu open ids before writing user fields to Base', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user: { user_id: 'u-1', open_id: 'ou_user_1', name: '张三' } } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
+
+    await createTrackingRecord(credentials, {
+      source: 'app',
+      eventName: '首页曝光',
+      requestName: '首页埋点',
+      requirementLink: 'https://example.feishu.cn/wiki/abc123',
+      dataOwnerIds: [{ user_id: '1860000000000000000', larkUserId: 'ou_user_1', name: '张三' }],
+      devOwnerIds: [],
+      dsAcceptorIds: [],
+    }, { user_id: 'trusted-user', name: '可信用户' }, fetchMock as unknown as typeof fetch);
+
+    const workbenchBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
+    expect(workbenchBody.records[0].fields['数据负责人']).toEqual([{ id: 'u-1' }]);
+  });
+
   it('updates a field when the trusted actor owns the matching workflow role', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))

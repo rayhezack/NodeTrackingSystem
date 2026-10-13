@@ -99,6 +99,26 @@ export async function listDirectoryUsersByIds(
   return { data: { userInfoMap } };
 }
 
+export async function getDirectoryUserByOpenId(
+  credentials: FeishuCredentials,
+  openId: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<FeishuDirectoryUser | null> {
+  const normalizedOpenId = openId.trim();
+  if (!normalizedOpenId) return null;
+  try {
+    const payload = await callFeishu<FeishuDirectoryUser | { user?: FeishuDirectoryUser }>(
+      credentials,
+      `/open-apis/contact/v3/users/${encodeURIComponent(normalizedOpenId)}?user_id_type=open_id`,
+      { method: 'GET' },
+      fetchImpl,
+    );
+    return unwrapDirectoryUser(payload);
+  } catch {
+    return null;
+  }
+}
+
 export async function getDirectoryUserProfile(
   credentials: FeishuCredentials,
   userId: string,
