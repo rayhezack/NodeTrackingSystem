@@ -45,6 +45,8 @@ describe('PolloCloud tracking write service', () => {
   it('creates a Base workbench record and initial parameters with the trusted actor', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user_list: [{ user_id: 'owner-1', email: 'ray@mail.pollo.ai', name: '孙文' }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user_list: [{ user_id: 'validator-1', email: 'joe@mail.pollo.ai', name: '刘桥' }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'param-1', fields: {} }] } }));
 
@@ -65,7 +67,7 @@ describe('PolloCloud tracking write service', () => {
     }, { user_id: 'trusted-user', name: '可信用户' }, fetchMock as unknown as typeof fetch);
 
     expect(result).toEqual(expect.objectContaining({ success: true, recordId: 'app:rec-1', createdParamCount: 1 }));
-    const workbenchBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    const workbenchBody = JSON.parse(String(fetchMock.mock.calls[3][1]?.body));
     expect(workbenchBody.records[0].fields).toEqual(expect.objectContaining({
       evt_id: 'home_show',
       '需求名称': '首页埋点',
@@ -75,7 +77,7 @@ describe('PolloCloud tracking write service', () => {
     expect(JSON.parse(workbenchBody.records[0].fields['通知身份快照'])['需求提出人']).toEqual([
       { user_id: 'trusted-user', name: '可信用户' },
     ]);
-    const paramsBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
+    const paramsBody = JSON.parse(String(fetchMock.mock.calls[4][1]?.body));
     expect(paramsBody.records[0].fields).toEqual(expect.objectContaining({
       evt_id: 'home_show',
       '参数名': 'page_id',
@@ -86,7 +88,7 @@ describe('PolloCloud tracking write service', () => {
   it('converts selected Feishu open ids before writing user fields to Base', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user: { user_id: 'u-1', open_id: 'ou_user_1', name: '张三' } } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user_list: [{ user_id: 'u-1', open_id: 'ou_user_1', email: 'zhangsan@example.com', name: '张三' }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
 
     await createTrackingRecord(credentials, {
@@ -94,13 +96,14 @@ describe('PolloCloud tracking write service', () => {
       eventName: '首页曝光',
       requestName: '首页埋点',
       requirementLink: 'https://example.feishu.cn/wiki/abc123',
-      dataOwnerIds: [{ user_id: '1860000000000000000', larkUserId: 'ou_user_1', name: '张三' }],
+      dataOwnerIds: [{ user_id: '1860000000000000000', larkUserId: 'ou_user_1', email: 'zhangsan@example.com', name: '张三' }],
       devOwnerIds: [],
-      dsAcceptorIds: [],
+      dsAcceptorIds: [{ user_id: '1860000000000000000', larkUserId: 'ou_user_1', email: 'zhangsan@example.com', name: '张三' }],
     }, { user_id: 'trusted-user', name: '可信用户' }, fetchMock as unknown as typeof fetch);
 
     const workbenchBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
     expect(workbenchBody.records[0].fields['数据负责人']).toEqual([{ id: 'u-1' }]);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/contact/v3/users/batch_get_id?user_id_type=user_id');
   });
 
   it('updates a field when the trusted actor owns the matching workflow role', async () => {

@@ -37,7 +37,7 @@ import {
   type BitableInstanceKey,
   type BitableRecord,
 } from './feishu-bitable';
-import { getDirectoryUserByOpenId, resolveDirectoryUserByName } from './feishu-directory';
+import { getDirectoryUserByEmail, resolveDirectoryUserByName } from './feishu-directory';
 import { sendWorkflowNotification, type WorkflowNotificationRecipient } from './feishu-notification';
 import type { FeishuCredentials } from './feishu-token';
 
@@ -1194,22 +1194,22 @@ async function resolveBaseUser(
 ): Promise<TrackingUserRef> {
   const currentId = text(user.user_id);
   const mappedId = LEGACY_FEISHU_USER_ID_MAP[currentId];
-  if (mappedId) return { ...user, user_id: mappedId };
-  if (currentId && !/^\d+$/.test(currentId) && !currentId.startsWith('ou_')) return user;
-
-  const openId = text(user.larkUserId).startsWith('ou_') ? text(user.larkUserId) : currentId.startsWith('ou_') ? currentId : '';
-  if (openId) {
-    const matchedByOpenId = await getDirectoryUserByOpenId(credentials, openId, fetchImpl);
-    if (matchedByOpenId?.user_id) {
+  const email = text(user.email);
+  if (!email && mappedId) return { ...user, user_id: mappedId };
+  if (currentId && !/^\d+$/.test(currentId) && !currentId.startsWith('ou_') && !email) return user;
+  if (email) {
+    const matchedByEmail = await getDirectoryUserByEmail(credentials, email, fetchImpl);
+    if (matchedByEmail?.user_id) {
       return {
         ...user,
-        user_id: matchedByOpenId.user_id,
-        ...(matchedByOpenId.open_id ? { larkUserId: matchedByOpenId.open_id } : {}),
-        ...(matchedByOpenId.email ? { email: matchedByOpenId.email } : {}),
-        ...(matchedByOpenId.name ? { name: matchedByOpenId.name } : {}),
+        user_id: matchedByEmail.user_id,
+        ...(matchedByEmail.open_id ? { larkUserId: matchedByEmail.open_id } : {}),
+        ...(matchedByEmail.email ? { email: matchedByEmail.email } : {}),
+        ...(matchedByEmail.name ? { name: matchedByEmail.name } : {}),
       };
     }
   }
+
 
   const name = text(user.name);
   if (name) {

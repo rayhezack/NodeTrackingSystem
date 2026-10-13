@@ -99,21 +99,25 @@ export async function listDirectoryUsersByIds(
   return { data: { userInfoMap } };
 }
 
-export async function getDirectoryUserByOpenId(
+export async function getDirectoryUserByEmail(
   credentials: FeishuCredentials,
-  openId: string,
+  email: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<FeishuDirectoryUser | null> {
-  const normalizedOpenId = openId.trim();
-  if (!normalizedOpenId) return null;
+  const normalizedEmail = email.trim().toLocaleLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes('@')) return null;
   try {
-    const payload = await callFeishu<FeishuDirectoryUser | { user?: FeishuDirectoryUser }>(
+    const payload = await callFeishu<{ user_list?: FeishuDirectoryUser[] }>(
       credentials,
-      `/open-apis/contact/v3/users/${encodeURIComponent(normalizedOpenId)}?user_id_type=open_id`,
-      { method: 'GET' },
+      '/open-apis/contact/v3/users/batch_get_id?user_id_type=user_id',
+      {
+        method: 'POST',
+        body: JSON.stringify({ emails: [normalizedEmail], include_resigned: false }),
+      },
       fetchImpl,
     );
-    return unwrapDirectoryUser(payload);
+    const matched = (payload.user_list || []).find((user) => user.email?.trim().toLocaleLowerCase() === normalizedEmail);
+    return matched || payload.user_list?.[0] || null;
   } catch {
     return null;
   }
