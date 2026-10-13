@@ -241,7 +241,7 @@ export async function createTrackingRecord(
     事件定义: text(body.eventDefinition),
     触发时机: text(body.triggerTiming),
     需求背景: text(body.requirementBackground),
-    需求链接: requirementLink,
+    需求链接: toUrlCell(requirementLink),
     '指标/使用场景': text(body.metricScenario),
     ...(body.expectedCompletionDate ? { 期望完成日期: toDateCell(body.expectedCompletionDate) } : {}),
     流程阶段: '需求录入',
@@ -310,7 +310,11 @@ export async function updateTrackingRecord(
     currentStage = targetStage;
   }
   if ('需求名称' in patch && !text(patch['需求名称'])) throw new TrackingWriteError('需求名称不能为空', 400);
-  if ('需求链接' in patch && !isFeishuPrdUrl(text(patch['需求链接']))) throw new TrackingWriteError('MVP 目前仅支持飞书 wiki 或 docx 文档链接', 400);
+  if ('需求链接' in patch) {
+    const requirementLink = text(patch['需求链接']);
+    if (!isFeishuPrdUrl(requirementLink)) throw new TrackingWriteError('MVP 目前仅支持飞书 wiki 或 docx 文档链接', 400);
+    patch['需求链接'] = toUrlCell(requirementLink);
+  }
   const userResolutionCache = new Map<string, Promise<TrackingUserRef>>();
   for (const field of USER_FIELDS) {
     if (field in patch) {
@@ -1150,6 +1154,10 @@ function normalizeWorkbenchPatch(patch: Record<string, unknown>, source: Trackin
   for (const field of ['期望完成日期', 'DS验收时间', '发布时间', '稳定归档时间']) if (field in patch && patch[field]) patch[field] = toDateCell(patch[field]);
   if ('上线监控状态' in patch) patch['上线监控状态'] = normalizeMonitorStatus(text(patch['上线监控状态']));
   return patch;
+}
+
+function toUrlCell(value: string): { link: string; text: string } {
+  return { link: value, text: value };
 }
 
 function normalizeProgress(patch: Record<string, unknown>, current: Record<string, unknown>): void {

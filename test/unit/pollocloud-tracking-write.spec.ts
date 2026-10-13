@@ -71,6 +71,7 @@ describe('PolloCloud tracking write service', () => {
     expect(workbenchBody.records[0].fields).toEqual(expect.objectContaining({
       evt_id: 'home_show',
       '需求名称': '首页埋点',
+      '需求链接': { link: 'https://example.feishu.cn/wiki/abc123', text: 'https://example.feishu.cn/wiki/abc123' },
       '需求提出人': [{ id: 'trusted-user' }],
       '流程阶段': '需求录入',
     }));
