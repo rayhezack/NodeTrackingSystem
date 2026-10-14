@@ -142,7 +142,7 @@ export default function ReuseOfficialEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && !saving && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto rounded-sm">
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto rounded-sm border-border outline-none focus:outline-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <GitBranch className="h-4 w-4 text-primary" />

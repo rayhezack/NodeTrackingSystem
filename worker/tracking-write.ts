@@ -130,7 +130,7 @@ export async function applyAiDraftEvents(
   }
   const siblings = events.slice(start).map((event) => ({
     需求ID: requestId, 需求名称: text(current.record['需求名称']) || text(current.record['事件中文名']),
-    需求背景: text(current.record['需求背景']), ...(text(current.record['需求链接']) ? { 需求链接: text(current.record['需求链接']) } : {}),
+    需求背景: text(current.record['需求背景']), ...(text(current.record['需求链接']) ? { 需求链接: toUrlCell(text(current.record['需求链接'])) } : {}),
     '指标/使用场景': text(current.record['指标/使用场景']), ...(current.record['期望完成日期'] ? { 期望完成日期: current.record['期望完成日期'] } : {}),
     记录类型: '埋点设计', ...Object.fromEntries(USER_FIELDS.map((field) => [field, current.record[field] || []])),
     ...(current.record['通知身份快照'] ? { 通知身份快照: current.record['通知身份快照'] } : {}),
@@ -380,7 +380,7 @@ export async function createSiblingTrackingEvent(
     事件定义: text(body.eventDefinition),
     触发时机: text(body.triggerTiming),
     需求背景: text(current.record['需求背景']),
-    ...(text(current.record['需求链接']) ? { 需求链接: text(current.record['需求链接']) } : {}),
+    ...(text(current.record['需求链接']) ? { 需求链接: toUrlCell(text(current.record['需求链接'])) } : {}),
     '指标/使用场景': text(current.record['指标/使用场景']),
     ...(current.record['期望完成日期'] ? { 期望完成日期: current.record['期望完成日期'] } : {}),
     流程阶段: '埋点设计', 记录类型: '埋点设计', 优先级: text(body.priority || current.record['优先级']) || 'P2',
@@ -503,7 +503,7 @@ export async function reuseOfficialTrackingEvent(
   } else {
     const [created] = await createBitableRecords(credentials, workbenchKey(ref.source), [{
       需求ID: requestId, 需求名称: text(current.record['需求名称']) || eventName, ...designPatch,
-      需求背景: text(current.record['需求背景']), ...(text(current.record['需求链接']) ? { 需求链接: text(current.record['需求链接']) } : {}),
+      需求背景: text(current.record['需求背景']), ...(text(current.record['需求链接']) ? { 需求链接: toUrlCell(text(current.record['需求链接'])) } : {}),
       ...(current.record['期望完成日期'] ? { 期望完成日期: current.record['期望完成日期'] } : {}),
       ...Object.fromEntries(USER_FIELDS.map((field) => [field, current.record[field] || []])),
       ...(current.record['通知身份快照'] ? { 通知身份快照: current.record['通知身份快照'] } : {}),

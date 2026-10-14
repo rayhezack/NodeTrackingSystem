@@ -58,6 +58,43 @@ describe('PolloCloud Feishu bitable read client', () => {
     expect(String(fetchMock.mock.calls[3][0])).toContain('/records/batch_delete');
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ records: ['rec-1'] });
   });
+
+  it('normalizes URL fields before every direct Worker write', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
+
+    await createBitableRecords(credentials, 'workbench', [{
+      需求链接: 'https://example.feishu.cn/wiki/prd_1',
+      'UI图对应网页链接': [{ Link: 'https://example.com/design' }],
+    }], fetchMock as unknown as typeof fetch);
+    await updateBitableRecords(credentials, 'workbench', [{
+      id: 'rec-1',
+      record: { 需求链接: { url: 'https://example.feishu.cn/wiki/prd_2', name: 'PRD 2' } },
+    }], fetchMock as unknown as typeof fetch);
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      records: [{ fields: {
+        需求链接: { link: 'https://example.feishu.cn/wiki/prd_1', text: 'https://example.feishu.cn/wiki/prd_1' },
+        'UI图对应网页链接': { link: 'https://example.com/design', text: 'https://example.com/design' },
+      } }],
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
+      records: [{ record_id: 'rec-1', fields: {
+        需求链接: { link: 'https://example.feishu.cn/wiki/prd_2', text: 'PRD 2' },
+      } }],
+    });
+  });
+
+  it('rejects invalid URL fields before calling Feishu', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }));
+
+    await expect(createBitableRecords(credentials, 'workbench', [{ 需求链接: 'not-a-url' }], fetchMock as unknown as typeof fetch))
+      .rejects.toThrow('Feishu Base URL field requires an http(s) URL');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 const credentials = { FEISHU_APP_ID: 'cli_test', FEISHU_APP_SECRET: 'secret' };
