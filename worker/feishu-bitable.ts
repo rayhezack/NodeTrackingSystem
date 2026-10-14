@@ -151,7 +151,7 @@ export async function createBitableRecords(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: records.map((fields) => ({ fields })) }),
+      body: JSON.stringify({ records: records.map((fields) => ({ fields: normalizeWorkerFields(fields) })) }),
     },
   );
   const payload = await response.json() as {
@@ -183,7 +183,7 @@ export async function updateBitableRecords(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: records.map(({ id, record }) => ({ record_id: id, fields: record })) }),
+      body: JSON.stringify({ records: records.map(({ id, record }) => ({ record_id: id, fields: normalizeWorkerFields(record) })) }),
     },
   );
   const payload = await response.json() as {
@@ -226,3 +226,41 @@ export async function deleteBitableRecords(
 }
 
 export { resetFeishuTokenCache };
+
+const URL_FIELDS = new Set(['需求链接', 'UI图对应网页链接']);
+
+function normalizeWorkerFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...fields };
+  for (const field of URL_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(normalized, field)) {
+      normalized[field] = normalizeWorkerUrlCell(normalized[field]);
+    }
+  }
+  return normalized;
+}
+
+function normalizeWorkerUrlCell(value: unknown): { link: string; text: string } | null | undefined {
+  if (value == null || value === '') return value == null ? value : null;
+  const candidate = Array.isArray(value) ? value.find((item) => item != null && item !== '') : value;
+  if (candidate == null || candidate === '') return null;
+  if (typeof candidate === 'object') {
+    const objectValue = candidate as Record<string, unknown>;
+    const link = String(objectValue.link || objectValue.Link || objectValue.url || objectValue.href || '').trim();
+    if (!link) return null;
+    assertWorkerHttpUrl(link);
+    return { link, text: String(objectValue.text || objectValue.name || link).trim() || link };
+  }
+  const link = String(candidate).trim();
+  if (link) assertWorkerHttpUrl(link);
+  return link ? { link, text: link } : null;
+}
+
+function assertWorkerHttpUrl(value: string): void {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return;
+  } catch {
+    // Normalize all invalid URL input to one actionable error below.
+  }
+  throw new Error(`Feishu Base URL field requires an http(s) URL: ${value}`);
+}
