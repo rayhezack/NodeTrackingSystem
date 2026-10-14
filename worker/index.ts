@@ -1,4 +1,5 @@
 import { searchBitableRecords } from './feishu-bitable';
+import { streamingGenerationResponse } from './ai-generation-response';
 import {
   aiOAuthCallbackHtml,
   applyAiDraft,
@@ -142,7 +143,13 @@ export default {
         }
         const generateDraftMatch = url.pathname.match(/^\/api\/tracking\/ai\/records\/([^/]+)\/drafts$/);
         if (request.method === 'POST' && generateDraftMatch) {
-          return json(await generateAiDraft(env, decodeURIComponent(generateDraftMatch[1]), await request.json() as GenerateAiTrackingDraftRequest, user.id, url.origin));
+          const recordId = decodeURIComponent(generateDraftMatch[1]);
+          const body = await request.json() as GenerateAiTrackingDraftRequest;
+          if (url.searchParams.get('stream') === '1') {
+            return streamingGenerationResponse((signal) => generateAiDraft(env, recordId, body, user.id, url.origin,
+              (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal })));
+          }
+          return json(await generateAiDraft(env, recordId, body, user.id, url.origin));
         }
       } catch (error) {
         const status = error instanceof TrackingWriteError ? error.status : 502;

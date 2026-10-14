@@ -10,6 +10,14 @@
 
 该接入只生成草稿；人工选择后仍走现有草稿应用与评审流程，不会自动更新正式库。
 
+## 生成连接与错误处理
+
+生产前端使用 `POST /api/tracking/ai/records/:recordId/drafts?stream=1`。Worker 立即发送 JSON 前导空白，并每 10 秒发送空白保持响应活跃，完成后返回完整 JSON；模型请求也使用流式响应。整个生成请求最长 5 分钟，客户端关闭连接会取消后续网络请求。
+
+流式响应已经发出 HTTP 200 时，后续失败以 `{ generationError: true, status, message }` 返回，前端必须检查该标记，不能把 HTTP 200 当作生成成功。未带 `stream=1` 的接口保持原有返回方式。
+
+上游 408/504/524、非 JSON 网关响应、连接中断、模型输出截断均返回明确提示。只有收到完整模型输出且通过现有设计校验后才保存草稿。本机制不提供断开页面后继续生成的后台任务保证；真正的模型服务超时仍需用户重试。
+
 ## PolloCloud Worker 配置
 
 AI 草稿、飞书文档 OAuth 和模型调用均由 PolloCloud Worker 执行。该功能确实需要多人共享、长期保存 OAuth Token 与草稿，因此 `pollocloud.json` 保留 `db: true`；首次发布前必须先联系 PolloCloud 管理员为 `app-tracking-management` 开通 D1。Token 写入前使用 AES-GCM 加密。

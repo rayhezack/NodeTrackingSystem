@@ -2,10 +2,14 @@ export function toReadableError(error: unknown, fallbackMessage: string): Error 
   const response = (error as { response?: { data?: unknown; status?: number } })?.response;
   const backendMessage = extractMessage(response?.data);
   const originalMessage = error instanceof Error ? error.message : '';
-  const readableError = new Error(backendMessage || originalMessage || fallbackMessage) as Error & {
+  const timeoutMessage = response && [408, 504, 524].includes(response.status || 0)
+    ? `服务响应超时（HTTP ${response.status}），请稍后重试`
+    : '';
+  const readableError = new Error(timeoutMessage || backendMessage || originalMessage || fallbackMessage) as Error & {
     status?: number;
   };
   if (typeof response?.status === 'number') readableError.status = response.status;
+  else if (error instanceof Error && 'status' in error && typeof error.status === 'number') readableError.status = error.status;
   return readableError;
 }
 

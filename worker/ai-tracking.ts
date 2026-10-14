@@ -17,6 +17,7 @@ import type {
   TrackingDetail,
 } from '../shared/api.interface';
 import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-governance-skill';
+import { requestModelJson } from './ai-model';
 import { getOfficialEventContexts, getOfficialLibraryEvents } from './query-library';
 import { getTrackingDetail, getTrackingParams } from './tracking-read';
 import { applyAiDraftEvents, TrackingWriteError } from './tracking-write';
@@ -290,13 +291,7 @@ async function feishuGet(fetchImpl: FetchLike, url: string, token: string): Prom
 
 async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike): Promise<unknown> {
   const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: 12000, response_format: { type: 'json_object' } };
-  const request = async (omitJsonMode = false) => fetchImpl(`${(env.AI_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '')}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey(env)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(omitJsonMode ? Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'response_format')) : body) });
-  let response = await request();
-  if (response.status === 400) response = await request(true);
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-  if (!response.ok) throw new TrackingWriteError(payload.error?.message || `大模型请求失败（HTTP ${response.status}）`, 502);
-  const content = payload.choices?.[0]?.message?.content || '';
-  try { return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new TrackingWriteError('大模型返回内容不是有效 JSON，请重新生成', 502); }
+  return requestModelJson(`${(env.AI_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '')}/chat/completions`, apiKey(env), body, fetchImpl);
 }
 
 function normalizeModelEvents(raw: unknown, detail: TrackingDetail): AiTrackingDraftEvent[] {

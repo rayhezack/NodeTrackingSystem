@@ -389,9 +389,15 @@ export async function generateAiTrackingDraft(
 ): Promise<GenerateAiTrackingDraftResponse> {
   try {
     const response = await axiosForBackend.post(
-      `/api/tracking/ai/records/${recordId}/drafts`,
+      `/api/tracking/ai/records/${recordId}/drafts?stream=1`,
       data,
     );
+    if (response.data?.generationError) {
+      throw toReadableError({ response: { status: response.data.status, data: { message: response.data.message } } }, 'AI 埋点草稿生成失败');
+    }
+    if (!response.data?.draft) {
+      throw new Error('AI 生成接口返回异常，请稍后重试');
+    }
     return response.data;
   } catch (error) {
     throw toReadableError(error, 'AI 埋点草稿生成失败');
