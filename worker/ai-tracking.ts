@@ -11,9 +11,13 @@ import type {
   GenerateAiTrackingDraftResponse,
   GetAiTrackingDraftResponse,
   GetLatestAiTrackingDraftResponse,
+  OfficialEventContext,
+  OfficialEvent,
   StartAiFeishuAuthResponse,
   TrackingDetail,
 } from '../shared/api.interface';
+import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-governance-skill';
+import { getOfficialEventContexts, getOfficialLibraryEvents } from './query-library';
 import { getTrackingDetail, getTrackingParams } from './tracking-read';
 import { applyAiDraftEvents, TrackingWriteError } from './tracking-write';
 import type { FeishuCredentials } from './feishu-token';
@@ -156,14 +160,15 @@ export async function generateAiDraft(
   const accessToken = await getAccessToken(env, actorId, fetchImpl);
   const prd = await fetchPrd(requirementUrl, accessToken, fetchImpl);
   const params = (await getTrackingParams(env, recordId, fetchImpl)).items;
+  const officialLibrary = await loadOfficialLibraryContext(env, detail, prd.content, fetchImpl);
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
-  const raw = await generateModelJson(env, buildPrompt(detail, params, prd, normalizeContextFiles(body.contextFiles)), fetchImpl);
-  const events = normalizeModelEvents(raw, detail);
+  const raw = await generateModelJson(env, buildPrompt(detail, params, prd, normalizeContextFiles(body.contextFiles), officialLibrary), fetchImpl);
+  const events = validateGovernanceEvents(normalizeModelEvents(raw, detail), officialLibrary);
   const draft: AiTrackingDraft = {
     id: crypto.randomUUID(), recordId, requestId: detail.requestId, version: version + 1, status: 'draft', createdAt: Date.now(),
     provider: 'kimi', model: env.AI_MODEL?.trim() || 'kimi-k3',
     prd: { url: prd.url, title: prd.title, revision: prd.revision, truncated: prd.truncated },
-    summary: `共生成 ${events.length} 个埋点事件初稿`, analystQuestions: unique(events.flatMap((event) => event.uncertainties)), events,
+    summary: `共生成 ${events.length} 个埋点事件初稿`, analystQuestions: unique(events.flatMap((event) => [...event.uncertainties, ...event.params.flatMap((param) => param.uncertainties)])), events,
     diffs: events.map((event, index) => ({ scope: index === 0 && !detail.evtId ? 'current_event' : 'new_event', eventClientId: event.clientId, changedFields: ['evtId', 'eventName', 'eventDefinition', 'triggerTiming'], addedParamNames: event.params.map((param) => param.paramName), changedParamNames: [] })),
   };
   await persistDraft(env, actorId, draft);
@@ -284,7 +289,7 @@ async function feishuGet(fetchImpl: FetchLike, url: string, token: string): Prom
 }
 
 async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike): Promise<unknown> {
-  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: '你是资深数据分析师。严格基于 PRD 生成埋点设计，只输出 JSON，不编造事实。' }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: 12000, response_format: { type: 'json_object' } };
+  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: 12000, response_format: { type: 'json_object' } };
   const request = async (omitJsonMode = false) => fetchImpl(`${(env.AI_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '')}/chat/completions`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey(env)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(omitJsonMode ? Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'response_format')) : body) });
   let response = await request();
   if (response.status === 400) response = await request(true);
@@ -305,17 +310,93 @@ function normalizeModelEvents(raw: unknown, detail: TrackingDetail): AiTrackingD
       const param = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
       const paramName = snake(text(param.paramName));
       if (!paramName) return [];
-      return [{ paramName, paramType: normalizeAiParamType(text(param.paramType)), requiredRule: ['必传', '非必传', '条件必传'].includes(text(param.requiredRule)) ? text(param.requiredRule) : '非必传', triggerCondition: '', enumRange: text(param.enumRange), definition: text(param.definition) || '待人工确认', defaultValue: text(param.defaultValue), example: text(param.example), platform: text(param.platform) || (detail.source === 'web' ? 'Web通用' : '待确认'), source: 'ai', uncertainties: [] }];
+      return [{ paramName, paramType: normalizeAiParamType(text(param.paramType)), requiredRule: ['必传', '非必传', '条件必传'].includes(text(param.requiredRule)) ? text(param.requiredRule) : '非必传', triggerCondition: text(param.triggerCondition), enumRange: text(param.enumRange), definition: text(param.definition) || '待人工确认', defaultValue: text(param.defaultValue), example: text(param.example), platform: text(param.platform) || (detail.source === 'web' ? 'Web通用' : '待确认'), source: 'ai', uncertainties: textList(param.uncertainties) }];
     });
-    return { clientId: crypto.randomUUID(), evtId, eventName: text(item.eventName) || '待人工确认', eventDefinition: text(item.eventDefinition) || '待人工确认', triggerTiming: text(item.triggerTiming) || '待人工确认', metricScenario: '', priority: ['P0', 'P1', 'P2'].includes(text(item.priority)) ? text(item.priority) : 'P1', platform: detail.source === 'web' ? 'Web' : (['iOS', 'Android', 'iOS、Android'].includes(text(item.platform)) ? text(item.platform) : detail.platform || 'iOS、Android'), handler: text(item.handler) || (detail.source === 'web' ? '前端' : '客户端'), commonProps: text(item.commonProps), version: text(item.version) || '待人工确认', minVersion: text(item.minVersion) || '待人工确认', changeType: ['新增', '修改', '废弃', '口径调整'].includes(text(item.changeType)) ? text(item.changeType) : '新增', evidence: [], uncertainties: evtId.startsWith('pending_') ? ['evt_id 待人工确认'] : [], params };
+    const reuseSource = normalizeReuseSource(item.reuseSource);
+    return { clientId: crypto.randomUUID(), evtId, eventName: text(item.eventName) || '待人工确认', eventDefinition: text(item.eventDefinition) || '待人工确认', triggerTiming: text(item.triggerTiming) || '待人工确认', metricScenario: text(item.metricScenario), priority: ['P0', 'P1', 'P2'].includes(text(item.priority)) ? text(item.priority) : 'P1', platform: detail.source === 'web' ? 'Web' : (['iOS', 'Android', 'iOS、Android'].includes(text(item.platform)) ? text(item.platform) : detail.platform || 'iOS、Android'), handler: text(item.handler) || (detail.source === 'web' ? '前端' : '客户端'), commonProps: text(item.commonProps), version: text(item.version) || '待人工确认', minVersion: text(item.minVersion) || '待人工确认', changeType: ['新增', '修改', '废弃', '口径调整'].includes(text(item.changeType)) ? text(item.changeType) : '新增', evidence: textList(item.evidence), uncertainties: unique([...(evtId.startsWith('pending_') ? ['evt_id 待人工确认'] : []), ...textList(item.uncertainties)]), ...(reuseSource ? { reuseSource } : {}), params };
   });
   if (events.reduce((sum, event) => sum + event.params.length, 0) > 200) throw new TrackingWriteError('AI 草稿结构校验失败：单次最多生成 200 个参数', 400);
   if (new Set(events.map((event) => event.evtId)).size !== events.length) throw new TrackingWriteError('AI 草稿内存在重复 evt_id，请重新生成', 400);
   return events;
 }
 
-function buildPrompt(detail: TrackingDetail, params: unknown[], prd: { title: string; content: string; truncated: boolean }, files: AiTrackingContextFile[]): string {
-  return `请为以下 ${detail.source === 'web' ? 'Web' : 'App'} 需求生成埋点初稿，只输出 {"events": [...]} JSON。最多20个事件、每事件50个参数、总参数200。\n需求：${JSON.stringify({ requestName: detail.requestName, background: detail.requirementFields['需求背景'], scenario: detail.requirementFields['指标/使用场景'], currentEvents: detail.relatedEvents, currentParams: params })}\nPRD标题：${prd.title}\nPRD是否截断：${prd.truncated ? '是' : '否'}\n<prd>${prd.content}</prd>\n补充文件：${JSON.stringify(files)}\n事件字段：evtId,eventName,eventDefinition,triggerTiming,priority,platform,handler,commonProps,version,minVersion,changeType,params。参数字段：paramName,paramType,requiredRule,enumRange,definition,defaultValue,example,platform。`;
+function buildPrompt(detail: TrackingDetail, params: unknown[], prd: { title: string; content: string; truncated: boolean }, files: AiTrackingContextFile[], officialLibrary: OfficialLibraryContext): string {
+  return `请为以下 ${detail.source === 'web' ? 'Web' : 'App'} 需求生成埋点初稿，只输出 {"events": [...]} JSON。最多20个事件、每事件50个参数、总参数200。\n需求：${JSON.stringify({ requestName: detail.requestName, background: detail.requirementFields['需求背景'], scenario: detail.requirementFields['指标/使用场景'], currentEvents: detail.relatedEvents, currentParams: params })}\n正式埋点库状态：${officialLibrary.status}${officialLibrary.message ? `（${officialLibrary.message}）` : ''}。${officialLibrary.truncated ? '候选列表已截断，未命中时必须标记待人工确认，不能断言无可复用事件。' : ''}\n正式事件及参数候选：${JSON.stringify(officialLibrary.items.map((context) => ({ recordId: context.event.recordId, evtId: context.event.evtId, eventName: context.event.eventName, category: context.event.category, platform: context.event.platform, status: context.event.status, eventDefinition: context.event.eventDefinition, triggerTiming: context.event.triggerTiming, params: context.params.slice(0, 30).map((param) => ({ paramName: param.paramName, paramType: param.paramType, requiredRule: param.requiredRule, enumRange: param.enumRange, definition: param.definition, platform: param.platform })) })))}\nPRD标题：${prd.title}\nPRD是否截断：${prd.truncated ? '是' : '否'}\n<prd>${prd.content}</prd>\n补充文件：${JSON.stringify(files)}\n事件字段：evtId,eventName,eventDefinition,triggerTiming,metricScenario,priority,platform,handler,commonProps,version,minVersion,changeType,evidence,uncertainties,reuseSource,params。reuseSource字段：recordId,evtId,eventName,modificationSummary。参数字段：paramName,paramType,requiredRule,triggerCondition,enumRange,definition,defaultValue,example,platform,uncertainties。`;
+}
+
+export type OfficialLibraryContext = {
+  status: 'available' | 'unavailable';
+  events: OfficialEvent[];
+  items: OfficialEventContext[];
+  truncated: boolean;
+  message?: string;
+};
+
+async function loadOfficialLibraryContext(env: AiWorkerEnv, detail: TrackingDetail, prdContent: string, fetchImpl: FetchLike): Promise<OfficialLibraryContext> {
+  try {
+    const events = await getOfficialLibraryEvents(env, detail.source, fetchImpl);
+    const candidates = selectOfficialCandidates(events, `${detail.evtId} ${detail.requestName} ${text(detail.requirementFields['需求背景'])} ${text(detail.requirementFields['指标/使用场景'])} ${prdContent}`);
+    const items = await getOfficialEventContexts(env, candidates, fetchImpl);
+    return {
+      status: 'available',
+      events,
+      items,
+      truncated: candidates.length < events.length || items.some((item) => item.params.length > 30),
+    };
+  } catch (error) {
+    return {
+      status: 'unavailable',
+      events: [],
+      items: [],
+      truncated: false,
+      message: error instanceof Error ? error.message : '正式埋点库读取失败',
+    };
+  }
+}
+
+export function selectOfficialCandidates(events: OfficialEvent[], query: string, limit = 24): OfficialEvent[] {
+  const normalized = query.slice(0, 12_000).toLocaleLowerCase();
+  const tokens = unique([
+    ...(normalized.match(/[a-z0-9_]{3,}/g) || []),
+    ...(normalized.match(/[\u4e00-\u9fff]{2,}/g) || []).flatMap((run) => Array.from({ length: run.length - 1 }, (_, index) => run.slice(index, index + 2))),
+  ]).slice(0, 400);
+  return events.map((event) => {
+    const target = `${event.evtId} ${event.eventName} ${event.category || ''} ${event.eventDefinition || ''} ${event.triggerTiming || ''}`.toLocaleLowerCase();
+    const score = (normalized.includes(event.evtId.toLocaleLowerCase()) ? 1000 : 0)
+      + tokens.reduce((sum, token) => sum + (target.includes(token) ? token.length : 0), 0);
+    return { event, score };
+  }).sort((a, b) => b.score - a.score || a.event.evtId.localeCompare(b.event.evtId))
+    .slice(0, limit).map((item) => item.event);
+}
+
+export function validateGovernanceEvents(events: AiTrackingDraftEvent[], library: OfficialLibraryContext): AiTrackingDraftEvent[] {
+  const byEvtId = new Map(library.events.map((event) => [event.evtId.toLocaleLowerCase(), event]));
+  const byRecordId = new Map(library.events.map((event) => [event.recordId, event]));
+  return events.map((event) => {
+    const warnings = [...event.uncertainties];
+    if (library.status === 'unavailable') warnings.push('正式库读取失败，复用结论待人工确认');
+    if (library.truncated && !byEvtId.has(event.evtId.toLocaleLowerCase())) warnings.push('正式库候选上下文已截断，新增事件需进一步检索确认');
+    warnings.push('公共属性与枚举字典未独立读取，去重与枚举口径待人工确认');
+    const existing = byEvtId.get(event.evtId.toLocaleLowerCase());
+    if (event.reuseSource) {
+      const source = byRecordId.get(event.reuseSource.recordId);
+      if (!source) warnings.push('复用来源未在本次正式库候选中找到，待人工确认');
+      else if (source.evtId.toLocaleLowerCase() !== event.reuseSource.evtId.toLocaleLowerCase() || source.evtId.toLocaleLowerCase() !== event.evtId.toLocaleLowerCase()) warnings.push('复用来源 recordId 与 evt_id 不一致，待人工确认');
+    } else if (existing) {
+      warnings.push(`evt_id 已存在于正式库（${existing.evtId}），请确认应复用或修改，而非新增`);
+    }
+    if (event.changeType === '修改' && !event.reuseSource) warnings.push('修改事件缺少正式库 reuseSource，待人工确认');
+    return { ...event, uncertainties: unique(warnings) };
+  });
+}
+
+function normalizeReuseSource(value: unknown): AiTrackingDraftEvent['reuseSource'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as Record<string, unknown>;
+  const recordId = text(source.recordId);
+  const evtId = snake(text(source.evtId));
+  if (!recordId || !evtId) return undefined;
+  return { recordId, evtId, eventName: text(source.eventName) || '待人工确认', modificationSummary: text(source.modificationSummary) || '待人工确认' };
 }
 
 async function persistDraft(env: AiWorkerEnv, actorId: string, draft: AiTrackingDraft): Promise<void> {
@@ -356,6 +437,7 @@ function normalizeContextFiles(files?: AiTrackingContextFile[]): AiTrackingConte
 function normalizeAiParamType(value: string): string { const raw = value.toUpperCase(); if (raw === 'BOOL') return 'BOOLEAN'; return ['STRING', 'INTEGER', 'NUMBER', 'BOOLEAN', 'ARRAY', 'OBJECT', 'UNKNOWN'].includes(raw) ? raw : 'UNKNOWN'; }
 function snake(value: string): string { return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); }
 function unique(values: string[]): string[] { return [...new Set(values.map((value) => text(value)).filter(Boolean))]; }
+function textList(value: unknown): string[] { return (Array.isArray(value) ? value : [value]).map((item) => text(item)).filter(Boolean); }
 function text(value: unknown): string { return value == null ? '' : typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''; }
 function optionalText(value: unknown): string | undefined { return text(value) || undefined; }
 function requiredText(value: unknown, message: string): string { const result = text(value); if (!result) throw new TrackingWriteError(message, 401); return result; }

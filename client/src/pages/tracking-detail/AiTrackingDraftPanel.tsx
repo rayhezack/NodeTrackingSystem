@@ -478,7 +478,17 @@ const AiTrackingDraftPanel = ({
                           <Spec label="版本" value={event.version} />
                           <Spec label="最低版本" value={event.minVersion} />
                           <Spec label="变更类型" value={event.changeType} />
+                          <Spec label="指标/使用场景" value={event.metricScenario || ''} />
+                          <Spec label="复用来源" value={event.reuseSource ? `${event.reuseSource.evtId}（${event.reuseSource.recordId}）：${event.reuseSource.modificationSummary}` : ''} />
+                          <Spec label="设计依据" value={(event.evidence || []).join('\n')} />
                         </div>
+
+                        {event.uncertainties.length > 0 && (
+                          <div className="border-t border-border bg-amber-50/50 px-3 py-3 text-xs">
+                            <div className="mb-1 font-medium">待确认项</div>
+                            <div className="whitespace-pre-wrap">{event.uncertainties.join('\n')}</div>
+                          </div>
+                        )}
 
                         <div className="overflow-x-auto border-t border-border">
                           <table className="w-full min-w-[1080px] text-left text-xs">
@@ -487,6 +497,7 @@ const AiTrackingDraftPanel = ({
                                 <th className="px-3 py-2 font-medium">参数名</th>
                                 <th className="px-3 py-2 font-medium">类型</th>
                                 <th className="px-3 py-2 font-medium">必传规则</th>
+                                <th className="px-3 py-2 font-medium">条件说明</th>
                                 <th className="px-3 py-2 font-medium">适用端</th>
                                 <th className="px-3 py-2 font-medium">定义</th>
                                 <th className="px-3 py-2 font-medium">枚举/范围</th>
@@ -500,8 +511,9 @@ const AiTrackingDraftPanel = ({
                                   <td className="px-3 py-2 font-mono">{param.paramName}</td>
                                   <td className="px-3 py-2">{param.paramType}</td>
                                   <td className="px-3 py-2">{param.requiredRule}</td>
+                                  <td className="px-3 py-2">{param.triggerCondition || '-'}</td>
                                   <td className="px-3 py-2">{param.platform || '-'}</td>
-                                  <td className="max-w-64 px-3 py-2">{param.definition}</td>
+                                  <td className="max-w-64 px-3 py-2">{param.definition}{param.uncertainties.length > 0 && <div className="mt-1 whitespace-pre-wrap text-amber-700">待确认：{param.uncertainties.join('\n')}</div>}</td>
                                   <td className="max-w-64 whitespace-pre-wrap px-3 py-2">{param.enumRange || '-'}</td>
                                   <td className="px-3 py-2">{param.defaultValue || '-'}</td>
                                   <td className="px-3 py-2">{param.example || '-'}</td>

@@ -1,5 +1,15 @@
 # AI 埋点设计 MVP
 
+## Pollo 埋点治理 Skill
+
+生产 Worker 在 `worker/pollo-tracking-governance-skill.ts` 中内置中文版运行规则，并在每次模型请求的 system 消息中加载。规则覆盖业务板块、Web/App 归属、复用优先级、事件和参数规范、触发时机及待确认项。
+
+生成时按需求所属端读取正式事件库的全部分页，再按需求和 PRD 相关性选取最多 24 个事件，集中读取其正式参数，每事件向模型提供最多 30 个参数。Web 使用正式表 `tbly7VI4kwFz5qwR` / `tblNAMKr5S38iXJQ`，App 使用 `tblAhScEFQYAJC2g` / `tblEYv9lGZeenbT2`；设计工作台不作为正式事件存在的证据。
+
+生成后校验复用来源 recordId 与 evt_id、正式库同名事件及上下文读取情况，并在草稿界面显示复用来源、设计依据、条件说明和待确认项。候选截断、读取失败时不能断言事件不存在。当前未独立读取公共属性表和枚举字典，因此公共属性去重与字典口径始终保留人工确认项。
+
+该接入只生成草稿；人工选择后仍走现有草稿应用与评审流程，不会自动更新正式库。
+
 ## PolloCloud Worker 配置
 
 AI 草稿、飞书文档 OAuth 和模型调用均由 PolloCloud Worker 执行。该功能确实需要多人共享、长期保存 OAuth Token 与草稿，因此 `pollocloud.json` 保留 `db: true`；首次发布前必须先联系 PolloCloud 管理员为 `app-tracking-management` 开通 D1。Token 写入前使用 AES-GCM 加密。

@@ -3,6 +3,7 @@ import type {
   GetOfficialEventsResponse,
   GetOfficialParamsResponse,
   OfficialEvent,
+  OfficialEventContext,
   OfficialParam,
   TrackingSource,
 } from '../shared/api.interface';
@@ -53,6 +54,16 @@ const WEB_PARAM_BASE_LINK = 'https://bcn0tgplxp2e.feishu.cn/base/EX4RbTvp9agYNws
 const EXCLUDED_EVENT_STATUSES = new Set(['已废弃', '待治理']);
 const OFFICIAL_EVENT_VIEW_ID = 'vewO0PlLph';
 const OFFICIAL_PARAM_VIEW_ID = 'vewiUagCFI';
+
+export async function getOfficialLibraryEvents(
+  credentials: FeishuCredentials,
+  source: TrackingSource,
+  fetchImpl: FetchLike = fetch,
+): Promise<OfficialEvent[]> {
+  const records = await searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, OFFICIAL_EVENT_VIEW_ID, fetchImpl);
+  return dedupeOfficialEvents(records.map((record) => toOfficialEvent(record, source))
+    .filter((event) => event.evtId && !EXCLUDED_EVENT_STATUSES.has(event.status)));
+}
 
 export async function getOfficialEvents(
   credentials: FeishuCredentials,
@@ -130,6 +141,39 @@ export async function getOfficialParams(
     .filter((item) => item.status !== '已废弃')
     .sort((left, right) => left.paramKey.localeCompare(right.paramKey));
   return { items, total: items.length, baseLink };
+}
+
+/**
+ * Read candidate events' parameter definitions with one parameter-table scan
+ * per source. This is used by AI generation so it can reuse existing schemas.
+ */
+export async function getOfficialEventContexts(
+  credentials: FeishuCredentials,
+  events: OfficialEvent[],
+  fetchImpl: FetchLike = fetch,
+): Promise<OfficialEventContext[]> {
+  if (!events.length) return [];
+  const recordsBySource = new Map<TrackingSource, BitableRecord[]>();
+  const sources = [...new Set(events.map((event) => event.source))];
+  await Promise.all(sources.map(async (source) => {
+    recordsBySource.set(source, await searchAllRecords(
+      credentials,
+      officialParamDetailKey(source),
+      officialParamFields(source),
+      OFFICIAL_PARAM_VIEW_ID,
+      fetchImpl,
+    ));
+  }));
+
+  return events.map((event) => {
+    const rawId = parseScopedRecordId(event.recordId).rawId;
+    const params = (recordsBySource.get(event.source) || [])
+      .filter((record) => isOfficialParamForEvent(record, rawId, event.evtId))
+      .map((record) => toOfficialParam(record, event.source))
+      .filter((param) => (param.paramKey || param.paramName) && param.status !== '已废弃')
+      .sort((left, right) => left.paramKey.localeCompare(right.paramKey));
+    return { event, params };
+  });
 }
 
 async function searchAllRecords(
