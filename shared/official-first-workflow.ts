@@ -151,7 +151,7 @@ export function designPrompt(snapshot: GovernanceSnapshot, plan: ReusePlan, requ
 事件字段：evtId,eventName,eventDefinition,triggerTiming,metricScenario,priority,platform,handler,commonProps,version,minVersion,changeType,evidence,uncertainties,reuseSource,params。
 reuseSource字段：recordId,evtId,eventName,modificationSummary，必须引用正式记录。
 参数字段：paramName,paramType,requiredRule,triggerCondition,enumRange,definition,defaultValue,example,platform,uncertainties。
-正式参数的名称（含历史大小写）、类型、必传规则和条件保留原样。只增加必要可选参数并标待确认；扩枚举每行一个值，无 //。
+正式参数的名称（含历史大小写）、类型、必传规则和 triggerCondition 保留原文；正式条件为空时必须输出空字符串。本需求适用场景写在 definition 或 uncertainties，不得写入正式必传条件。只增加必要可选参数并标待确认；扩枚举每行一个值，无 //。
 枚举字典的草稿值不是已上线取值。触发口径扩展、枚举扩展、版本和无法计算的指标均写入 uncertainties，不能声称已通过审核。
 BOOL 与 BOOLEAN 可兼容；不得把 STRING 自行改 INTEGER。不要上报原始 prompt/标题/文件名/URL。
 commonProps 引用现有公共属性；不要另造公共属性。指标写清分子分母、去重和归因；任务受理结果不是生成结果。

@@ -206,9 +206,14 @@ export async function generateAiDraft(
   let raw;
   try {
     raw = await generateDesignBatches(snapshot, plan, requirement,
-      (prompt, batch, total, batchSignal) => runGenerationStage(`生成事件与参数（第${batch}/${total}批）`, 120_000,
-        (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal])))),
-      (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }));
+      (prompt, batch, total, batchSignal, repairing) => {
+        const label = `${repairing ? '修正参数设计' : '生成事件与参数'}（第${batch}/${total}批）`;
+        if (repairing) progress({ stage: 'design_repair', message: label });
+        return runGenerationStage(label, 120_000,
+          (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal]))));
+      },
+      (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }),
+      (value, batchPlan) => { enforceGovernance(normalizeModelEvents(value, detail), snapshot, batchPlan); });
   } catch (error) { throw governanceWriteError(error); }
   progress({ stage: 'validation', message: '统一校验事件、参数与正式库复用规则' });
   let events;

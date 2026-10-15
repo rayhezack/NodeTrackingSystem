@@ -1,5 +1,7 @@
 import { generateDesignBatches } from '../../shared/ai-design-batches';
 import type { GovernanceSnapshot, ReusePlan } from '../../shared/official-first-workflow';
+import { enforceGovernance, GovernanceValidationError } from '../../shared/official-first-workflow';
+import type { AiTrackingDraftEvent, OfficialEvent } from '../../shared/api.interface';
 
 const snapshot: GovernanceSnapshot = {
   source: 'web', events: [], contexts: [], commonProps: [], enums: [], fingerprint: 'test',
@@ -46,5 +48,49 @@ describe('batched event design', () => {
     for (const events of [[], [{ evtId: 'event_1' }, { evtId: 'event_1' }, { evtId: 'event_2' }], [{ evtId: 'unexpected' }]]) {
       await expect(generateDesignBatches(snapshot, plan, {}, async () => ({ events }))).rejects.toThrow('与复用规划不一致');
     }
+  });
+
+  it('repairs a changed formal required condition once and only counts the validated event', async () => {
+    const official: OfficialEvent = { recordId: 'web:template', source: 'web', evtId: 'creation_template_click',
+      eventName: '模板点击', platform: 'Web', version: '1', status: '已上线', paramLink: '', triggerTiming: '点击时' };
+    const library: GovernanceSnapshot = { ...snapshot, events: [official], contexts: [{ event: official, params: [{
+      paramKey: 'creation_template_click.button_name', paramName: 'button_name', paramType: 'STRING',
+      required: true, requiredRule: '必传', triggerCondition: '', definition: '按钮名', example: 'recreate', status: '正式',
+    }] }] };
+    const one: ReusePlan = { primaryBoard: '模板使用', decisions: [{ evtId: official.evtId, decision: 'reuse', reason: '复用模板点击', comparedEventIds: [official.evtId] }] };
+    const event: AiTrackingDraftEvent = { clientId: 'test', evtId: official.evtId, eventName: official.eventName,
+      eventDefinition: '模板点击', triggerTiming: '点击时', metricScenario: '', priority: 'P0', platform: 'Web', handler: '前端',
+      commonProps: '', version: '1', minVersion: '1', changeType: '修改', evidence: [], uncertainties: [],
+      params: [{ paramName: 'button_name', paramType: 'STRING', requiredRule: '必传', triggerCondition: '仅 Motion 模板点击时',
+        enumRange: '', definition: '按钮名', defaultValue: '', example: 'recreate', platform: 'Web', source: 'ai', uncertainties: [] }] };
+    const repaired = { ...event, params: [{ ...event.params[0], triggerCondition: '' }] };
+    const generate = jest.fn().mockResolvedValueOnce({ events: [event] }).mockResolvedValueOnce({ events: [repaired] });
+    const onComplete = jest.fn();
+    await expect(generateDesignBatches(library, one, { prd: '完整正文' }, generate, onComplete,
+      (raw, batchPlan) => { enforceGovernance((raw as { events: AiTrackingDraftEvent[] }).events, library, batchPlan); }))
+      .resolves.toEqual({ events: [repaired] });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[1][0]).toContain('参数必传条件冲突：creation_template_click.button_name');
+    expect(generate.mock.calls[1][0]).toContain('完整正文');
+    expect(generate.mock.calls[1][4]).toBe(true);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops after one failed repair and aborts outstanding work', async () => {
+    const one = { ...plan, decisions: plan.decisions.slice(0, 1) };
+    const generate = jest.fn().mockResolvedValue({ events: [{ evtId: 'event_1' }] });
+    const onComplete = jest.fn();
+    await expect(generateDesignBatches(snapshot, one, {}, generate, onComplete,
+      () => { throw new GovernanceValidationError('参数类型冲突'); })).rejects.toThrow('参数类型冲突');
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[0][3].aborted).toBe(true);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('does not retry model connection or deadline failures', async () => {
+    const generate = jest.fn().mockRejectedValue(new Error('model timeout'));
+    await expect(generateDesignBatches(snapshot, { ...plan, decisions: plan.decisions.slice(0, 1) }, {}, generate))
+      .rejects.toThrow('model timeout');
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 });
