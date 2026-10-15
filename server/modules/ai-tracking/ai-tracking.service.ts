@@ -28,7 +28,7 @@ import { FeishuDocumentService } from './feishu-document.service';
 import { FeishuOAuthService } from './feishu-oauth.service';
 import { ModelGatewayService } from './model-gateway.service';
 import { TRACKING_DESIGN_GUIDELINES } from './tracking-design-guidelines';
-import { assertFreshGovernance, designPrompt, enforceGovernance, governanceReport, normalizeReusePlan, reusePlanningPrompt } from '../../../shared/official-first-workflow';
+import { assertFreshGovernance, designPrompt, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
 
 const modelParamSchema = z.object({
   paramName: z.string().default(''),
@@ -201,10 +201,10 @@ export class AiTrackingService {
       const requirement = { source: detail.source, requestName: detail.requestName, requirementFields: detail.requirementFields,
         currentEvents: detail.relatedEvents, currentParams: currentParams.items, prd, contextFiles };
       draft.summary = "正在对照完整正式库判断复用";
-      const plan = normalizeReusePlan(await this.model.generateJson([
+      const plan = await generateReusePlan(snapshot, requirement, (prompt) => this.model.generateJson([
         { role: "system", content: TRACKING_DESIGN_GUIDELINES },
-        { role: "user", content: reusePlanningPrompt(snapshot, requirement) },
-      ]), snapshot);
+        { role: "user", content: prompt },
+      ]));
       draft.summary = "正在读取完整参数、公共属性及枚举生成设计";
       const raw = await this.model.generateJson([
         { role: "system", content: TRACKING_DESIGN_GUIDELINES },

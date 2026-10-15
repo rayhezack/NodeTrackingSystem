@@ -1,6 +1,6 @@
 import { webcrypto } from 'node:crypto';
 import type { AiTrackingDraftEvent } from '../../shared/api.interface';
-import { assertFreshGovernance, designPrompt, enforceGovernance, governanceReport, normalizeReusePlan, readGovernanceSnapshot, reusePlanningPrompt, type GovernanceTable } from '../../shared/official-first-workflow';
+import { assertFreshGovernance, designPrompt, enforceGovernance, generateReusePlan, governanceReport, normalizeReusePlan, readGovernanceSnapshot, reusePlanningPrompt, type GovernanceTable } from '../../shared/official-first-workflow';
 import { getOfficialGovernanceSnapshot } from '../../worker/query-library';
 import { resetFeishuTokenCache } from '../../worker/feishu-token';
 
@@ -30,6 +30,28 @@ function draft(overrides: Partial<AiTrackingDraftEvent> = {}): AiTrackingDraftEv
 }
 
 describe('official-first workflow', () => {
+  it('repairs a plan containing a deprecated archived event once, while preserving the gate', async () => {
+    const records = rows();
+    records.events[41].record = { evt_id: 'page_leave', 状态: '已废弃', 生命周期状态: '稳定归档', 端: 'Web' };
+    const library = await readGovernanceSnapshot('web', async (table) => records[table]);
+    const generate = jest.fn().mockResolvedValueOnce(planFor('page_leave')).mockResolvedValueOnce(planFor());
+    const plan = await generateReusePlan(library, { currentEvents: ['page_leave'] }, generate);
+    expect(plan.decisions[0].evtId).toBe('creation_template_view');
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[0][0]).toContain('"canReuse":false');
+    expect(generate.mock.calls[1][0]).toContain('状态：已废弃；生命周期：稳定归档');
+  });
+
+  it('stops after one unsuccessful repair and never retries model transport failures', async () => {
+    const library = await snapshot();
+    const invalid = jest.fn().mockResolvedValue(planFor('page_leave'));
+    await expect(generateReusePlan(library, {}, invalid)).rejects.toThrow('不可复用');
+    expect(invalid).toHaveBeenCalledTimes(2);
+    const offline = jest.fn().mockRejectedValue(new Error('model unavailable'));
+    await expect(generateReusePlan(library, {}, offline)).rejects.toThrow('model unavailable');
+    expect(offline).toHaveBeenCalledTimes(1);
+  });
+
   it('includes late catalog entries, all 35 parameters, common properties and enum status in the two stages', async () => {
     const library = await snapshot();
     const plan = normalizeReusePlan(planFor(), library);
