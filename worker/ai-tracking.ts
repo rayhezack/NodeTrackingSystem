@@ -5,6 +5,7 @@ import type {
   AiTrackingDraft,
   AiTrackingDraftEvent,
   AiTrackingDraftParam,
+  AiTrackingGenerationProgress,
   ApplyAiTrackingDraftRequest,
   ApplyAiTrackingDraftResponse,
   GenerateAiTrackingDraftRequest,
@@ -16,9 +17,11 @@ import type {
 } from '../shared/api.interface';
 import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-governance-skill';
 import { requestModelJson } from './ai-model';
+import { runGenerationStage } from './ai-generation-stage';
+import { generateDesignBatches } from '../shared/ai-design-batches';
 import { decodeDraftPayload, encodeDraftPayload, type DraftBlobStorage } from './ai-draft-payload';
 import { getOfficialGovernanceSnapshot } from './query-library';
-import { assertFreshGovernance, designPrompt, enforceGovernance, generateReusePlan, governanceReport, GovernanceValidationError } from '../shared/official-first-workflow';
+import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport, GovernanceValidationError } from '../shared/official-first-workflow';
 import { getTrackingDetail, getTrackingParams } from './tracking-read';
 import { applyAiDraftEvents, TrackingWriteError } from './tracking-write';
 import type { FeishuCredentials } from './feishu-token';
@@ -152,25 +155,62 @@ export async function generateAiDraft(
   actorId: string,
   origin: string,
   fetchImpl: FetchLike = fetch,
+  progress: (value: AiTrackingGenerationProgress) => void = () => undefined,
+  generationSignal?: AbortSignal,
 ): Promise<GenerateAiTrackingDraftResponse> {
+  const scopedFetch = (signal: AbortSignal): FetchLike => (input, init) => fetchImpl(input, {
+    ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
+  });
+  progress({ stage: 'requirement', message: '读取需求与权限' });
   const config = getAiConfigStatus(env, origin);
   if (!config.configured) throw new TrackingWriteError(`AI 功能缺少配置：${config.missingKeys.join('、')}`, 400);
-  const detail = (await getTrackingDetail(env, recordId, actorId, fetchImpl)).data;
+  const detail = (await runGenerationStage('读取需求与权限', 30_000,
+    (signal) => getTrackingDetail(env, recordId, actorId, scopedFetch(signal)))).data;
   if (!detail.permissions.canEditDesign) throw new TrackingWriteError('当前用户无埋点设计权限，不能使用 AI 生成草稿', 403);
   const requirementUrl = extractUrl(detail.requirementFields['需求链接']);
   if (!requirementUrl) throw new TrackingWriteError('请先提供 PRD 文档链接，再生成 AI 埋点初稿', 400);
-  const accessToken = await getAccessToken(env, actorId, fetchImpl);
-  const prd = await fetchPrd(requirementUrl, accessToken, fetchImpl);
-  const params = (await getTrackingParams(env, recordId, fetchImpl)).items;
+  progress({ stage: 'prd', message: '读取 PRD 正文' });
+  const prd = await runGenerationStage('读取 PRD 正文', 30_000, async (signal) => {
+    const fetchDocument = scopedFetch(signal);
+    const accessToken = await getAccessToken(env, actorId, fetchDocument);
+    return fetchPrd(requirementUrl, accessToken, fetchDocument);
+  });
+  progress({ stage: 'governance', message: '完整读取正式事件、参数、公共属性和枚举库' });
   let snapshot;
-  try { snapshot = await getOfficialGovernanceSnapshot(env, detail.source, fetchImpl); }
-  catch (error) { throw error instanceof GovernanceValidationError ? governanceWriteError(error) : new TrackingWriteError('正式库四表未能完整读取，请检查事件、参数、公共属性和枚举表的访问权限后重试；未继续调用 AI', 502); }
+  let params;
+  try {
+    const result = await runGenerationStage('读取正式库', 60_000, (signal) => Promise.all([
+      getOfficialGovernanceSnapshot(env, detail.source, scopedFetch(signal)),
+      getTrackingParams(env, recordId, scopedFetch(signal)),
+    ]));
+    snapshot = result[0];
+    params = result[1].items;
+  }
+  catch (error) {
+    if (error instanceof GovernanceValidationError) throw governanceWriteError(error);
+    if (error instanceof TrackingWriteError) throw error;
+    throw new TrackingWriteError('正式库四表未能完整读取，未继续调用 AI', 502);
+  }
   const requirement = { source: detail.source, requestName: detail.requestName, background: detail.requirementFields['需求背景'], scenario: detail.requirementFields['指标/使用场景'], currentEvents: detail.relatedEvents, currentParams: params, prd, files: normalizeContextFiles(body.contextFiles) };
   let plan;
-  try { plan = await generateReusePlan(snapshot, requirement, (prompt) => generateModelJson(env, prompt, fetchImpl)); }
+  let planningAttempt = 0;
+  try { plan = await generateReusePlan(snapshot, requirement, (prompt) => {
+    const label = ++planningAttempt === 1 ? '对照正式库规划复用' : '修正复用规划';
+    progress({ stage: 'planning', message: label });
+    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 5000));
+  }); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
-  const raw = await generateModelJson(env, designPrompt(snapshot, plan, requirement), fetchImpl);
+  const batchCount = Math.ceil(plan.decisions.length / 3);
+  progress({ stage: 'design', message: `生成事件与参数（0/${batchCount} 批完成）`, completed: 0, total: batchCount });
+  let raw;
+  try {
+    raw = await generateDesignBatches(snapshot, plan, requirement,
+      (prompt, batch, total, batchSignal) => runGenerationStage(`生成事件与参数（第${batch}/${total}批）`, 90_000,
+        (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal])))),
+      (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }));
+  } catch (error) { throw governanceWriteError(error); }
+  progress({ stage: 'validation', message: '统一校验事件、参数与正式库复用规则' });
   let events;
   try { events = enforceGovernance(normalizeModelEvents(raw, detail), snapshot, plan); }
   catch (error) { throw governanceWriteError(error); }
@@ -182,6 +222,8 @@ export async function generateAiDraft(
     governance: governanceReport(snapshot, plan, events),
     diffs: events.map((event, index) => ({ scope: index === 0 && !detail.evtId ? 'current_event' : 'new_event', eventClientId: event.clientId, changedFields: ['evtId', 'eventName', 'eventDefinition', 'triggerTiming'], addedParamNames: event.params.map((param) => param.paramName), changedParamNames: [] })),
   };
+  progress({ stage: 'saving', message: '保存已校验的初稿' });
+  generationSignal?.throwIfAborted();
   await persistDraft(env, actorId, draft);
   return { draft };
 }
@@ -309,8 +351,8 @@ async function feishuGet(fetchImpl: FetchLike, url: string, token: string): Prom
   return payload.data;
 }
 
-async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike): Promise<unknown> {
-  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: 12000, response_format: { type: 'json_object' } };
+async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike, maxCompletionTokens = 12000): Promise<unknown> {
+  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: maxCompletionTokens, response_format: { type: 'json_object' } };
   return requestModelJson(`${(env.AI_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '')}/chat/completions`, apiKey(env), body, fetchImpl);
 }
 

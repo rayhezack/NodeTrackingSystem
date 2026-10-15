@@ -51,6 +51,18 @@ describe('production AI model responses', () => {
     await expect(requestModelJson(url, 'test-key', body, mock)).rejects.toThrow('初稿未完成');
   });
 
+  it('finishes at the model completion marker even if the upstream socket never closes', async () => {
+    const cancel = jest.fn(() => new Promise<void>(() => undefined));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}\n\n'));
+      }, cancel,
+    });
+    const mock = jest.fn().mockResolvedValue(new Response(stream, { headers: { 'content-type': 'text/event-stream' } }));
+    await expect(requestModelJson(url, 'test-key', body, mock)).resolves.toEqual({});
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects length-truncated output and maps connection timeouts', async () => {
     const mock = jest.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: '{}' }, finish_reason: 'length' }] }));
     await expect(requestModelJson(url, 'test-key', body, mock)).rejects.toThrow('超出单次生成长度');

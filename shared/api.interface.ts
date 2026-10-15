@@ -587,6 +587,14 @@ export interface GenerateAiTrackingDraftResponse {
   draft: AiTrackingDraft;
 }
 
+export interface AiTrackingGenerationProgress {
+  stage: string;
+  message: string;
+  elapsedMs?: number;
+  completed?: number;
+  total?: number;
+}
+
 export interface GetLatestAiTrackingDraftResponse {
   draft: AiTrackingDraft | null;
 }
