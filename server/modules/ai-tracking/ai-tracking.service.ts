@@ -210,7 +210,11 @@ export class AiTrackingService {
       const raw = await generateDesignBatches(snapshot, plan, requirement, (prompt) => this.model.generateJson([
         { role: "system", content: TRACKING_DESIGN_GUIDELINES },
         { role: "user", content: prompt },
-      ]));
+      ]), undefined, (value, batchPlan) => {
+        const batch = modelResponseSchema.safeParse(value);
+        if (!batch.success) throw new BadRequestException("AI 草稿结构校验失败：" + batch.error.issues[0]?.message);
+        enforceGovernance(batch.data.events.map((event, index) => this.normalizeEvent(event, index, detail.source, detail.platform)), snapshot, batchPlan);
+      });
       const parsed = modelResponseSchema.safeParse(raw);
       if (!parsed.success) throw new BadRequestException("AI 草稿结构校验失败：" + parsed.error.issues[0]?.message);
       if (parsed.data.events.reduce((sum, event) => sum + event.params.length, 0) > 400) throw new BadRequestException("单次最多400个参数，不能截断");
