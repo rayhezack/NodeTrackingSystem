@@ -18,7 +18,7 @@ import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-govern
 import { requestModelJson } from './ai-model';
 import { decodeDraftPayload, encodeDraftPayload, type DraftBlobStorage } from './ai-draft-payload';
 import { getOfficialGovernanceSnapshot } from './query-library';
-import { assertFreshGovernance, designPrompt, enforceGovernance, governanceReport, GovernanceValidationError, normalizeReusePlan, reusePlanningPrompt } from '../shared/official-first-workflow';
+import { assertFreshGovernance, designPrompt, enforceGovernance, generateReusePlan, governanceReport, GovernanceValidationError } from '../shared/official-first-workflow';
 import { getTrackingDetail, getTrackingParams } from './tracking-read';
 import { applyAiDraftEvents, TrackingWriteError } from './tracking-write';
 import type { FeishuCredentials } from './feishu-token';
@@ -166,9 +166,8 @@ export async function generateAiDraft(
   try { snapshot = await getOfficialGovernanceSnapshot(env, detail.source, fetchImpl); }
   catch (error) { throw error instanceof GovernanceValidationError ? governanceWriteError(error) : new TrackingWriteError('正式库四表未能完整读取，请检查事件、参数、公共属性和枚举表的访问权限后重试；未继续调用 AI', 502); }
   const requirement = { source: detail.source, requestName: detail.requestName, background: detail.requirementFields['需求背景'], scenario: detail.requirementFields['指标/使用场景'], currentEvents: detail.relatedEvents, currentParams: params, prd, files: normalizeContextFiles(body.contextFiles) };
-  const planned = await generateModelJson(env, reusePlanningPrompt(snapshot, requirement), fetchImpl);
   let plan;
-  try { plan = normalizeReusePlan(planned, snapshot); }
+  try { plan = await generateReusePlan(snapshot, requirement, (prompt) => generateModelJson(env, prompt, fetchImpl)); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
   const raw = await generateModelJson(env, designPrompt(snapshot, plan, requirement), fetchImpl);

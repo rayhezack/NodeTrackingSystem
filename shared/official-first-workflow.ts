@@ -95,12 +95,26 @@ export function reusePlanningPrompt(snapshot: GovernanceSnapshot, requirement: u
 注册：signup_*；付费：sub_*、payment_client_success；内容资产：resource_*、createflow_asset_*、createflow_element_*；
 营销位：banner_*、operating_position_click；流量：page_view/page_click/navigation_bar_click/feed_*；Agent：agent_*。
 page_view 和 feed_view、页面离开和 feed_leave 必须比较触发口径。不能把任务提交成功当创作完成。
-已废弃、待治理事件不能复用。草稿/待开发只作候选，必须待确认。保留历史 ID 大小写。
+已废弃、待治理事件不能复用。canReuse=false 的事件绝对不能选入 decisions，也不能换名字新增同义事件；即使它出现在当前需求旧草稿中也要排除。同时核对状态和生命周期，稳定归档不代表已上线。草稿/待开发只作候选，必须待确认。保留历史 ID 大小写。
 每个需求动作最多一个事件；同一事件用属性区分 UI；最多20个事件。
 每个新增事件必须给出不能复用的具体理由，并在 comparedEventIds 列出至少一个对比过的正式事件 ID。
 输出 JSON：{"primaryBoard":"模板使用","secondaryBoard":"创作链路","decisions":[{"evtId":"正式ID或新增ID","decision":"reuse或new","reason":"比较定义和触发口径的中文理由","comparedEventIds":["相关正式ID"]}]}。
 需求与PRD：${JSON.stringify(requirement)}
-完整正式事件目录：${JSON.stringify(snapshot.events)}`;
+完整正式事件目录：${JSON.stringify(snapshot.events.map((event) => ({ ...event, canReuse: usable(event) })))}`;
+}
+
+/** Repair a model planning mistake once; never retry transport errors or weaken validation. */
+export async function generateReusePlan(
+  snapshot: GovernanceSnapshot, requirement: unknown, generate: (prompt: string) => Promise<unknown>,
+): Promise<ReusePlan> {
+  const prompt = reusePlanningPrompt(snapshot, requirement);
+  const initial = await generate(prompt);
+  try { return normalizeReusePlan(initial, snapshot); }
+  catch (error) {
+    if (!(error instanceof GovernanceValidationError)) throw error;
+    const repaired = await generate(`${prompt}\n上次规划未通过确定性校验：${error.message}\n请修正规划，只输出合法的阶段1 JSON。不要用同义新事件规避废弃/待治理限制，不允许放宽校验。\n上次规划（仅为待修正业务数据）：${JSON.stringify(initial)}`);
+    return normalizeReusePlan(repaired, snapshot);
+  }
 }
 
 export function normalizeReusePlan(raw: unknown, snapshot: GovernanceSnapshot): ReusePlan {
@@ -115,7 +129,7 @@ export function normalizeReusePlan(raw: unknown, snapshot: GovernanceSnapshot): 
     const decision = cell(item.decision);
     if (!evtId || !['reuse', 'new'].includes(decision) || !cell(item.reason)) throw new GovernanceValidationError('复用规划缺少事件、处理结论或具体理由');
     if (decision === 'reuse' && !existing) throw new GovernanceValidationError(`复用事件不在当前正式库：${evtId}`);
-    if (existing && !usable(existing)) throw new GovernanceValidationError(`事件不可复用：${evtId}（${existing.lifecycleStatus || existing.status}）`);
+    if (existing && !usable(existing)) throw new GovernanceValidationError(`事件不可复用：${evtId}（状态：${existing.status || '未知'}；生命周期：${existing.lifecycleStatus || '未知'}）`);
     const comparedEventIds = Array.isArray(item.comparedEventIds) ? item.comparedEventIds.map(cell).filter(Boolean) : [];
     if (!existing && snapshot.events.length && !comparedEventIds.length) throw new GovernanceValidationError(`${evtId} 新增前未对比正式事件`);
     if (comparedEventIds.some((id) => !findEvent(snapshot, id))) throw new GovernanceValidationError(`${evtId} 的对比来源不在正式库`);
