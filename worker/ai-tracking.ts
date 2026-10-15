@@ -16,6 +16,7 @@ import type {
 } from '../shared/api.interface';
 import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-governance-skill';
 import { requestModelJson } from './ai-model';
+import { decodeDraftPayload, encodeDraftPayload, type DraftBlobStorage } from './ai-draft-payload';
 import { getOfficialGovernanceSnapshot } from './query-library';
 import { assertFreshGovernance, designPrompt, enforceGovernance, governanceReport, GovernanceValidationError, normalizeReusePlan, reusePlanningPrompt } from '../shared/official-first-workflow';
 import { getTrackingDetail, getTrackingParams } from './tracking-read';
@@ -37,6 +38,7 @@ export interface D1Database {
 
 export type AiWorkerEnv = FeishuCredentials & {
   DB?: D1Database;
+  STORAGE?: DraftBlobStorage;
   FEISHU_OAUTH_REDIRECT_URI?: string;
   FEISHU_TOKEN_ENCRYPTION_KEY?: string;
   KIMI_API_KEY?: string;
@@ -193,7 +195,7 @@ export async function getLatestAiDraft(env: AiWorkerEnv, actorId: string, record
 export async function getAiDraft(env: AiWorkerEnv, actorId: string, recordId: string, draftId: string): Promise<GetAiTrackingDraftResponse> {
   await ensureSchema(env);
   const row = await env.DB!.prepare('SELECT payload FROM ai_tracking_drafts WHERE id = ? AND actor_id = ? AND record_id = ?').bind(draftId, actorId, recordId).first<{ payload?: string }>();
-  return { draft: row?.payload ? JSON.parse(row.payload) as AiTrackingDraft : null };
+  return { draft: row?.payload ? await decodeDraftPayload(row.payload, env.STORAGE, (value) => decrypt(env, value)) as AiTrackingDraft : null };
 }
 
 export async function applyAiDraft(
@@ -353,13 +355,18 @@ function governanceWriteError(error: unknown): Error {
 
 async function persistDraft(env: AiWorkerEnv, actorId: string, draft: AiTrackingDraft): Promise<void> {
   await ensureSchema(env);
-  await env.DB!.prepare('INSERT INTO ai_tracking_drafts(id, actor_id, record_id, version, created_at, payload) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload').bind(draft.id, actorId, draft.recordId, draft.version, draft.createdAt, JSON.stringify(draft)).run();
+  const payload = await encodeDraftPayload(JSON.stringify(draft), draft.id, env.STORAGE, (value) => encrypt(env, value));
+  try {
+    await env.DB!.prepare('INSERT INTO ai_tracking_drafts(id, actor_id, record_id, version, created_at, payload) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload').bind(draft.id, actorId, draft.recordId, draft.version, draft.createdAt, payload).run();
+  } catch {
+    throw new TrackingWriteError('AI 草稿已生成，但数据库保存失败，请稍后重试', 503);
+  }
 }
 
 async function latestDraft(env: AiWorkerEnv, actorId: string, recordId: string): Promise<AiTrackingDraft | null> {
   await ensureSchema(env);
   const row = await env.DB!.prepare('SELECT payload FROM ai_tracking_drafts WHERE actor_id = ? AND record_id = ? ORDER BY created_at DESC LIMIT 1').bind(actorId, recordId).first<{ payload?: string }>();
-  return row?.payload ? JSON.parse(row.payload) as AiTrackingDraft : null;
+  return row?.payload ? await decodeDraftPayload(row.payload, env.STORAGE, (value) => decrypt(env, value)) as AiTrackingDraft : null;
 }
 
 async function encrypt(env: AiWorkerEnv, value: string): Promise<string> {
