@@ -442,6 +442,16 @@ const AiTrackingDraftPanel = ({
                       <div className="mt-2 whitespace-pre-wrap text-xs">{draft.failureMessage || '请稍后重新生成'}</div>
                     </div>
                   )}
+                  {draft.status === 'draft' && draft.governance && (
+                    <section className="space-y-2 border border-border bg-muted/20 px-3 py-3 text-xs">
+                      <div className="font-medium">正式库优先校验 · {draft.governance.primaryBoard}</div>
+                      <div>{draft.summary}</div>
+                      <div className="text-muted-foreground">已读取当前端正式事件 {draft.governance.counts.events} 条、参数 {draft.governance.counts.params} 条、公共属性 {draft.governance.counts.commonProps} 条、枚举 {draft.governance.counts.enums} 条</div>
+                      {draft.governance.checks.map((check) => (
+                        <div key={check.name}>{check.status === 'passed' ? '通过' : '待确认'}：{check.name} — {check.detail}</div>
+                      ))}
+                    </section>
+                  )}
                   {draft.status === 'draft' && draft.events.map((event, index) => {
                     const diff = draft.diffs.find((item) => item.eventClientId === event.clientId);
                     return (
@@ -461,7 +471,7 @@ const AiTrackingDraftPanel = ({
                               <span className="font-mono text-xs font-medium text-foreground">{event.evtId}</span>
                               <span className="text-xs text-muted-foreground">{event.eventName}</span>
                               <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
-                                {diff?.scope === 'current_event' ? '填充当前事件' : '新增事件'}
+                                {event.reuseSource ? '复用正式事件' : diff?.scope === 'current_event' ? '填充当前事件' : '新增事件建议'}
                               </Badge>
                             </div>
                           </div>

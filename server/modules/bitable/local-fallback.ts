@@ -124,6 +124,8 @@ export function shouldUseLocalBitableFallback(): boolean {
 export class LocalBitableFallback {
   private nextId = 1;
   private readonly dataset: Dataset = {
+    commonProperties: new Map(),
+    webCommonProperties: new Map(),
     workbench: new Map([
       [
         'recvqasv6kXTJ1',

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { GetOfficialEventsParams, GetOfficialEventsResponse, GetOfficialParamsResponse, OfficialEvent, OfficialEventContext, OfficialParam, TrackingSource } from '@shared/api.interface';
 import { BitableRecord, BitableService } from '../bitable/bitable.service';
 import type { BitableInstanceKey } from '../bitable/bitable.constants';
+import { readGovernanceSnapshot, type GovernanceTable } from '../../../shared/official-first-workflow';
 
 const APP_OFFICIAL_FIELDS = ['evt_id', '事件中文名', '一级分类', '端', '上线版本', '状态', '生命周期状态', '参数明细入口', '事件定义', '触发时机', '指标/使用场景'] as const;
 
@@ -48,6 +49,13 @@ export class QueryLibraryService {
   private readonly searchCache = new Map<string, QueryCacheEntry>();
 
   constructor(private readonly bitable: BitableService) {}
+
+  async getGovernanceSnapshot(source: TrackingSource) {
+    const keys: Record<GovernanceTable, BitableInstanceKey> = source === 'web'
+      ? { events: 'webQueryLibrary', params: 'webOfficialParamDetail', commonProps: 'webCommonProperties', enums: 'webEnumDictionary' }
+      : { events: 'queryLibrary', params: 'officialParamDetail', commonProps: 'commonProperties', enums: 'enumDictionary' };
+    return readGovernanceSnapshot(source, (table) => this.searchAllRecords(keys[table], []));
+  }
 
   async getEvents(params: GetOfficialEventsParams, options: QueryCacheOptions = {}): Promise<GetOfficialEventsResponse> {
     const source = normalizeSource(params.source);
@@ -192,14 +200,17 @@ export class QueryLibraryService {
     if (cacheTtlMs > 0 && cached && cached.expiresAt > Date.now()) return cached.records;
     const records: BitableRecord[] = [];
     let pageToken: string | undefined;
+    const seen = new Set<string>();
 
     do {
       const result = await this.bitable.searchRecords(instanceKey, {
-        fieldNames: [...fieldNames],
+        ...(fieldNames.length ? { fieldNames: [...fieldNames] } : {}),
         pageSize: 200,
         ...(pageToken ? { pageToken } : {}),
       });
       records.push(...result.records);
+      if (result.hasMore && (!result.pageToken || seen.has(result.pageToken))) throw new Error('正式库分页不完整或游标重复');
+      if (result.pageToken) seen.add(result.pageToken);
       pageToken = result.hasMore ? result.pageToken : undefined;
     } while (pageToken);
 

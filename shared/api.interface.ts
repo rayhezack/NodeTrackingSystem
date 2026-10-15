@@ -562,6 +562,25 @@ export interface AiTrackingDraft {
   appliedRecordIds?: string[];
   appliedParamCount?: number;
   failureMessage?: string;
+  governance?: AiGovernanceReport;
+}
+
+export interface AiReuseDecision {
+  evtId: string;
+  decision: 'reuse' | 'new';
+  reason: string;
+  comparedEventIds: string[];
+}
+
+export interface AiGovernanceReport {
+  workflowVersion: 'official-first-v2';
+  source: TrackingSource;
+  primaryBoard: string;
+  secondaryBoard?: string;
+  snapshotFingerprint: string;
+  counts: { events: number; params: number; commonProps: number; enums: number };
+  decisions: AiReuseDecision[];
+  checks: { name: string; status: 'passed' | 'pending'; detail: string }[];
 }
 
 export interface GenerateAiTrackingDraftResponse {
@@ -600,6 +619,7 @@ export interface OfficialEvent {
   platform: string;
   version: string;
   status: string;
+  lifecycleStatus?: string;
   paramLink: string;
   eventDefinition?: string;
   triggerTiming?: string;
