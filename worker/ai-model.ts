@@ -58,9 +58,10 @@ export async function requestModelJson(
           pending = blocks.pop() || '';
           blocks.forEach(consume);
           if (done) { if (pending.trim()) consume(pending); break; }
+          if (completed) break;
         }
       } finally {
-        await reader.cancel().catch(() => undefined);
+        void reader.cancel().catch(() => undefined);
       }
       if (!completed) throw new TrackingWriteError('大模型生成连接中断，初稿未完成，请重新生成', 502);
     } else {

@@ -145,9 +145,10 @@ export default {
         if (request.method === 'POST' && generateDraftMatch) {
           const recordId = decodeURIComponent(generateDraftMatch[1]);
           const body = await request.json() as GenerateAiTrackingDraftRequest;
-          if (url.searchParams.get('stream') === '1') {
-            return streamingGenerationResponse((signal) => generateAiDraft(env, recordId, body, user.id, url.origin,
-              (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal })));
+          if (['1', '2'].includes(url.searchParams.get('stream') || '')) {
+            return streamingGenerationResponse((signal, progress) => generateAiDraft(env, recordId, body, user.id, url.origin,
+              (input, init) => fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal }), progress, signal),
+              { format: url.searchParams.get('stream') === '2' ? 'ndjson' : 'json' });
           }
           return json(await generateAiDraft(env, recordId, body, user.id, url.origin));
         }

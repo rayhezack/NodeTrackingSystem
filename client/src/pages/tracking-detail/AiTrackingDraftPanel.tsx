@@ -37,6 +37,7 @@ import type {
   AiTrackingContextFile,
   AiTrackingConfigStatus,
   AiTrackingDraft,
+  AiTrackingGenerationProgress,
   TrackingDetail,
 } from '@shared/api.interface';
 import { getAiDraftGenerationBlockReason } from './ai-tracking-prd.utils';
@@ -65,6 +66,8 @@ const AiTrackingDraftPanel = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [generationError, setGenerationError] = useState('');
+  const [generationProgress, setGenerationProgress] = useState<AiTrackingGenerationProgress | null>(null);
+  const generationAbortRef = useRef<AbortController | null>(null);
   const [applying, setApplying] = useState(false);
   const [contextFiles, setContextFiles] = useState<AiTrackingContextFile[]>([]);
   const contextFileInputRef = useRef<HTMLInputElement>(null);
@@ -134,28 +137,40 @@ const AiTrackingDraftPanel = ({
 
   useEffect(() => () => {
     generationPollRef.current += 1;
+    generationAbortRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    setGenerationProgress(null);
+    setGenerationError('');
+    return () => { generationAbortRef.current?.abort(); };
+  }, [detail.recordId]);
 
   const performGenerate = useCallback(async () => {
     setLoading(true);
     setGenerationError('');
+    setGenerationProgress({ stage: 'preparing', message: '准备生成' });
+    const abort = new AbortController();
+    generationAbortRef.current = abort;
     try {
       const result = await generateAiTrackingDraft(detail.recordId, {
         actorId,
         actorLarkId,
         contextFiles,
-      });
+      }, { signal: abort.signal, onProgress: setGenerationProgress });
       setActiveDraft(result.draft);
       setDraftDialogOpen(true);
       if (result.draft.status === 'generating') {
         void pollDraftGeneration(result.draft.id);
       }
     } catch (error) {
+      if (abort.signal.aborted) return;
       const message = error instanceof Error ? error.message : 'AI 埋点草稿生成失败';
       setGenerationError(message);
       toast.error(message);
     } finally {
       setLoading(false);
+      setGenerationProgress(null);
     }
   }, [actorId, actorLarkId, contextFiles, detail.recordId, pollDraftGeneration, setActiveDraft]);
 
@@ -381,6 +396,12 @@ const AiTrackingDraftPanel = ({
           ))}
         </div>
         {generationError && <p role="alert" className="mt-2 text-sm text-destructive">{generationError}</p>}
+        {loading && generationProgress && (
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-muted-foreground">
+            {generationProgress.message}
+            {generationProgress.elapsedMs != null && ` · 已用时 ${Math.floor(generationProgress.elapsedMs / 1000)} 秒`}
+          </p>
+        )}
         {config && !ready && (
           <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
             <TriangleAlert className="h-3.5 w-3.5" />

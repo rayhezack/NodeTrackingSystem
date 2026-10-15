@@ -28,7 +28,8 @@ import { FeishuDocumentService } from './feishu-document.service';
 import { FeishuOAuthService } from './feishu-oauth.service';
 import { ModelGatewayService } from './model-gateway.service';
 import { TRACKING_DESIGN_GUIDELINES } from './tracking-design-guidelines';
-import { assertFreshGovernance, designPrompt, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
+import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
+import { generateDesignBatches } from '../../../shared/ai-design-batches';
 
 const modelParamSchema = z.object({
   paramName: z.string().default(''),
@@ -206,10 +207,10 @@ export class AiTrackingService {
         { role: "user", content: prompt },
       ]));
       draft.summary = "正在读取完整参数、公共属性及枚举生成设计";
-      const raw = await this.model.generateJson([
+      const raw = await generateDesignBatches(snapshot, plan, requirement, (prompt) => this.model.generateJson([
         { role: "system", content: TRACKING_DESIGN_GUIDELINES },
-        { role: "user", content: designPrompt(snapshot, plan, requirement) },
-      ]);
+        { role: "user", content: prompt },
+      ]));
       const parsed = modelResponseSchema.safeParse(raw);
       if (!parsed.success) throw new BadRequestException("AI 草稿结构校验失败：" + parsed.error.issues[0]?.message);
       if (parsed.data.events.reduce((sum, event) => sum + event.params.length, 0) > 400) throw new BadRequestException("单次最多400个参数，不能截断");

@@ -1,6 +1,8 @@
 import { logger } from '@client/src/lib/logger';
 import { axiosForBackend } from './http';
 import { toReadableError } from './error';
+import { readAiGenerationStream } from './ai-generation-stream';
+import type { AiTrackingGenerationProgress } from '@shared/api.interface';
 import type {
   GetStageStatsResponse,
   GetMyTodosResponse,
@@ -386,20 +388,18 @@ export async function startAiFeishuAuth(
 export async function generateAiTrackingDraft(
   recordId: string,
   data: GenerateAiTrackingDraftRequest,
+  options: { signal?: AbortSignal; onProgress?: (progress: AiTrackingGenerationProgress) => void } = {},
 ): Promise<GenerateAiTrackingDraftResponse> {
+  const deadline = AbortSignal.timeout(660_000);
   try {
-    const response = await axiosForBackend.post(
-      `/api/tracking/ai/records/${recordId}/drafts?stream=1`,
-      data,
-    );
-    if (response.data?.generationError) {
-      throw toReadableError({ response: { status: response.data.status, data: { message: response.data.message } } }, 'AI 埋点草稿生成失败');
-    }
-    if (!response.data?.draft) {
-      throw new Error('AI 生成接口返回异常，请稍后重试');
-    }
-    return response.data;
+    const response = await fetch(`/api/tracking/ai/records/${encodeURIComponent(recordId)}/drafts?stream=2`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson, application/json' },
+      body: JSON.stringify(data), signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline,
+    });
+    return await readAiGenerationStream(response, options.onProgress);
   } catch (error) {
+    if (deadline.aborted) throw new Error('AI 生成连接超时，本次已停止，请重试');
     throw toReadableError(error, 'AI 埋点草稿生成失败');
   }
 }
