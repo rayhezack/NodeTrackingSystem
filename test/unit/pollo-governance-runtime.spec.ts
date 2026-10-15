@@ -1,7 +1,6 @@
-import { selectOfficialCandidates, validateGovernanceEvents, type OfficialLibraryContext } from '../../worker/ai-tracking';
 import { getOfficialLibraryEvents, getOfficialEventContexts } from '../../worker/query-library';
 import { resetFeishuTokenCache } from '../../worker/feishu-token';
-import type { AiTrackingDraftEvent, OfficialEvent } from '../../shared/api.interface';
+import type { OfficialEvent } from '../../shared/api.interface';
 
 const official = (evtId: string, source: 'web' | 'app' = 'web'): OfficialEvent => ({
   recordId: `${source}:${evtId}`, source, evtId, eventName: evtId,
@@ -24,7 +23,6 @@ describe('Pollo governance production runtime', () => {
     const events = await getOfficialLibraryEvents(credentials, 'web', mock as typeof fetch);
     expect(events.map((event) => event.evtId)).toEqual(['page_view', 'createflow_form_submit']);
     expect(mock.mock.calls[2][0]).toContain('page_token=next');
-    expect(selectOfficialCandidates(events, '用户提交创作表单', 1)[0].evtId).toBe('createflow_form_submit');
   });
 
   it('groups Web and App parameters independently and excludes deprecated ones', async () => {
@@ -41,17 +39,4 @@ describe('Pollo governance production runtime', () => {
     expect(mock.mock.calls.filter(([url]) => String(url).includes('/records/search'))).toHaveLength(2);
   });
 
-  it('rejects a mismatched record ID and event ID as an unverified reuse claim', () => {
-    const library: OfficialLibraryContext = { status: 'available', events: [official('page_view')], items: [], truncated: false };
-    const draft = { evtId: 'new_event', changeType: '修改', uncertainties: [], reuseSource: { recordId: 'web:page_view', evtId: 'new_event' } } as AiTrackingDraftEvent;
-    expect(validateGovernanceEvents([draft], library)[0].uncertainties.join('\n')).toContain('recordId 与 evt_id 不一致');
-  });
-
-  it('marks failed library reads and duplicate new events for review', () => {
-    const draft = { evtId: 'page_view', changeType: '新增', uncertainties: [] } as unknown as AiTrackingDraftEvent;
-    const result = validateGovernanceEvents([draft], { status: 'unavailable', events: [], items: [], truncated: false });
-    expect(result[0].uncertainties.join('\n')).toContain('正式库读取失败');
-    const duplicate = validateGovernanceEvents([draft], { status: 'available', events: [official('page_view')], items: [], truncated: false });
-    expect(duplicate[0].uncertainties.join('\n')).toContain('evt_id 已存在于正式库');
-  });
 });

@@ -6,6 +6,7 @@ export const BITABLE_INSTANCES = {
   queryLibrary: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblAhScEFQYAJC2g' },
   officialParamDetail: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblEYv9lGZeenbT2' },
   enumDictionary: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblQ8Ph3N8GJHeVA' },
+  commonProperties: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblIdlancSXgX9VX' },
   deprecatedEvent: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tblBioKXiaou302p' },
   deprecatedParamDetail: { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', tableId: 'tbl3HA2sLaHuxRD1' },
   webWorkbench: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tblsFFvYkTPkabFT' },
@@ -13,6 +14,7 @@ export const BITABLE_INSTANCES = {
   webQueryLibrary: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tbly7VI4kwFz5qwR' },
   webOfficialParamDetail: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tblNAMKr5S38iXJQ' },
   webEnumDictionary: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tbl2KEj2zyg8bOmk' },
+  webCommonProperties: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tblb783YDTiBNts0' },
   webDeprecatedEvent: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tblqwh7naUc3WxNz' },
   webDeprecatedParamDetail: { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', tableId: 'tblKjUGEx3mxICcY' },
 } as const;

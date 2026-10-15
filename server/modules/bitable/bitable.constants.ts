@@ -10,6 +10,7 @@ export const BITABLE_INSTANCES = {
   queryLibrary: 'feishu_bitable_app_buried_point_readonly_1',
   officialParamDetail: 'feishu_bitable_app_parameter_detail_1',
   enumDictionary: 'feishu_bitable_parameter_enum_dictionary_1',
+  commonProperties: 'feishu_bitable_app_common_properties_1',
   deprecatedEvent: 'feishu_bitable_app_deprecated_event_1',
   deprecatedParamDetail: 'feishu_bitable_app_deprecated_parameter_detail_1',
   webWorkbench: 'feishu_bitable_web_tracking_design_workbench_1',
@@ -17,6 +18,7 @@ export const BITABLE_INSTANCES = {
   webQueryLibrary: 'feishu_bitable_web_tracking_query_library_1',
   webOfficialParamDetail: 'feishu_bitable_web_parameter_detail_1',
   webEnumDictionary: 'feishu_bitable_web_parameter_enum_dictionary_1',
+  webCommonProperties: 'feishu_bitable_web_common_properties_1',
   webDeprecatedEvent: 'feishu_bitable_web_deprecated_event_1',
   webDeprecatedParamDetail: 'feishu_bitable_web_deprecated_parameter_detail_1',
 } as const;
@@ -31,6 +33,7 @@ export const BITABLE_APP_TOKENS: Record<BitableInstanceKey, string> = {
   queryLibrary: APP_BITABLE_APP_TOKEN,
   officialParamDetail: APP_BITABLE_APP_TOKEN,
   enumDictionary: APP_BITABLE_APP_TOKEN,
+  commonProperties: APP_BITABLE_APP_TOKEN,
   deprecatedEvent: APP_BITABLE_APP_TOKEN,
   deprecatedParamDetail: APP_BITABLE_APP_TOKEN,
   webWorkbench: WEB_BITABLE_APP_TOKEN,
@@ -38,6 +41,7 @@ export const BITABLE_APP_TOKENS: Record<BitableInstanceKey, string> = {
   webQueryLibrary: WEB_BITABLE_APP_TOKEN,
   webOfficialParamDetail: WEB_BITABLE_APP_TOKEN,
   webEnumDictionary: WEB_BITABLE_APP_TOKEN,
+  webCommonProperties: WEB_BITABLE_APP_TOKEN,
   webDeprecatedEvent: WEB_BITABLE_APP_TOKEN,
   webDeprecatedParamDetail: WEB_BITABLE_APP_TOKEN,
 };
@@ -51,6 +55,7 @@ export const BITABLE_TABLE_IDS: Record<BitableInstanceKey, string> = {
   queryLibrary: 'tblAhScEFQYAJC2g',
   officialParamDetail: 'tblEYv9lGZeenbT2',
   enumDictionary: 'tblQ8Ph3N8GJHeVA',
+  commonProperties: 'tblIdlancSXgX9VX',
   deprecatedEvent: 'tblBioKXiaou302p',
   deprecatedParamDetail: 'tbl3HA2sLaHuxRD1',
   webWorkbench: 'tblsFFvYkTPkabFT',
@@ -58,6 +63,7 @@ export const BITABLE_TABLE_IDS: Record<BitableInstanceKey, string> = {
   webQueryLibrary: 'tbly7VI4kwFz5qwR',
   webOfficialParamDetail: 'tblNAMKr5S38iXJQ',
   webEnumDictionary: 'tbl2KEj2zyg8bOmk',
+  webCommonProperties: 'tblb783YDTiBNts0',
   webDeprecatedEvent: 'tblqwh7naUc3WxNz',
   webDeprecatedParamDetail: 'tblKjUGEx3mxICcY',
 };
@@ -71,6 +77,17 @@ interface BitableFieldConfig {
   writeable: boolean;
   enumValues?: string[];
 }
+
+const COMMON_PROPERTY_FIELDS: BitableFieldConfig[] = [
+  { id: 'fldGcOBF6m', name: '属性名', type: 1, bizType: 'Text', readable: true, writeable: false },
+  { id: 'fld8DsdpI6', name: '显示名', type: 1, bizType: 'Text', readable: true, writeable: false },
+  { id: 'fldZVu1tqN', name: '定义', type: 1, bizType: 'Text', readable: true, writeable: false },
+  { id: 'fldR4DfPkJ', name: '格式', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
+  { id: 'fld81HArNe', name: '上报范围', type: 1, bizType: 'Text', readable: true, writeable: false },
+  { id: 'fldAE5a7Ep', name: '迁移质量', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
+  { id: 'fldayEEqmW', name: '是否必填', type: 3, bizType: 'SingleSelect', readable: true, writeable: false },
+  { id: 'fldPXozplJ', name: '废弃版本', type: 1, bizType: 'Text', readable: true, writeable: false },
+];
 
 const ENUM_DICTIONARY_FIELDS: BitableFieldConfig[] = [
   { id: 'fldqTkbQYj', name: '枚举主键', type: 1, bizType: 'Text', readable: true, writeable: true },
@@ -1813,9 +1830,11 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     },
   ],
   enumDictionary: ENUM_DICTIONARY_FIELDS,
+  commonProperties: COMMON_PROPERTY_FIELDS,
   deprecatedEvent: APP_DEPRECATED_EVENT_FIELDS,
   deprecatedParamDetail: APP_DEPRECATED_PARAM_FIELDS,
   webEnumDictionary: ENUM_DICTIONARY_FIELDS,
+  webCommonProperties: COMMON_PROPERTY_FIELDS,
   webDeprecatedEvent: WEB_DEPRECATED_EVENT_FIELDS,
   webDeprecatedParamDetail: WEB_DEPRECATED_PARAM_FIELDS,
 };

@@ -1,5 +1,8 @@
 import { AiTrackingService } from '../../server/modules/ai-tracking/ai-tracking.service';
 import type { TrackingDetail } from '../../shared/api.interface';
+import type { GovernanceSnapshot } from '../../shared/official-first-workflow';
+
+const plan = { primaryBoard: 'Agent', decisions: [{ evtId: 'home_agent_task_submit', decision: 'new', reason: '当前正式目录没有首页Agent发起任务事件', comparedEventIds: [] }] };
 
 describe('AI 埋点草稿', () => {
   function createFixture(detailOverrides: Partial<TrackingDetail> = {}) {
@@ -65,6 +68,7 @@ describe('AI 埋点草稿', () => {
       }),
     };
     const queryLibrary = {
+      getGovernanceSnapshot: jest.fn().mockResolvedValue({ source: detail.source, events: [], contexts: [], commonProps: [{ name: 'page_name' }], enums: [], fingerprint: 'snapshot-1', counts: { events: 1, params: 1, commonProps: 1, enums: 1 } } as GovernanceSnapshot),
       getEvents: jest.fn().mockResolvedValue({ items: [], total: 0, hasMore: false }),
       getParams: jest.fn(),
       getEventContexts: jest.fn().mockResolvedValue([]),
@@ -91,7 +95,7 @@ describe('AI 埋点草稿', () => {
         model: 'kimi-k3',
         reasoningEffort: 'low',
       },
-      generateJson: jest.fn().mockResolvedValue({
+      generateJson: jest.fn().mockImplementation(async (messages: { content: string }[]) => messages[1].content.startsWith('阶段1') ? plan : ({
         summary: '生成一个任务发起事件',
         analystQuestions: ['版本号待确认'],
         events: [
@@ -122,7 +126,7 @@ describe('AI 埋点草稿', () => {
             ],
           },
         ],
-      }),
+      })),
     };
     const service = new AiTrackingService(
       tracking as never,
@@ -134,134 +138,30 @@ describe('AI 埋点草稿', () => {
     return { service, tracking, queryLibrary, documents, model };
   }
 
-  it('Web 需求只应使用 Web 正式埋点查询与正式参数查询', async () => {
-    const prdUrl = 'https://bcn0tgplxp2e.feishu.cn/wiki/K5dewcp55iRZPskeA4gc9W1WnKd';
-    const { service, documents, queryLibrary, model } = createFixture({
-      source: 'web',
-      requirementFields: {
-        需求链接: `[${prdUrl}](${prdUrl})`,
-        需求背景: '首页新增 Agent 入口',
-      },
-    });
-    const webOfficialEvent = {
-      recordId: 'web:rec_official_agent',
-      source: 'web' as const,
-      evtId: 'home_agent_entry_click',
-      eventName: '首页 Agent 入口点击',
-      platform: 'Web',
-      version: '1.0.0',
-      status: '已上线',
-      paramLink: 'https://example.feishu.cn/base/params',
-    };
-    const appOfficialEvent = {
-      recordId: 'app:rec_official_agent',
-      source: 'app' as const,
-      evtId: 'home_agent_entry_click',
-      eventName: '首页 Agent 入口点击',
-      platform: 'iOS、Android',
-      version: '1.0.0',
-      status: '已上线',
-      paramLink: 'https://example.feishu.cn/base/app-params',
-    };
-    queryLibrary.getEvents.mockImplementation(({ source }: { source: 'app' | 'web' }) => Promise.resolve({
-      items: source === 'web' ? [webOfficialEvent] : [appOfficialEvent],
-      total: 1,
-      hasMore: false,
-    }));
-    queryLibrary.getEventContexts.mockResolvedValue([{
-      event: webOfficialEvent,
-      params: [{
-        paramKey: 'home_agent_entry_click.entry_source',
-        paramName: 'entry_source',
-        paramType: 'STRING',
-        required: true,
-        requiredRule: '必传',
-        enumRange: 'home // 首页',
-        definition: '入口来源',
-        example: 'home',
-        platform: 'Web通用',
-        status: '正式',
-      }],
-    }]);
-
-    await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
-
-    expect(documents.fetchPrd).toHaveBeenCalledWith(prdUrl, 'user-token');
-    expect(queryLibrary.getEvents).toHaveBeenCalledWith({ source: 'web', pageSize: 500 }, { cacheTtlMs: 300_000 });
-    expect(queryLibrary.getEvents).not.toHaveBeenCalledWith({ source: 'app', pageSize: 500 }, expect.anything());
-    expect(queryLibrary.getEventContexts).toHaveBeenCalledWith([webOfficialEvent], { cacheTtlMs: 300_000 });
-    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
-    const prompt = messages.find((message) => message.role === 'user')?.content || '';
-    expect(prompt).toContain('正式埋点查询 + 正式参数查询参考');
-    expect(prompt).toContain('"paramName": "entry_source"');
-    expect(prompt).not.toContain('"paramName": "agent_entry_type"');
-    expect(prompt).not.toContain('App/Web 两套表都会读取');
-    expect(prompt).not.toContain('"paramLink"');
+  it("Web/App仅读取当前端完整治理快照，第二阶段包含公共属性和完整参数", async () => {
+    for (const source of ["web", "app"] as const) {
+      const { service, queryLibrary, model } = createFixture({ source });
+      const { draft } = await service.generateDraft(source + ":rec_1", { actorId: "actor_1" });
+      expect(queryLibrary.getGovernanceSnapshot).toHaveBeenCalledWith(source);
+      expect(model.generateJson).toHaveBeenCalledTimes(2);
+      expect(model.generateJson.mock.calls[0][0][1].content).toContain("完整正式事件目录");
+      expect(model.generateJson.mock.calls[1][0][1].content).toContain("完整公共属性");
+      expect(draft.governance?.workflowVersion).toBe("official-first-v2");
+      expect(draft.events[0].params[0].enumRange).toBe("home");
+    }
   });
 
-  it('App 需求只应读取 App 正式埋点查询', async () => {
-    const { service, queryLibrary } = createFixture({ source: 'app' });
-
-    await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
-
-    expect(queryLibrary.getEvents).toHaveBeenCalledWith(
-      { source: 'app', pageSize: 500 },
-      { cacheTtlMs: 300_000 },
-    );
-    expect(queryLibrary.getEvents).not.toHaveBeenCalledWith(
-      { source: 'web', pageSize: 500 },
-      expect.anything(),
-    );
-  });
-
-  it('Web 需求应使用 Web 端提示词并生成 Web 字段枚举', async () => {
-    const { service, model } = createFixture({
-      recordId: 'web:rec_1',
-      source: 'web',
-      platform: 'Web',
-    });
-    model.generateJson.mockResolvedValue({
-      events: [{
-        evtId: 'home_agent_entry_click',
-        eventName: '首页 Agent 入口点击',
-        eventDefinition: '用户点击首页 Agent 入口',
-        triggerTiming: 'Web 前端确认点击后上报',
-        priority: 'P1',
-        platform: 'Web',
-        handler: '前端/服务端',
-        commonProps: 'page_name',
-        version: '待人工确认',
-        minVersion: '待人工确认',
-        changeType: '新增',
-        params: [{
-          paramName: 'page_name',
-          paramType: 'STRING',
-          requiredRule: '必传',
-          enumRange: 'home // 首页',
-          definition: '当前页面名称',
-          defaultValue: '',
-          example: 'home',
-          platform: 'Web通用',
-        }],
-      }],
-    });
-
-    const { draft } = await service.generateDraft('web:rec_1', { actorId: 'actor_1' });
-    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
-    const userPrompt = messages.find((message) => message.role === 'user')?.content || '';
-
-    expect(userPrompt).toContain('Web 埋点需求生成初稿');
-    expect(userPrompt).toContain('"handler": "前端|服务端|前端/服务端"');
-    expect(userPrompt).toContain('"platform": "Web通用|Web&App历史兼容|Web/App差异待拆|待确认"');
-    expect(draft.events[0]).toEqual(expect.objectContaining({
-      platform: 'Web',
-      handler: '前端/服务端',
-    }));
-    expect(draft.events[0].params[0].platform).toBe('Web通用');
+  it("正式库读取失败时不调用模型，不写入Base", async () => {
+    const { service, queryLibrary, model, tracking } = createFixture();
+    queryLibrary.getGovernanceSnapshot.mockRejectedValue(new Error("正式库无权限"));
+    await expect(service.generateDraft("app:rec_1", { actorId: "actor_1" })).rejects.toThrow("正式库无权限");
+    expect(model.generateJson).not.toHaveBeenCalled();
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
   });
 
   it('应拒绝超过单次上限的模型草稿，避免拖垮 Base 批量写入', async () => {
     const { service, model } = createFixture();
+    model.generateJson.mockResolvedValueOnce(plan);
     model.generateJson.mockResolvedValue({
       events: Array.from({ length: 21 }, (_, index) => ({
         evtId: `event_${index + 1}`,
@@ -322,7 +222,7 @@ describe('AI 埋点草稿', () => {
     try {
       const { service, model } = createFixture();
       let resolveModel: ((value: unknown) => void) | undefined;
-      model.generateJson.mockReturnValue(new Promise((resolve) => {
+      model.generateJson.mockResolvedValueOnce(plan).mockReturnValueOnce(new Promise((resolve) => {
         resolveModel = resolve;
       }));
 
@@ -333,7 +233,7 @@ describe('AI 埋点草稿', () => {
       expect(first.draft.status).toBe('generating');
       const duplicate = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
       expect(duplicate.draft.id).toBe(first.draft.id);
-      expect(model.generateJson).toHaveBeenCalledTimes(1);
+      expect(model.generateJson).toHaveBeenCalledTimes(2);
 
       resolveModel?.({
         events: [{
@@ -346,6 +246,7 @@ describe('AI 埋点草稿', () => {
       });
       await Promise.resolve();
       await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(0);
 
       const completed = await service.getDraft('app:rec_1', first.draft.id, 'actor_1');
       expect(completed.draft?.status).toBe('draft');
@@ -373,21 +274,11 @@ describe('AI 埋点草稿', () => {
     expect(otherActor?.draft).toBeNull();
   });
 
-  it('模型只应生成埋点设计表单需要录入的字段', async () => {
+  it("结构化设计包含复用来源、触发条件、证据与待确认项", async () => {
     const { service, model } = createFixture();
-
-    await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
-
-    const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
-    const promptShape = messages.find((message) => message.role === 'user')?.content.split('返回 JSON 结构：')[1] || '';
-    expect(promptShape).toContain('"evtId"');
-    expect(promptShape).toContain('"eventDefinition"');
-    expect(promptShape).toContain('"example"');
-    expect(promptShape).not.toContain('"summary"');
-    expect(promptShape).not.toContain('"analystQuestions"');
-    expect(promptShape).not.toContain('"metricScenario"');
-    expect(promptShape).not.toContain('"evidence"');
-    expect(promptShape).not.toContain('"uncertainties"');
+    await service.generateDraft("app:rec_1", { actorId: "actor_1" });
+    const prompt = model.generateJson.mock.calls[1][0][1].content;
+    for (const field of ["evtId", "eventDefinition", "reuseSource", "triggerCondition", "uncertainties"]) expect(prompt).toContain(field);
   });
 
   it('补充上下文文件只进入本次提示词，并限制文件数量和内容长度', async () => {
@@ -420,7 +311,7 @@ describe('AI 埋点草稿', () => {
 
     const messages = model.generateJson.mock.calls[0][0] as Array<{ role: string; content: string }>;
     const userPrompt = messages.find((message) => message.role === 'user')?.content || '';
-    const contextSection = userPrompt.split('补充上下文文件')[1] || '';
+    const contextSection = userPrompt.split('"contextFiles":')[1]?.split('完整正式事件目录')[0] || '';
     expect(contextSection.length).toBeLessThan(26_000);
   });
 
@@ -472,6 +363,17 @@ describe('AI 埋点草稿', () => {
     ).rejects.toThrow('AI 草稿不存在或已过期');
     expect(tracking.updateRecord).not.toHaveBeenCalled();
     expect(tracking.createParam).not.toHaveBeenCalled();
+  });
+
+  it('应用前重新读取正式库，漂移或旧版草稿必须在任何写入前拦截', async () => {
+    const { service, tracking, queryLibrary } = createFixture();
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+    queryLibrary.getGovernanceSnapshot.mockResolvedValueOnce({ ...await queryLibrary.getGovernanceSnapshot(), fingerprint: 'changed' });
+    await expect(service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' })).rejects.toThrow('已变化');
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
+    draft.governance = undefined;
+    await expect(service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' })).rejects.toThrow('旧版');
+    expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
   });
 
   it('已有事件时必须新增同需求事件，不能覆盖当前事件', async () => {

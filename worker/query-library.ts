@@ -14,8 +14,16 @@ import {
   type BitableRecord,
 } from './feishu-bitable';
 import type { FeishuCredentials } from './feishu-token';
+import { readGovernanceSnapshot, type GovernanceSnapshot, type GovernanceTable } from '../shared/official-first-workflow';
 
 type FetchLike = typeof fetch;
+
+export async function getOfficialGovernanceSnapshot(credentials: FeishuCredentials, source: TrackingSource, fetchImpl: FetchLike = fetch): Promise<GovernanceSnapshot> {
+  const keys: Record<GovernanceTable, BitableInstanceKey> = source === 'web'
+    ? { events: 'webQueryLibrary', params: 'webOfficialParamDetail', commonProps: 'webCommonProperties', enums: 'webEnumDictionary' }
+    : { events: 'queryLibrary', params: 'officialParamDetail', commonProps: 'commonProperties', enums: 'enumDictionary' };
+  return readGovernanceSnapshot(source, (table) => searchAllRecords(credentials, keys[table], undefined, undefined, fetchImpl));
+}
 
 const OFFICIAL_FIELDS = [
   'evt_id',
@@ -179,8 +187,8 @@ export async function getOfficialEventContexts(
 async function searchAllRecords(
   credentials: FeishuCredentials,
   instance: BitableInstanceKey,
-  fieldNames: readonly string[],
-  viewId: string,
+  fieldNames: readonly string[] | undefined,
+  viewId: string | undefined,
   fetchImpl: FetchLike,
 ): Promise<BitableRecord[]> {
   const records: BitableRecord[] = [];
@@ -200,7 +208,8 @@ async function searchAllRecords(
       viewId,
     }, fetchImpl);
     records.push(...result.records);
-    if (!result.hasMore || !result.pageToken) return records;
+    if (!result.hasMore) return records;
+    if (!result.pageToken) throw new Error('Feishu bitable pagination is incomplete: missing next page token');
     pageToken = result.pageToken;
   }
 }
