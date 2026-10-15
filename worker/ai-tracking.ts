@@ -201,12 +201,12 @@ export async function generateAiDraft(
   }); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
-  const batchCount = Math.ceil(plan.decisions.length / 3);
+  const batchCount = plan.decisions.length;
   progress({ stage: 'design', message: `生成事件与参数（0/${batchCount} 批完成）`, completed: 0, total: batchCount });
   let raw;
   try {
     raw = await generateDesignBatches(snapshot, plan, requirement,
-      (prompt, batch, total, batchSignal) => runGenerationStage(`生成事件与参数（第${batch}/${total}批）`, 90_000,
+      (prompt, batch, total, batchSignal) => runGenerationStage(`生成事件与参数（第${batch}/${total}批）`, 120_000,
         (signal) => generateModelJson(env, prompt, scopedFetch(AbortSignal.any([signal, batchSignal])))),
       (completed, total) => progress({ stage: 'design', message: `生成事件与参数（${completed}/${total} 批完成）`, completed, total }));
   } catch (error) { throw governanceWriteError(error); }

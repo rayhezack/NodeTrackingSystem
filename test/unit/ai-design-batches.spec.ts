@@ -23,17 +23,23 @@ describe('batched event design', () => {
       expect(prompt).toContain('完整 PRD 测试');
       await new Promise<void>((resolve) => pending.push(resolve));
       active -= 1;
-      return { events: plan.decisions.slice((batch - 1) * 3, batch * 3).map((decision) => ({ evtId: decision.evtId })) };
+      const planned = JSON.parse(prompt.split('复用规划：')[1].split('\n')[0]) as ReusePlan;
+      expect(planned.decisions).toHaveLength(1);
+      expect(planned.decisions[0].evtId).toBe(plan.decisions[batch - 1].evtId);
+      return { events: [{ evtId: planned.decisions[0].evtId }] };
     });
     const result = generateDesignBatches(snapshot, plan, { prd: '完整 PRD 测试' }, generate, (count) => completed.push(count));
     expect(generate).toHaveBeenCalledTimes(2);
     pending.shift()!();
     await new Promise((resolve) => setImmediate(resolve));
     expect(generate).toHaveBeenCalledTimes(3);
-    pending.splice(0).forEach((resolve) => resolve());
+    while (completed.length < plan.decisions.length) {
+      pending.splice(0).forEach((resolve) => resolve());
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     await expect(result).resolves.toEqual({ events: plan.decisions.map((decision) => ({ evtId: decision.evtId })) });
     expect(peak).toBe(2);
-    expect(completed).toEqual([1, 2, 3]);
+    expect(completed).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('rejects missing, duplicate, or unexpected event IDs rather than saving a partial draft', async () => {

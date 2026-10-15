@@ -9,8 +9,8 @@ export async function generateDesignBatches(
   onComplete: (completed: number, total: number) => void = () => undefined,
 ): Promise<{ events: unknown[] }> {
   const batches: ReusePlan[] = [];
-  for (let offset = 0; offset < plan.decisions.length; offset += 3) {
-    batches.push({ ...plan, decisions: plan.decisions.slice(offset, offset + 3) });
+  for (const decision of plan.decisions) {
+    batches.push({ ...plan, decisions: [decision] });
   }
   const results: unknown[][] = new Array(batches.length);
   let cursor = 0;
