@@ -64,6 +64,7 @@ const AiTrackingDraftPanel = ({
   const [draftDialogOpen, setDraftDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [generationError, setGenerationError] = useState('');
   const [applying, setApplying] = useState(false);
   const [contextFiles, setContextFiles] = useState<AiTrackingContextFile[]>([]);
   const contextFileInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +138,7 @@ const AiTrackingDraftPanel = ({
 
   const performGenerate = useCallback(async () => {
     setLoading(true);
+    setGenerationError('');
     try {
       const result = await generateAiTrackingDraft(detail.recordId, {
         actorId,
@@ -149,7 +151,9 @@ const AiTrackingDraftPanel = ({
         void pollDraftGeneration(result.draft.id);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'AI 埋点草稿生成失败');
+      const message = error instanceof Error ? error.message : 'AI 埋点草稿生成失败';
+      setGenerationError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -376,6 +380,7 @@ const AiTrackingDraftPanel = ({
             </button>
           ))}
         </div>
+        {generationError && <p role="alert" className="mt-2 text-sm text-destructive">{generationError}</p>}
         {config && !ready && (
           <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
             <TriangleAlert className="h-3.5 w-3.5" />
