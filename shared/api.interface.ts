@@ -8,6 +8,7 @@ export interface TrackingUserRef {
   larkUserId?: string;
   email?: string;
   name?: string;
+  avatar?: string;
 }
 
 export type TrackingUserInput = string | TrackingUserRef;

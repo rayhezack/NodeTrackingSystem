@@ -37,7 +37,7 @@ import {
   type BitableInstanceKey,
   type BitableRecord,
 } from './feishu-bitable';
-import { getDirectoryUserByEmail, resolveDirectoryUserByName } from './feishu-directory';
+import { directoryAvatar, getDirectoryUserByEmail, resolveDirectoryUserByName } from './feishu-directory';
 import { sendWorkflowNotification, type WorkflowNotificationRecipient } from './feishu-notification';
 import type { FeishuCredentials } from './feishu-token';
 
@@ -1220,6 +1220,7 @@ async function resolveBaseUser(
         ...(matchedByEmail.open_id ? { larkUserId: matchedByEmail.open_id } : {}),
         ...(matchedByEmail.email ? { email: matchedByEmail.email } : {}),
         ...(matchedByEmail.name ? { name: matchedByEmail.name } : {}),
+        ...(directoryAvatar(matchedByEmail) ? { avatar: directoryAvatar(matchedByEmail) } : {}),
       };
     }
   }
@@ -1235,6 +1236,7 @@ async function resolveBaseUser(
         ...(matchedByName.open_id ? { larkUserId: matchedByName.open_id } : {}),
         ...(matchedByName.email ? { email: matchedByName.email } : {}),
         ...(matchedByName.name ? { name: matchedByName.name } : {}),
+        ...(directoryAvatar(matchedByName) ? { avatar: directoryAvatar(matchedByName) } : {}),
       };
     }
   }

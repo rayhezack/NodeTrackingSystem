@@ -23,7 +23,7 @@ export function getObjectUserIdsToFetch(value: unknown): string[] {
     ...new Set(
       users
         .filter((user): user is User => Boolean(user && typeof user === 'object'))
-        .filter((user) => !getI18nText(user.name))
+        .filter((user) => !getI18nText(user.name) || !user.avatar)
         .map((user) => String(user.user_id || '').trim())
         .filter((id) => /^\d+$/.test(id)),
     ),
@@ -36,6 +36,14 @@ export function resolveObjectUserValue(
   fetchedUsers: Map<string, UserSelectItemValue>,
 ): UserSelectItemValue {
   const current = userToItemValue(user, accountType);
-  if (current.name !== '未知用户') return current;
-  return fetchedUsers.get(current.id) || current;
+  const fetched = fetchedUsers.get(current.id);
+  if (!fetched) return current;
+  if (current.name === '未知用户') return fetched;
+  return {
+    ...fetched,
+    ...current,
+    name: current.name || fetched.name,
+    avatar: current.avatar || fetched.avatar,
+    raw: { ...(fetched.raw || {}), ...(current.raw || {}) },
+  };
 }

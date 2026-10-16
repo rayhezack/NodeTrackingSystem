@@ -118,6 +118,42 @@ describe('PolloCloud tracking read service', () => {
     expect(result.data.relatedEvents.find((item) => item.isCurrent)?.recordId).toBe('app:rec-1');
   });
 
+  it('uses the identity snapshot to restore names and avatars for Base id-only fields', async () => {
+    const current = {
+      record_id: 'rec-snapshot',
+      fields: {
+        '需求ID': 'REQ-SNAPSHOT',
+        '需求名称': '头像恢复',
+        evt_id: 'avatar_restore',
+        '事件中文名': '头像恢复',
+        '流程阶段': '需求录入',
+        '数据负责人': [{ id: '1867390536304713' }],
+        '通知身份快照': JSON.stringify({
+          '数据负责人': [{
+            user_id: '1867390536304713',
+            name: '孙文',
+            larkUserId: 'ou_sunwen',
+            avatar: 'https://avatar/sunwen',
+          }],
+        }),
+      },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: current } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [current], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }));
+
+    const result = await getTrackingDetail(credentials, 'app:rec-snapshot', '1867390536304713', fetchMock as unknown as typeof fetch);
+
+    expect(result.data.dataOwner).toEqual([{
+      user_id: '1867390536304713',
+      name: '孙文',
+      larkUserId: 'ou_sunwen',
+      avatar: 'https://avatar/sunwen',
+    }]);
+  });
+
   it('loads design parameters linked to the selected event', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))

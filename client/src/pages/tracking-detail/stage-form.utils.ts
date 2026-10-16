@@ -125,12 +125,16 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
       if (!id) return null;
       const name = firstLocalizedText(candidates, ['name', 'en_name', 'display_name', 'displayName']);
       const email = firstEmail(candidates);
+      const avatar = candidates.flatMap((candidate) => [candidate.avatar, candidate.avatarUrl, candidate.avatar_url]).find(
+        (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      );
 
       return {
         user_id: id,
         ...(larkUserId ? { larkUserId } : {}),
         ...(email ? { email } : {}),
         ...(name ? { name } : {}),
+        ...(avatar ? { avatar } : {}),
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));

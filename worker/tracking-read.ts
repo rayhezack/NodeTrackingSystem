@@ -221,11 +221,11 @@ function buildTodos(records: SourcedRecord[], limit: number, actorId: string): T
 }
 
 function toTrackingDetail(record: BitableRecord, source: TrackingSource, trustedActorId: string, configuredAdmins: string[]): TrackingDetail {
-  const requester = userRefs(record.record['需求提出人']);
-  const recorder = userRefs(record.record['需求录入人']);
-  const dataOwner = userRefs(record.record['数据负责人']);
-  const devOwner = userRefs(record.record['研发负责人']);
-  const dsAcceptor = userRefs(record.record['DS验收人']);
+  const requester = detailUsers(record, '需求提出人');
+  const recorder = detailUsers(record, '需求录入人');
+  const dataOwner = detailUsers(record, '数据负责人');
+  const devOwner = detailUsers(record, '研发负责人');
+  const dsAcceptor = detailUsers(record, 'DS验收人');
   const stage = cellText(record.record['流程阶段']) || '需求录入';
   const base = singleTrackingRecord(record, source);
   const requirementFields = {
@@ -314,12 +314,39 @@ function pickFields(record: Record<string, unknown>, fields: string[]): Record<s
   ]));
 }
 
-function userRefs(value: unknown): Array<{ user_id: string; larkUserId?: string; name?: string }> {
+function userRefs(value: unknown): Array<{ user_id: string; larkUserId?: string; name?: string; avatar?: string }> {
   return cellUsers(value).map((user) => ({
     user_id: user.id,
-    ...(user.id.startsWith('ou_') ? { larkUserId: user.id } : {}),
+    ...(user.larkUserId || user.id.startsWith('ou_') ? { larkUserId: user.larkUserId || user.id } : {}),
     ...(user.name ? { name: user.name } : {}),
+    ...(user.avatar ? { avatar: user.avatar } : {}),
   }));
+}
+
+function detailUsers(record: BitableRecord, field: string): Array<{ user_id: string; larkUserId?: string; name?: string; avatar?: string }> {
+  const base = userRefs(record.record[field]);
+  const snapshot = parseSnapshotUsers(record.record['通知身份快照'], field);
+  const byId = new Map<string, { user_id: string; larkUserId?: string; name?: string; avatar?: string }>();
+  for (const user of [...base, ...snapshot]) {
+    const existing = byId.get(user.user_id);
+    byId.set(user.user_id, {
+      ...(existing || user),
+      user_id: user.user_id,
+      ...(user.larkUserId || existing?.larkUserId ? { larkUserId: user.larkUserId || existing?.larkUserId } : {}),
+      ...(user.name || existing?.name ? { name: user.name || existing?.name } : {}),
+      ...(user.avatar || existing?.avatar ? { avatar: user.avatar || existing?.avatar } : {}),
+    });
+  }
+  return [...byId.values()];
+}
+
+function parseSnapshotUsers(value: unknown, field: string): ReturnType<typeof userRefs> {
+  try {
+    const snapshot = JSON.parse(cellText(value)) as Record<string, unknown>;
+    return userRefs(snapshot?.[field]);
+  } catch {
+    return [];
+  }
 }
 
 function isParamForDesign(record: BitableRecord, recordId: string, evtId: string): boolean {
@@ -500,19 +527,23 @@ function identityIds(records: BitableRecord[], field: string): string[] {
   return unique(ids);
 }
 
-function cellUsers(value: unknown): Array<{ id: string; name: string; avatar: string }> {
+function cellUsers(value: unknown): Array<{ id: string; name: string; avatar: string; larkUserId?: string }> {
   return (Array.isArray(value) ? value : value ? [value] : []).flatMap((item) => {
     if (typeof item === 'string' || typeof item === 'number') return [{ id: String(item), name: '', avatar: '' }];
     if (!item || typeof item !== 'object') return [];
     const user = item as Record<string, unknown>;
-    const id = firstText(user.user_id, user.userId, user.userID, user.employee_id, user.employeeID, user.id, user.open_id, user.openId, user.larkUserId, user.larkUserID);
-    const avatar = user.avatar && typeof user.avatar === 'object'
-      ? firstText((user.avatar as Record<string, unknown>).avatar_origin, (user.avatar as Record<string, unknown>).avatar_240)
-      : '';
+    const larkUserId = firstText(user.larkUserId, user.larkUserID, user.open_id, user.openId);
+    const id = firstText(user.user_id, user.userId, user.userID, user.employee_id, user.employeeID, user.id, larkUserId);
+    const avatar = typeof user.avatar === 'string'
+      ? user.avatar
+      : user.avatar && typeof user.avatar === 'object'
+        ? firstText((user.avatar as Record<string, unknown>).avatar_origin, (user.avatar as Record<string, unknown>).avatar_240)
+        : '';
     return id ? [{
       id,
       name: localizedText(user.name) || localizedText(user.en_name),
       avatar: firstText(user.avatar_url, user.avatarUrl, avatar),
+      ...(larkUserId ? { larkUserId } : {}),
     }] : [];
   });
 }

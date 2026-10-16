@@ -12,6 +12,10 @@ export type FeishuDirectoryUser = {
   status?: { is_frozen?: boolean; is_resigned?: boolean };
 };
 
+export function directoryAvatar(user?: FeishuDirectoryUser): string | undefined {
+  return user?.avatar?.avatar_240 || user?.avatar?.avatar_origin;
+}
+
 type FeishuDepartment = {
   department_id?: string;
   open_department_id?: string;
