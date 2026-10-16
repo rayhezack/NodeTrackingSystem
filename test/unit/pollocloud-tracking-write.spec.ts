@@ -127,6 +127,41 @@ describe('PolloCloud tracking write service', () => {
     });
   });
 
+  it('refreshes the notification identity snapshot when a workflow owner changes', async () => {
+    const current = {
+      ...workbenchRecord,
+      fields: {
+        ...workbenchRecord.fields,
+        '通知身份快照': JSON.stringify({
+          '数据负责人': [{ user_id: 'old-owner', email: 'old@example.com', name: '旧负责人' }],
+        }),
+      },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: current } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { user_list: [{ user_id: 'new-owner', open_id: 'ou_new_owner', email: 'new@example.com', name: '新负责人' }] } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [current], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
+
+    await updateTrackingRecord(credentials, 'app:rec-1', {
+      stageId: 'requirement',
+      fields: {
+        '数据负责人': [{ user_id: '1860000000000000000', email: 'new@example.com', name: '新负责人' }],
+      },
+    }, 'sunwen-1663469', fetchMock as unknown as typeof fetch);
+
+    const updateBody = JSON.parse(String(fetchMock.mock.calls[5][1]?.body));
+    expect(updateBody.records[0].fields['数据负责人']).toEqual([{ id: 'new-owner' }]);
+    expect(JSON.parse(updateBody.records[0].fields['通知身份快照'])['数据负责人']).toEqual([{
+      user_id: 'new-owner',
+      larkUserId: 'ou_new_owner',
+      email: 'new@example.com',
+      name: '新负责人',
+    }]);
+  });
+
   it('rejects an update when only the request body claims an authorized actor', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))

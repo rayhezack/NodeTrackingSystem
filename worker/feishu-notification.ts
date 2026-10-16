@@ -1,4 +1,5 @@
 import type { TrackingSource, TrackingUserRef, WorkflowNotificationResult } from '../shared/api.interface';
+import { enrichDefaultProjectUser } from '../shared/tracking-defaults';
 import { getFeishuTenantToken, type FeishuCredentials } from './feishu-token';
 
 type FetchLike = typeof fetch;
@@ -67,17 +68,19 @@ export async function sendWorkflowNotification(
 }
 
 async function resolveRecipientUserId(token: string, recipient: WorkflowNotificationRecipient, fetchImpl: FetchLike): Promise<string> {
-  const directUserId = String(recipient.user_id || '').trim();
-  if (directUserId && !directUserId.startsWith('ou_')) return directUserId;
   const email = normalizeEmail(recipient.email);
-  if (!email) return '';
-  const response = await postFeishu<{ user_list?: Array<{ user_id?: string; email?: string }> }>(
-    fetchImpl,
-    token,
-    'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=user_id',
-    { emails: [email], include_resigned: false },
-  );
-  return String(response.user_list?.find((user) => normalizeEmail(user.email) === email)?.user_id || response.user_list?.[0]?.user_id || '').trim();
+  if (email) {
+    const response = await postFeishu<{ user_list?: Array<{ user_id?: string; email?: string }> }>(
+      fetchImpl,
+      token,
+      'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=user_id',
+      { emails: [email], include_resigned: false },
+    );
+    return String(response.user_list?.find((user) => normalizeEmail(user.email) === email)?.user_id || response.user_list?.[0]?.user_id || '').trim();
+  }
+
+  const directUserId = String(recipient.user_id || '').trim();
+  return directUserId && !/^\d+$/.test(directUserId) && !directUserId.startsWith('ou_') ? directUserId : '';
 }
 
 async function postFeishu<T = Record<string, unknown>>(
@@ -131,7 +134,8 @@ function buildMessageCard(
 
 function dedupeRecipients(recipients: WorkflowNotificationRecipient[]): WorkflowNotificationRecipient[] {
   const map = new Map<string, WorkflowNotificationRecipient>();
-  for (const recipient of recipients) {
+  for (const rawRecipient of recipients) {
+    const recipient = enrichDefaultProjectUser(rawRecipient);
     const key = normalizeEmail(recipient.email) || String(recipient.user_id || '').trim();
     if (!key) continue;
     const current = map.get(key);

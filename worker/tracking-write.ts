@@ -316,11 +316,17 @@ export async function updateTrackingRecord(
     patch['需求链接'] = toUrlCell(requirementLink);
   }
   const userResolutionCache = new Map<string, Promise<TrackingUserRef>>();
+  let notificationSnapshot: Record<string, TrackingUserRef[]> | null = null;
   for (const field of USER_FIELDS) {
     if (field in patch) {
-      patch[field] = userCells(await resolveBaseUsers(credentials, normalizeUsers(patch[field] as TrackingUserInput[]), fetchImpl, userResolutionCache));
+      const users = await resolveBaseUsers(credentials, normalizeUsers(patch[field] as TrackingUserInput[]), fetchImpl, userResolutionCache);
+      patch[field] = userCells(users);
+      notificationSnapshot ||= parseSnapshot(current.record['通知身份快照']);
+      if (users.length) notificationSnapshot[field] = users;
+      else delete notificationSnapshot[field];
     }
   }
+  if (notificationSnapshot) patch['通知身份快照'] = JSON.stringify(notificationSnapshot);
   normalizeProgress(patch, current.record);
 
   const nextRecord = { ...current.record, ...patch };
