@@ -1,4 +1,4 @@
-import type { TrackingUserRef, UpdateTrackingRecordRequest } from '@shared/api.interface';
+import type { TrackingDetail, TrackingUserRef, UpdateTrackingRecordRequest } from '@shared/api.interface';
 
 export function buildStageUpdateRequest(
   stageId: string,
@@ -134,6 +134,39 @@ export function toTrackingUserRefs(value: unknown): TrackingUserRef[] {
       };
     })
     .filter((item): item is TrackingUserRef => Boolean(item));
+}
+
+/**
+ * Resolve a person field across old Miaoda records and Pollo Cloud records.
+ * Some migrated records retain only the numeric ids at the detail root while
+ * the stage field is empty, so the form must not treat an empty object list as
+ * an intentional empty selection.
+ */
+export function getTrackingUserFieldValue(
+  detail: TrackingDetail,
+  fieldName: string,
+  fieldValue: unknown,
+): TrackingUserRef[] {
+  const direct = toTrackingUserRefs(fieldValue);
+  if (direct.length) return direct;
+
+  const refsByField: Record<string, unknown> = {
+    '需求提出人': detail.requester,
+    '需求录入人': detail.recorder,
+    '数据负责人': detail.dataOwner,
+    '研发负责人': detail.devOwner,
+    'DS验收人': detail.dsAcceptor,
+  };
+  const idsByField: Record<string, unknown> = {
+    '需求提出人': detail.requesterIds,
+    '需求录入人': detail.recorderIds,
+    '数据负责人': detail.dataOwnerIds,
+    '研发负责人': detail.devOwnerIds,
+    'DS验收人': detail.dsAcceptorIds,
+  };
+
+  const refs = toTrackingUserRefs(refsByField[fieldName]);
+  return refs.length ? refs : toTrackingUserRefs(idsByField[fieldName]);
 }
 
 function userObjectCandidates(user: Record<string, unknown>): Record<string, unknown>[] {

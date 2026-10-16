@@ -81,7 +81,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
   };
 
   return (
-    <div className="rounded-sm border border-border bg-muted/20 p-4">
+    <div className="space-y-4 border-y border-border/60 bg-muted/20 px-3 py-4 sm:px-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       </div>
 
       {events.length > 1 && (
-        <div className="mb-4 rounded-sm border border-border bg-card p-3">
+        <div className="border-y border-border/60 bg-card/70 py-3">
           <div className="mb-2 text-xs font-medium text-foreground">同需求埋点事件</div>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {events.map((event) => (
@@ -126,13 +126,13 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
         </div>
       )}
 
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
+      <div className="grid gap-x-4 gap-y-3 border-y border-border/60 py-3 md:grid-cols-4">
         {presentation.summaryItems.map((item) => (
           <SummaryCell key={item.label} label={item.label} value={item.value} />
         ))}
       </div>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
+      <div className="grid gap-4 border-b border-border/60 pb-4 md:grid-cols-3">
         <LongSpec label="事件定义" value={handoffTextValue(selectedDetail?.designFields['事件定义'])} />
         <LongSpec label="触发时机" value={handoffTextValue(selectedDetail?.designFields['触发时机'])} />
         <LongSpec label="公共属性要求" value={handoffTextValue(selectedDetail?.designFields['公共属性要求'])} />
@@ -154,14 +154,14 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       </div>
 
       {loading ? (
-        <div className="rounded-sm border border-border bg-card">
+        <div className="border-y border-border/60 bg-card/70">
           <div className="flex h-20 items-center justify-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             正在加载参数说明...
           </div>
         </div>
       ) : error ? (
-        <div className="flex items-center justify-between rounded-sm border border-border bg-card px-3 py-3">
+        <div className="flex items-center justify-between border-y border-border/60 bg-card/70 px-3 py-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 text-destructive" />
             参数说明加载失败：{error}
@@ -173,7 +173,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       ) : items.length ? (
         <ParamSpecTable items={items} source={selectedDetail?.source || detail.source} />
       ) : (
-        <div className="rounded-sm border border-dashed border-border bg-card py-8 text-center text-xs text-muted-foreground">
+        <div className="border-y border-dashed border-border/70 bg-card/70 py-8 text-center text-xs text-muted-foreground">
           暂无参数说明，请先在埋点设计阶段补充参数。
         </div>
       )}
@@ -197,7 +197,7 @@ function EventSelector({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className={`min-w-0 rounded-sm border px-3 py-2 text-left transition-colors ${
+        className={`min-w-0 rounded-sm border px-3 py-2 text-left transition-colors ${
         selected
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border bg-background text-foreground hover:bg-accent'
@@ -220,7 +220,7 @@ function EventSelector({
 
 function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-border bg-card px-3 py-2">
+    <div className="border-l-2 border-primary/30 bg-card/60 px-3 py-1.5">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className="mt-1 break-words text-xs text-foreground">{value}</div>
     </div>
@@ -229,7 +229,7 @@ function SummaryCell({ label, value }: { label: string; value: string }) {
 
 function LongSpec({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-border bg-card px-3 py-2">
+    <div className="border-l-2 border-border bg-card/60 px-3 py-1.5">
       <div className="mb-1 text-[10px] text-muted-foreground">{label}</div>
       <div className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
         {value || <span className="text-muted-foreground">未填写</span>}

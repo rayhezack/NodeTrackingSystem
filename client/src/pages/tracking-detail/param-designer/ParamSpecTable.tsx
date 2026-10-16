@@ -49,8 +49,8 @@ const ParamSpecTable = ({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-card overflow-hidden">
-      <Table className="min-w-[1020px] table-fixed">
+    <div className="overflow-hidden border-y border-border/60 bg-card/70">
+      <Table className="min-w-[900px] table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
             {selectable && (
@@ -74,7 +74,7 @@ const ParamSpecTable = ({
         </TableHeader>
         <TableBody>
           {items.map((item) => (
-            <TableRow key={item.recordId} className="align-top transition-colors">
+            <TableRow key={item.recordId} className="align-top border-border/60 transition-colors hover:bg-muted/20">
               {selectable && (
                 <TableCell className="align-top">
                   <Checkbox

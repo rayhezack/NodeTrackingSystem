@@ -53,6 +53,7 @@ import {
   buildStageUpdateRequest,
   buildStageCompletionRequest,
   shouldReturnToWorkbenchAfterCompletion,
+  getTrackingUserFieldValue,
   toTrackingUserRefs,
 } from './stage-form.utils';
 
@@ -92,6 +93,69 @@ const WEB_HANDLER_OPTIONS = [
 
 type FormValue = string | unknown[];
 
+interface FieldSection {
+  title: string;
+  description?: string;
+  fields: StageConfig['fields'];
+}
+
+function getFieldSections(stageId: string, fields: StageConfig['fields']): FieldSection[] {
+  const groups: Record<string, { title: string; description?: string; keys: string[] }> = {
+    requirement: {
+      title: '需求概览',
+      description: '先确认需求范围、优先级与交付时间。',
+      keys: ['requestName', 'priority', 'platform', 'expectedCompletionDate'],
+    },
+    design: {
+      title: '事件基本信息',
+      description: '事件标识和处理方用于研发、数仓和查询库之间的统一识别。',
+      keys: ['evtId', 'eventName', 'priority', 'platform', 'handler'],
+    },
+    review: { title: '评审结论', description: '集中填写评审状态和需要回流的问题。', keys: ['reviewStatus', 'reviewComment'] },
+    dev: { title: '开发状态', description: '研发对接说明在上方只读展示，状态在此更新。', keys: ['devStatus'] },
+    acceptance: { title: '验收记录', description: '记录验收结论、证据和完成时间。', keys: ['acceptanceStatus', 'acceptanceTime', 'acceptanceEvidence'] },
+    launch: { title: '上线监控', keys: ['monitorStatus'] },
+    archive: { title: '归档信息', keys: ['officialStatus', 'archiveTime'] },
+  };
+
+  if (stageId === 'requirement') {
+    const people = fields.filter((field) => field.type === 'user');
+    const context = fields.filter((field) => ['requirementLink', 'requirementBackground', 'metricScenario'].includes(field.key));
+    return [
+      createSection(groups.requirement, fields),
+      { title: '项目参与人', description: '人员选择会同步用于流程通知和负责人展示。', fields: people },
+      { title: '需求上下文', description: '补充可追溯的文档、背景和指标使用场景。', fields: context },
+    ].filter((section) => section.fields.length > 0);
+  }
+
+  if (stageId === 'design') {
+    const base = createSection(groups.design, fields);
+    const definition = fields.filter((field) => ['eventDefinition', 'triggerTiming', 'commonProps'].includes(field.key));
+    const materials = fields.filter((field) => ['uiImages', 'uiPageUrl'].includes(field.key));
+    const version = fields.filter((field) => ['version', 'minVersion', 'changeType'].includes(field.key));
+    return [
+      base,
+      { title: '事件口径', description: '用短句描述统计边界、触发时机和公共属性。', fields: definition },
+      { title: '设计素材', description: '素材用于评审定位和研发联调，可按需补充。', fields: materials },
+      { title: '版本与变更', fields: version },
+    ].filter((section) => section.fields.length > 0);
+  }
+
+  const configured = groups[stageId];
+  return configured ? [createSection(configured, fields)] : [{ title: '字段', fields }];
+}
+
+function createSection(
+  config: { title: string; description?: string; keys: string[] },
+  fields: StageConfig['fields'],
+): FieldSection {
+  return {
+    title: config.title,
+    description: config.description,
+    fields: config.keys.map((key) => fields.find((field) => field.key === key)).filter(Boolean) as StageConfig['fields'],
+  };
+}
+
 // 从 detail 的所有阶段字段分组中获取字段值
 function getFieldValue(
   detail: TrackingDetail,
@@ -106,16 +170,7 @@ function getFieldValue(
     }
   }
   if (field.type === 'user') {
-    const normalized = toTrackingUserRefs(val);
-    if (normalized.length) return normalized;
-    const topLevelValue: Record<string, unknown> = {
-      '需求提出人': detail.requester,
-      '需求录入人': detail.recorder,
-      '数据负责人': detail.dataOwner,
-      '研发负责人': detail.devOwner,
-      'DS验收人': detail.dsAcceptor,
-    };
-    return toTrackingUserRefs(topLevelValue[field.baseField]);
+    return getTrackingUserFieldValue(detail, field.baseField, val);
   }
   if (field.type === 'attachment') return toTrackingAttachments(val);
   if (val == null) return '';
@@ -323,12 +378,16 @@ const StageForm = ({
         <DesignHandoffPanel detail={detail} />
       )}
 
-      <div className="grid gap-5 md:grid-cols-2">
-        {stageConfig.fields.map((field) => (
-          <div
-            key={field.key}
-            className={field.type === 'textarea' || field.type === 'attachment' ? 'md:col-span-2' : ''}
-          >
+      <div className="space-y-5">
+        {getFieldSections(stageId, stageConfig.fields).map((section) => (
+          <section key={section.title} className="space-y-3 border-b border-border/60 pb-5 last:border-b-0 last:pb-0">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
+              {section.description && <p className="mt-0.5 text-xs text-muted-foreground">{section.description}</p>}
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+            {section.fields.map((field) => (
+          <div key={field.key} className={field.type === 'textarea' || field.type === 'attachment' ? 'md:col-span-2' : ''}>
             <Label className="mb-1.5 block text-xs text-muted-foreground">
               {field.label}
               {field.required && <span className="ml-0.5 text-destructive">*</span>}
@@ -376,8 +435,8 @@ const StageForm = ({
                 }
                 disabled={disabled}
                 placeholder={field.placeholder}
-                rows={4}
-                className="rounded-sm text-sm resize-none"
+                rows={3}
+                className="min-h-20 resize-y rounded-sm text-sm"
               />
             )}
             {field.type === 'select' && (
@@ -422,6 +481,9 @@ const StageForm = ({
               />
             )}
           </div>
+        ))}
+            </div>
+          </section>
         ))}
       </div>
 

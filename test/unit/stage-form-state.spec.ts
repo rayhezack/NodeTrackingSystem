@@ -15,6 +15,11 @@ type StageFormUtils = {
     larkUserId?: string;
     name?: string;
   }>;
+  getTrackingUserFieldValue?: (
+    detail: Record<string, unknown>,
+    fieldName: string,
+    fieldValue: unknown,
+  ) => Array<{ user_id: string; larkUserId?: string; name?: string }>;
   shouldReturnToWorkbenchAfterCompletion?: (stageId: string) => boolean;
 };
 
@@ -84,6 +89,28 @@ describe('详情阶段表单状态', () => {
         name: 'Joe Liu',
       },
     ]);
+  });
+
+  it('迁移记录只有顶层人员 ID 时仍应初始化负责人字段', () => {
+    expect(typeof utils.getTrackingUserFieldValue).toBe('function');
+    if (!utils.getTrackingUserFieldValue) return;
+
+    expect(utils.getTrackingUserFieldValue(
+      {
+        requester: [],
+        requesterIds: ['1867390536304713'],
+        recorder: [],
+        recorderIds: [],
+        dataOwner: [],
+        dataOwnerIds: ['1867390536304714'],
+        devOwner: [],
+        devOwnerIds: [],
+        dsAcceptor: [],
+        dsAcceptorIds: [],
+      },
+      '数据负责人',
+      [],
+    )).toEqual([{ user_id: '1867390536304714' }]);
   });
 
   it('只回写用户实际修改过的字段，避免空表单覆盖 Base', () => {
