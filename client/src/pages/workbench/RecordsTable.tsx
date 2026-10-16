@@ -144,7 +144,7 @@ const RecordsTable = ({
       </div>
 
       {/* 搜索筛选栏 */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-card p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/70 bg-card p-3">
         <div className="relative flex-1 min-w-[200px] max-w-[320px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -155,11 +155,12 @@ const RecordsTable = ({
             className="h-8 pl-8 text-sm"
           />
         </div>
-        <Select value={stage} onValueChange={onStageChange}>
-          <SelectTrigger className="h-8 w-[120px] text-xs">
-            <SelectValue placeholder="阶段" />
+        <Select value={stage || 'all'} onValueChange={(value) => onStageChange(value === 'all' ? '' : value)}>
+          <SelectTrigger aria-label="筛选阶段" className="h-8 w-[120px] rounded-sm text-xs">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all" className="text-xs">全部阶段</SelectItem>
             {STAGE_LIST.map((s) => (
               <SelectItem key={s} value={s} className="text-xs">
                 {s}
@@ -167,11 +168,12 @@ const RecordsTable = ({
             ))}
           </SelectContent>
         </Select>
-        <Select value={priority} onValueChange={onPriorityChange}>
-          <SelectTrigger className="h-8 w-[100px] text-xs">
-            <SelectValue placeholder="优先级" />
+        <Select value={priority || 'all'} onValueChange={(value) => onPriorityChange(value === 'all' ? '' : value)}>
+          <SelectTrigger aria-label="筛选优先级" className="h-8 w-[120px] rounded-sm text-xs">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all" className="text-xs">全部优先级</SelectItem>
             {PRIORITY_OPTIONS.map((p) => (
               <SelectItem key={p} value={p} className="text-xs">
                 {p}
@@ -179,11 +181,12 @@ const RecordsTable = ({
             ))}
           </SelectContent>
         </Select>
-        <Select value={platform} onValueChange={onPlatformChange}>
-          <SelectTrigger className="h-8 w-[110px] text-xs">
-            <SelectValue placeholder="平台" />
+        <Select value={platform || 'all'} onValueChange={(value) => onPlatformChange(value === 'all' ? '' : value)}>
+          <SelectTrigger aria-label="筛选平台" className="h-8 w-[110px] rounded-sm text-xs">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all" className="text-xs">全部平台</SelectItem>
             {PLATFORM_OPTIONS.map((p) => (
               <SelectItem key={p} value={p} className="text-xs">
                 {p}
@@ -210,7 +213,7 @@ const RecordsTable = ({
       </div>
 
       {/* 表格 */}
-      <div className="rounded-sm border border-border bg-card">
+      <div className="rounded-sm border border-border/70 bg-card">
         {loading ? (
           <div className="p-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -262,7 +265,7 @@ const RecordsTable = ({
           </Empty>
         ) : (
           <>
-            <Table className="table-fixed">
+            <Table className="min-w-[1120px] table-fixed">
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead className="h-9 w-56 px-3 text-xs font-medium text-muted-foreground">
@@ -309,12 +312,18 @@ const RecordsTable = ({
                       <TableCell className="px-3 py-2">
                         <div className="min-w-0">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <span
-                              className="min-w-0 flex-1 truncate font-mono text-xs text-primary"
+                            <button
+                              type="button"
+                              className="min-w-0 flex-1 truncate text-left font-mono text-xs text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               title={eventTitle(rec.eventIds)}
+                              aria-label={`查看${rec.requestName || rec.eventName || rec.evtId || '埋点需求'}详情`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onRowClick(rec.recordId);
+                              }}
                             >
                               {rec.evtId || '待填写'}
-                            </span>
+                            </button>
                             {rec.eventCount > 1 && (
                               <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
                                 {rec.eventCount} 个事件
@@ -387,7 +396,7 @@ const RecordsTable = ({
               </TableBody>
             </Table>
             {(total > pageSize || currentPage > 1) && (
-              <div className="flex flex-col gap-2 border-t border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 border-t border-border/60 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-muted-foreground">
                   当前第 {currentPage} / {totalPages} 页，展示 {pageStart}-{pageEnd} 条
                 </span>

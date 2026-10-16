@@ -146,7 +146,7 @@ export default function RelatedEventsPanel({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-muted/20 p-3">
+    <div className="rounded-sm border border-border/70 bg-muted/20 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -184,31 +184,31 @@ export default function RelatedEventsPanel({
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 divide-y divide-border/60 overflow-hidden rounded-sm border border-border/60 bg-card">
         {events.map((event) => (
           <div
             key={event.recordId}
-            className={`max-w-full rounded-sm border px-3 py-2 text-left text-xs transition-colors ${
+            className={`flex min-w-0 items-center gap-3 px-3 py-2 text-left text-xs transition-colors ${
               event.isCurrent
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border bg-card text-foreground hover:bg-accent'
+                ? 'bg-primary/5 text-primary'
+                : 'text-foreground hover:bg-accent/60'
             }`}
           >
-            <div className="flex items-start gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <button
                 type="button"
                 onClick={() => !event.isCurrent && onSelectEvent?.(event.recordId)}
-                className="min-w-0 flex-1 text-left"
+                className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
-                <div className="flex items-center gap-2">
-                  <span className="break-all font-mono font-medium">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 truncate font-mono font-medium">
                     {event.evtId || '待填写 evt_id'}
                   </span>
-                  <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
+                  <Badge variant="outline" className="h-5 shrink-0 rounded-sm border-border/60 px-1.5 text-[10px]">
                     {event.uiStage || event.stage || '-'}
                   </Badge>
                 </div>
-                <div className="mt-1 max-w-[280px] truncate text-muted-foreground">
+                <div className="mt-0.5 truncate text-muted-foreground">
                   {event.eventName || '未命名事件'}
                 </div>
               </button>

@@ -15,7 +15,7 @@ const ProcessFlowBar = ({
   onNodeClick,
 }: ProcessFlowBarProps) => {
   return (
-    <div className="overflow-x-auto border-b border-border bg-card px-4 py-4 sm:px-6">
+    <div className="overflow-x-auto border-b border-border/60 bg-card px-4 py-4 sm:px-6">
       <div className="flex min-w-[760px] items-center justify-between">
         {UI_STAGE_NODES.map((node, index) => {
           const completed = isUiNodeCompleted(

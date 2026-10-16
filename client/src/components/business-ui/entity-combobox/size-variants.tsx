@@ -16,13 +16,13 @@ export type ComboboxSize = 'medium' | 'small' | 'xs';
  */
 export const searchTriggerVariants = cva(
   [
-    'border-input bg-background',
-    'flex w-full cursor-pointer items-center gap-1 rounded-md border',
-    'hover:border-ring',
-    'focus-visible:ring-3 focus-visible:ring-ring/20',
-    'data-[state=open]:ring-3 data-[state=open]:ring-ring/20',
+    'border border-border/70 bg-muted/20',
+    'flex w-full cursor-pointer items-center gap-1 rounded-sm',
+    'hover:bg-muted/40',
+    'focus-visible:ring-3 focus-visible:ring-primary/20',
+    'data-[state=open]:ring-3 data-[state=open]:ring-primary/20',
     'disabled:cursor-not-allowed disabled:opacity-50',
-    'focus-visible:border-ring focus-visible:outline-none data-[state=open]:border-ring',
+    'focus-visible:border-primary/60 focus-visible:outline-none data-[state=open]:border-primary/50',
   ],
   {
     variants: {

@@ -45,7 +45,7 @@ const DetailHeader = ({ detail }: DetailHeaderProps) => {
   const stageBadge = getStageBadgeVariant(displayStage);
 
   return (
-    <div className="border-b border-border bg-card px-6 py-4">
+    <div className="border-b border-border/60 bg-card px-6 py-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         {/* 左侧：evt_id + 事件名 */}
         <div className="flex flex-col gap-1">

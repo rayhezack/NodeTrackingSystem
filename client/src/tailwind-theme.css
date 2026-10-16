@@ -150,6 +150,12 @@
   --shadow-2xl: var(--shadow-2xl);
 }
 
+@layer base {
+  *, ::before, ::after {
+    border-color: var(--border);
+  }
+}
+
 @layer utilities {
   [data-slot="button"].bg-primary {
     color: var(--primary-foreground) !important;

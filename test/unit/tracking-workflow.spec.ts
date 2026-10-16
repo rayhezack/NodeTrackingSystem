@@ -113,6 +113,34 @@ describe('工作流 Base 回写', () => {
     ]);
   });
 
+  it('详情接口应兼容迁移后人员对象的 raw 用户信息', async () => {
+    const bitable = {
+      getRecord: jest.fn().mockResolvedValue({
+        id: 'rec_raw_user',
+        record: {
+          事件中文名: '迁移数据',
+          流程阶段: '需求录入',
+          数据负责人: [{
+            id: '1867390536304713',
+            raw: { open_id: 'ou_data_owner', name: { zh_cn: '数据同学' }, email: 'data@example.com' },
+          }],
+        },
+      }),
+      searchRecords: jest.fn().mockResolvedValue({ records: [], hasMore: false }),
+    };
+    const service = new TrackingService(bitable as unknown as BitableService);
+
+    const result = await service.getDetail('app:rec_raw_user');
+
+    expect(result.data.dataOwner).toEqual([{
+      user_id: '1867390536304713',
+      larkUserId: 'ou_data_owner',
+      email: 'data@example.com',
+      name: '数据同学',
+    }]);
+    expect(result.data.requirementFields['数据负责人']).toEqual(result.data.dataOwner);
+  });
+
   it('不应使用空人员数组覆盖 Base 中已有的必填负责人', async () => {
     const bitable = {
       getRecord: jest.fn().mockResolvedValue({

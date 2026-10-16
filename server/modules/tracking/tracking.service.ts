@@ -3165,16 +3165,25 @@ function cellUsers(value: Cell): {
       }
       if (item && typeof item === 'object') {
         const user = item as Record<string, unknown>;
-        const id =
-          [user.user_id, user.userId, user.userID, user.miaoda_user_id, user.miaodaUserID, user.employee_id, user.employeeID, user.id, user.open_id, user.openId, user.larkUserId, user.larkUserID, user.larkID, user.lark_user_id].find(
-            (candidate): candidate is string | number => (typeof candidate === 'string' && candidate.length > 0) || typeof candidate === 'number',
-          ) || '';
-        const name = localizedText(user.name) || localizedText(user.en_name);
-        const email = [user.email, user.mail, user.emailAddress, user.email_address].find(
+        const raw = user.raw && typeof user.raw === 'object' && !Array.isArray(user.raw)
+          ? user.raw as Record<string, unknown>
+          : undefined;
+        const candidates = raw ? [user, raw] : [user];
+        const id = candidates.flatMap((candidate) => [
+          candidate.user_id, candidate.userId, candidate.userID,
+          candidate.miaoda_user_id, candidate.miaodaUserID,
+          candidate.employee_id, candidate.employeeID, candidate.id,
+          candidate.open_id, candidate.openId, candidate.larkUserId,
+          candidate.larkUserID, candidate.larkID, candidate.lark_user_id,
+        ]).find(
+          (candidate): candidate is string | number => (typeof candidate === 'string' && candidate.trim().length > 0) || typeof candidate === 'number',
+        ) || '';
+        const name = candidates.map((candidate) => localizedText(candidate.name) || localizedText(candidate.en_name)).find(Boolean) || '';
+        const email = candidates.flatMap((candidate) => [candidate.email, candidate.mail, candidate.emailAddress, candidate.email_address]).find(
           (candidate): candidate is string => typeof candidate === 'string' && candidate.includes('@'),
         );
         const normalizedId = id ? String(id) : '';
-        const larkUserId = [user.larkUserId, user.larkUserID, user.lark_user_id, user.open_id, user.openId, user.larkID, user.lark_id].find(
+        const larkUserId = candidates.flatMap((candidate) => [candidate.larkUserId, candidate.larkUserID, candidate.lark_user_id, candidate.open_id, candidate.openId, candidate.larkID, candidate.lark_id]).find(
           (candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0,
         );
         const resolvedLarkUserId = larkUserId || (normalizedId.startsWith('ou_') ? normalizedId : undefined);

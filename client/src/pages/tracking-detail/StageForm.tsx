@@ -105,7 +105,18 @@ function getFieldValue(
       break;
     }
   }
-  if (field.type === 'user') return toTrackingUserRefs(val);
+  if (field.type === 'user') {
+    const normalized = toTrackingUserRefs(val);
+    if (normalized.length) return normalized;
+    const topLevelValue: Record<string, unknown> = {
+      '需求提出人': detail.requester,
+      '需求录入人': detail.recorder,
+      '数据负责人': detail.dataOwner,
+      '研发负责人': detail.devOwner,
+      'DS验收人': detail.dsAcceptor,
+    };
+    return toTrackingUserRefs(topLevelValue[field.baseField]);
+  }
   if (field.type === 'attachment') return toTrackingAttachments(val);
   if (val == null) return '';
   if (field.type === 'date') return toDateTimeInputValue(val);
