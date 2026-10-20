@@ -2,7 +2,9 @@
 
 ## 实际调用链
 
-线上不读取本机 Skill 文件。`shared/pollo-tracking-policy.ts` 是运行时 Skill 的唯一规范来源：Worker 的 `worker/pollo-tracking-governance-skill.ts` 与 NestJS 的 `tracking-design-guidelines.ts` 均转发此常量，作为模型的 system message。
+专用 Skill 源文件是 `skills/pollo-tracking-design/SKILL.md`，规则与输出协议在其 `references/` 下。修改这些 Markdown 后运行 `npm run skill:tracking:prepare`，将原文打包到 `shared/tracking-skill.generated.ts`。构建前自动生成，测试及提交前校验源文件和产物一致。
+
+`shared/pollo-tracking-policy.ts` 的 `loadTrackingDesignSkill(stage)` 仅按阶段加载主文件、复用契约和阶段协议；Worker 与 NestJS 共用此装配器。模型请求的 system message 包含实际 Skill 文件内容及源文件哈希，user message 包含 PRD、正式库和当前阶段业务数据。正式规则不再手写在 TypeScript 提示词里。
 
 1. 读取需求 PRD、附件、现有设计及当前端的完整正式事件、参数、公共属性和枚举表。
 2. `generateReusePlan` 规划直接复用、扩枚举、补可选参数或新增事件，校验正式来源与生命周期。

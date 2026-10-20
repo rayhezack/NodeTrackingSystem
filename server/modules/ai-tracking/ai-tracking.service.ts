@@ -27,7 +27,7 @@ import { TrackingService } from '../tracking/tracking.service';
 import { FeishuDocumentService } from './feishu-document.service';
 import { FeishuOAuthService } from './feishu-oauth.service';
 import { ModelGatewayService } from './model-gateway.service';
-import { TRACKING_DESIGN_GUIDELINES } from './tracking-design-guidelines';
+import { loadTrackingDesignSkill } from './tracking-design-guidelines';
 import { assertFreshGovernance, enforceGovernance, generateReusePlan, governanceReport } from '../../../shared/official-first-workflow';
 import { generateDesignBatches } from '../../../shared/ai-design-batches';
 
@@ -205,12 +205,12 @@ export class AiTrackingService {
         currentEvents: detail.relatedEvents, currentParams: currentParams.items, prd, contextFiles };
       draft.summary = "正在对照完整正式库判断复用";
       const plan = await generateReusePlan(snapshot, requirement, (prompt) => this.model.generateJson([
-        { role: "system", content: TRACKING_DESIGN_GUIDELINES },
+        { role: "system", content: loadTrackingDesignSkill('planning') },
         { role: "user", content: prompt },
       ]));
       draft.summary = "正在读取完整参数、公共属性及枚举生成设计";
       const raw = await generateDesignBatches(snapshot, plan, requirement, (prompt) => this.model.generateJson([
-        { role: "system", content: TRACKING_DESIGN_GUIDELINES },
+        { role: "system", content: loadTrackingDesignSkill('design') },
         { role: "user", content: prompt },
       ]), undefined, (value, batchPlan) => {
         const batch = modelResponseSchema.safeParse(value);

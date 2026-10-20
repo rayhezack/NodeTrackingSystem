@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { AiTrackingService } from '../../server/modules/ai-tracking/ai-tracking.service';
 import type { TrackingDetail } from '../../shared/api.interface';
 import type { GovernanceSnapshot } from '../../shared/official-first-workflow';
@@ -144,6 +145,12 @@ describe('AI 埋点草稿', () => {
       const { draft } = await service.generateDraft(source + ":rec_1", { actorId: "actor_1" });
       expect(queryLibrary.getGovernanceSnapshot).toHaveBeenCalledWith(source);
       expect(model.generateJson).toHaveBeenCalledTimes(2);
+      for (const [index, stage] of ['planning', 'design'].entries()) {
+        const system = model.generateJson.mock.calls[index][0][0].content;
+        for (const file of ['SKILL.md', 'references/reuse-contract.md', `references/${stage}.md`]) {
+          expect(system).toContain(readFileSync(`skills/pollo-tracking-design/${file}`, 'utf8'));
+        }
+      }
       expect(model.generateJson.mock.calls[0][0][1].content).toContain("完整正式事件目录");
       expect(model.generateJson.mock.calls[1][0][1].content).toContain("完整公共属性");
       expect(draft.governance?.workflowVersion).toBe("official-first-v3");
@@ -277,7 +284,7 @@ describe('AI 埋点草稿', () => {
   it("结构化设计包含复用来源、触发条件、证据与待确认项", async () => {
     const { service, model } = createFixture();
     await service.generateDraft("app:rec_1", { actorId: "actor_1" });
-    const prompt = model.generateJson.mock.calls[1][0][1].content;
+    const prompt = model.generateJson.mock.calls[1][0][0].content;
     for (const field of ["evtId", "eventDefinition", "reuseSource", "triggerCondition", "uncertainties"]) expect(prompt).toContain(field);
   });
 

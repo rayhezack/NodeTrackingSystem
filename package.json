@@ -32,8 +32,15 @@
     "lint": "node ./scripts/lint.js",
     "format": "prettier --write \"{server,client,test}/**/*.{js,ts,tsx,json,md}\"",
     "prepare": "chmod +x .githooks/pre-commit 2>/dev/null; git config core.hooksPath .githooks 2>/dev/null || true",
-    "precommit": "node scripts/hooks/run-precommit.js",
-    "postinstall": "npx -y @lark-apaas/fullstack-cli action-plugin init"
+    "precommit": "npm run skill:tracking:check && node scripts/hooks/run-precommit.js",
+    "postinstall": "npx -y @lark-apaas/fullstack-cli action-plugin init",
+    "skill:tracking:prepare": "node scripts/prepare-tracking-skill.mjs",
+    "skill:tracking:check": "node scripts/prepare-tracking-skill.mjs --check",
+    "prebuild:pollocloud": "npm run skill:tracking:prepare",
+    "prebuild:server": "npm run skill:tracking:prepare",
+    "predev": "npm run skill:tracking:prepare",
+    "predev:server": "npm run skill:tracking:prepare",
+    "pretest": "npm run skill:tracking:check"
   },
   "dependencies": {
     "@lark-apaas/fullstack-nestjs-core": "^1.1.22",

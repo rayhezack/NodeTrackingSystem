@@ -15,7 +15,7 @@ import type {
   StartAiFeishuAuthResponse,
   TrackingDetail,
 } from '../shared/api.interface';
-import { POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL } from './pollo-tracking-governance-skill';
+import { loadTrackingDesignSkill } from './pollo-tracking-governance-skill';
 import { requestModelJson } from './ai-model';
 import { runGenerationStage } from './ai-generation-stage';
 import { generateDesignBatches } from '../shared/ai-design-batches';
@@ -197,7 +197,7 @@ export async function generateAiDraft(
   try { plan = await generateReusePlan(snapshot, requirement, (prompt) => {
     const label = ++planningAttempt === 1 ? '对照正式库规划复用' : '修正复用规划';
     progress({ stage: 'planning', message: label });
-    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 5000));
+    return runGenerationStage(label, 90_000, (signal) => generateModelJson(env, prompt, scopedFetch(signal), 5000, 'planning'));
   }); }
   catch (error) { throw governanceWriteError(error); }
   const version = (await latestDraft(env, actorId, recordId))?.version || 0;
@@ -356,8 +356,8 @@ async function feishuGet(fetchImpl: FetchLike, url: string, token: string): Prom
   return payload.data;
 }
 
-async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike, maxCompletionTokens = 12000): Promise<unknown> {
-  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: POLLO_TRACKING_GOVERNANCE_RUNTIME_SKILL }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: maxCompletionTokens, response_format: { type: 'json_object' } };
+async function generateModelJson(env: AiWorkerEnv, prompt: string, fetchImpl: FetchLike, maxCompletionTokens = 12000, stage: 'planning' | 'design' = 'design'): Promise<unknown> {
+  const body: Record<string, unknown> = { model: env.AI_MODEL?.trim() || 'kimi-k3', messages: [{ role: 'system', content: loadTrackingDesignSkill(stage) }, { role: 'user', content: prompt }], reasoning_effort: 'low', max_completion_tokens: maxCompletionTokens, response_format: { type: 'json_object' } };
   return requestModelJson(`${(env.AI_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '')}/chat/completions`, apiKey(env), body, fetchImpl);
 }
 

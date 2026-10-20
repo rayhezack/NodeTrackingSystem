@@ -2,12 +2,14 @@
 
 ## Pollo 埋点治理 Skill
 
-生产 Worker 与 Nest 服务使用同一份 `shared/pollo-tracking-policy.ts` 中文运行规则和 `shared/official-first-workflow.ts` 校验引擎。每次模型请求都加载规则，工作流版本为 `official-first-v2`。
+专用 Skill 入口为 [`skills/pollo-tracking-design/SKILL.md`](../skills/pollo-tracking-design/SKILL.md)，复用契约和阶段协议放在其 `references/` 下。生产 Worker 与 Nest 服务按阶段加载 Skill 和对应参考资料，`shared/official-first-workflow.ts` 负责确定性校验，工作流版本为 `official-first-v3`。
+
+`npm run skill:tracking:prepare` 将 Markdown 原文打包到 `shared/tracking-skill.generated.ts`；构建前自动执行，测试与提交前检查产物是否与源文件一致。`shared/pollo-tracking-policy.ts` 仅负责按阶段装配，不再维护独立的规则摘录。Worker 没有本地文件系统，因此运行时使用这个由 Skill 源文件生成的包。
 
 1. 按需求所属端完整分页读取事件、参数、公共属性和枚举四张表，不带 UI 视图过滤，不截取前24个事件或前30条参数。任一表读取失败、字段结构不符或分页不完整时停止生成。
 2. 模型先对照完整正式事件目录给出主板块、复用/新增决策和具体理由。新增必须列出比较过的正式事件；已有事件保持原ID。目录明确标记是否可复用，服务端拒绝废弃/待治理事件、伪造引用和已知重复别名。规划校验失败时反馈原因，自动修正一次；仍失败即停止，不放宽校验，不重试模型网络异常。
 3. 第二次模型请求携带选中事件的完整正式参数、现有公共属性、相关枚举及状态。模型只输出参数增量，服务端补齐未修改的正式参数，避免大段重复输出导致截断。
-4. 校验正式记录来源、参数类型、必传条件、重复参数和公共属性；保留正式类型和历史大小写。扩枚举、参数草稿、触发口径变化及指标覆盖进入待确认项。结构通过不代表业务指标已经验收。
+4. 校验正式记录来源、参数类型、必传条件、重复参数和公共属性；保留正式类型和历史大小写。元数据原文受保护；模型差异只进入补充说明并待确认。枚举只追加，参数草稿及指标覆盖进入待确认项。结构通过不代表业务指标已经验收。
 5. 草稿保存四表快照指纹、读取数量、主板块、逐事件理由及校验报告。人工应用前重新读取四表；旧版草稿或快照变化必须重新生成，确保写入前完成校验。
 
 Web 使用正式事件 `tbly7VI4kwFz5qwR`、参数 `tblNAMKr5S38iXJQ`、公共属性 `tblb783YDTiBNts0`、枚举 `tbl2KEj2zyg8bOmk`。App 使用 `tblAhScEFQYAJC2g`、`tblEYv9lGZeenbT2`、`tblIdlancSXgX9VX`、`tblQ8Ph3N8GJHeVA`。设计工作台及同需求归档记录仅提供背景，不是正式事件存在的证据。
@@ -85,7 +87,7 @@ PolloCloud 登录仅负责访问控制，不能替代文档 OAuth。每位分析
 4. Kimi 返回的事件与参数可预览，确认后批量写入当前需求。
 5. 更换 `FEISHU_TOKEN_ENCRYPTION_KEY` 后，旧 Token 无法解密，所有分析师需要重新授权。
 
-完整设计规范见 [埋点设计规范 V1](TRACKING_DESIGN_GUIDELINES_V1.md)。
+当前 AI 设计规范见 [埋点设计 Skill](../skills/pollo-tracking-design/SKILL.md)；[设计规范 V1](TRACKING_DESIGN_GUIDELINES_V1.md) 保留为历史讨论材料。
 
 ## 大草稿存储
 
