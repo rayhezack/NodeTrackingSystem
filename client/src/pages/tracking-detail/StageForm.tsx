@@ -46,6 +46,7 @@ import DesignHandoffPanel from './DesignHandoffPanel';
 import AiTrackingDraftPanel from './AiTrackingDraftPanel';
 import UiImageField from './UiImageField';
 import {
+  toAttachmentFieldValue,
   toAttachmentTextArray,
   toTrackingAttachments,
 } from './design-handoff.utils';
@@ -246,7 +247,7 @@ const StageForm = ({
       if (field.type === 'user') {
         fields[field.baseField] = toTrackingUserRefs(value);
       } else if (field.type === 'attachment') {
-        fields[field.baseField] = toAttachmentTextArray(value);
+        fields[field.baseField] = toAttachmentFieldValue(value);
       } else {
         fields[field.baseField] = toTextValue(value);
       }

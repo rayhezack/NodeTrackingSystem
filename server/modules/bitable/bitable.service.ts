@@ -705,7 +705,7 @@ function assertHttpUrl(value: string): void {
   throw new BadRequestException(`链接格式错误：${value}`);
 }
 
-function toFileAttachmentArray(value: unknown): string[] {
+function toFileAttachmentArray(value: unknown): Array<{ file_token: string }> {
   const values = Array.isArray(value)
     ? value
     : value
@@ -716,16 +716,16 @@ function toFileAttachmentArray(value: unknown): string[] {
     new Set(
       values
         .map((item) => {
-          if (typeof item === 'string') return item.trim();
-          if (!item || typeof item !== 'object') return '';
+          if (typeof item === 'string') {
+            const token = item.trim();
+            return token ? { file_token: token } : null;
+          }
+          if (!item || typeof item !== 'object') return null;
           const file = item as Record<string, unknown>;
-          return (
-            cellText(file.url || file.download_url || file.downloadUrl || file.link).trim() ||
-            cellText(file.file_path || file.filePath).trim() ||
-            cellText(file.name || file.fileName || file.id).trim()
-          );
+          const token = cellText(file.file_token || file.fileToken || file.token).trim();
+          return token ? { file_token: token } : null;
         })
-        .filter(Boolean),
+        .filter((item): item is { file_token: string } => Boolean(item)),
     ),
   );
 }

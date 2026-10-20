@@ -158,7 +158,7 @@ describe('Base 写入值标准化', () => {
   );
 
   it.each(['workbench', 'webWorkbench'] as const)(
-    '%s UI图应按文本数组写入，避免附件对象触发 Base 插件校验失败',
+    '%s UI图应按 Feishu Attachment file_token 写入',
     async (instanceKey) => {
       const call = jest.fn().mockResolvedValue({ records: [{ id: 'rec_1' }] });
       const capabilityService = {
@@ -172,10 +172,7 @@ describe('Base 写入值标准化', () => {
           record: {
             UI图: [
               {
-                bucket_id: 'bucket_1',
-                file_path: 'images/ui.png',
-                url: 'https://example.com/ui.png',
-                name: 'ui.png',
+                file_token: 'file-token-1',
               },
             ],
           },
@@ -187,7 +184,7 @@ describe('Base 写入值标准化', () => {
           {
             id: 'rec_1',
             record: {
-              UI图: ['https://example.com/ui.png'],
+              UI图: [{ file_token: 'file-token-1' }],
             },
           },
         ],

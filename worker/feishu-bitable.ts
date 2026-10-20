@@ -239,7 +239,23 @@ function normalizeWorkerFields(fields: Record<string, unknown>): Record<string, 
       normalized[field] = normalizeWorkerUrlCell(normalized[field]);
     }
   }
+  if (Object.prototype.hasOwnProperty.call(normalized, 'UI图')) {
+    normalized['UI图'] = normalizeWorkerAttachmentCell(normalized['UI图']);
+  }
   return normalized;
+}
+
+function normalizeWorkerAttachmentCell(value: unknown): Array<{ file_token: string }> {
+  const values = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+  return values.map((item) => {
+    const token = typeof item === 'string'
+      ? item.trim()
+      : item && typeof item === 'object'
+        ? String((item as Record<string, unknown>).file_token || (item as Record<string, unknown>).fileToken || (item as Record<string, unknown>).token || '').trim()
+        : '';
+    if (!token) throw new Error('Feishu Base Attachment field UI图 requires file_token; please re-upload the image');
+    return { file_token: token };
+  });
 }
 
 function normalizeWorkerUrlCell(value: unknown): { link: string; text: string } | null | undefined {

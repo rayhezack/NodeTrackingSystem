@@ -112,6 +112,15 @@ export function toAttachmentTextArray(value: unknown): string[] {
   );
 }
 
+/** Serialize a UI image for Feishu's Attachment field. URLs and storage paths
+ * are only preview metadata; the Base field requires the uploaded file token. */
+export function toAttachmentFieldValue(value: unknown): Array<{ file_token: string }> {
+  return toTrackingAttachments(value)
+    .map((file) => handoffTextValue(file.file_token || file.fileToken || file.token))
+    .filter(Boolean)
+    .map((file_token) => ({ file_token }));
+}
+
 export function handoffTextValue(value: unknown): string {
   if (value == null) return '';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
