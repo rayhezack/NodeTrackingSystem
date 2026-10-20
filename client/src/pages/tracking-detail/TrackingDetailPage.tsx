@@ -16,15 +16,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@client/src/components/ui/alert-dialog';
-import { deleteTrackingRequest, getTrackingDetail } from '@client/src/api/tracking';
+import { deleteTrackingRequest, getTrackingDetail, updateTrackingRecord } from '@client/src/api/tracking';
 import type { RelatedTrackingEvent, TrackingDetail, TrackingDetailSnapshot, TrackingUserRef } from '@shared/api.interface';
 import DetailHeader from './DetailHeader';
 import ProcessFlowBar from './ProcessFlowBar';
 import StageSidebar from './StageSidebar';
-import StageForm from './StageForm';
+import StageForm, { serializeStageFields, getFieldValue, type StageDraft } from './StageForm';
+import { buildStageUpdateRequest, toTrackingUserRefs } from './stage-form.utils';
 import { SIDEBAR_STAGES, getCurrentUiNode } from './stage-config';
 import { getCurrentActor } from '@client/src/utils/current-user';
-import { toTrackingUserRefs } from './stage-form.utils';
 
 const TrackingDetailPage = () => {
   const { recordId } = useParams<{ recordId: string }>();
@@ -38,9 +38,53 @@ const TrackingDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<string>('requirement');
+  const [leaveOpen, setLeaveOpen] = useState(false);
   const [deleteRequestOpen, setDeleteRequestOpen] = useState(false);
   const [deletingRequest, setDeletingRequest] = useState(false);
   const detailCacheRef = useRef<Record<string, TrackingDetail>>({});
+  const draftCacheRef = useRef<Record<string, StageDraft>>({});
+  const [, setDraftVersion] = useState(0);
+  const [savingDrafts, setSavingDrafts] = useState(false);
+  const savingDraftsRef = useRef(false);
+  const [uploadCount, setUploadCount] = useState(0);
+  const draftStorageKey = `tracking-design-drafts:${actor.id || actor.larkId || 'anonymous'}`;
+  const loadedDraftKey = useRef('');
+  const pendingRecordIds = new Set([detail?.recordId, ...(detail?.relatedEvents || []).map((event) => event.recordId)]);
+  const pendingDraftCount = Object.keys(draftCacheRef.current).filter((id) => pendingRecordIds.has(id)).length;
+
+  useEffect(() => {
+    if (loadedDraftKey.current === draftStorageKey) return;
+    loadedDraftKey.current = draftStorageKey;
+    try {
+      const stored: unknown = JSON.parse(sessionStorage.getItem(draftStorageKey) || '{}');
+      draftCacheRef.current = stored && typeof stored === 'object' && !Array.isArray(stored)
+        ? Object.fromEntries(Object.entries(stored).filter(([, draft]) => draft?.formData && typeof draft.formData === 'object' && !Array.isArray(draft.formData)))
+        : {};
+    } catch {
+      draftCacheRef.current = {};
+    }
+    setDraftVersion((version) => version + 1);
+  }, [draftStorageKey]);
+
+  const persistDrafts = () => {
+    try {
+      sessionStorage.setItem(draftStorageKey, JSON.stringify(draftCacheRef.current));
+    } catch {
+      toast.warning('浏览器草稿缓存不可用，请在离开页面前保存');
+    }
+    setDraftVersion((version) => version + 1);
+  };
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (Object.keys(draftCacheRef.current).length || uploadCount || savingDraftsRef.current) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [uploadCount]);
 
   const cacheKey = useCallback(
     (id: string) => `${actor.id || ''}|${actor.larkId || ''}|${id}`,
@@ -122,6 +166,7 @@ const TrackingDetailPage = () => {
 
   // 流程节点点击 → 跳转到对应侧边栏阶段
   const handleNodeClick = (nodeKey: string) => {
+    if (savingDraftsRef.current) return;
     const matchedStage = SIDEBAR_STAGES.find((s) => s.uiNode === nodeKey);
     if (matchedStage) {
       setActiveStage(matchedStage.id);
@@ -136,6 +181,11 @@ const TrackingDetailPage = () => {
     try {
       const res = await getTrackingDetail(targetRecordId, actor.id, actor.larkId);
       const normalized = rememberDetailTree(res.data);
+      const remainingIds = new Set([normalized.recordId, ...normalized.relatedEvents.map((event) => event.recordId)]);
+      for (const id of pendingRecordIds) {
+        if (id && !remainingIds.has(id)) delete draftCacheRef.current[id];
+      }
+      persistDrafts();
       setDetail(normalized);
       const matchedStage = getActiveSidebarStage(normalized);
       if (matchedStage) {
@@ -157,7 +207,57 @@ const TrackingDetailPage = () => {
     });
   };
 
+  const handleDraftChange = (targetRecordId: string, key: string, value: string | unknown[]) => {
+    const existing = draftCacheRef.current[targetRecordId];
+    draftCacheRef.current[targetRecordId] = { formData: { ...existing?.formData, [key]: value } };
+    persistDrafts();
+  };
+
+  const handleSaveAllDrafts = async () => {
+    if (savingDraftsRef.current || uploadCount) throw new Error('请等待图片上传或保存完成');
+    const pending = Object.entries(draftCacheRef.current).filter(([id]) => pendingRecordIds.has(id));
+    if (!pending.length) return;
+    savingDraftsRef.current = true;
+    setSavingDrafts(true);
+    let savedCount = 0;
+    try {
+      const config = SIDEBAR_STAGES.find((stage) => stage.id === 'design')!;
+      // Validate every draft before making the first write.
+      const requests = pending.map(([id, draft]) => {
+        const target = detailCacheRef.current[cacheKey(id)];
+        if (!target) throw new Error(`无法读取埋点 ${id}，请重新打开后保存`);
+        if (!target.permissions.canEditDesign) throw new Error(`无权编辑埋点 ${target.evtId || id}`);
+        const values = { ...Object.fromEntries(config.fields.map((field) => [field.key, getFieldValue(target, field)])), ...draft.formData };
+        const dirty = new Set(config.fields.filter((field) => Object.prototype.hasOwnProperty.call(draft.formData, field.key)).map((field) => field.baseField));
+        try {
+          const fields = serializeStageFields(config, values, dirty);
+          const localFields = Object.fromEntries(config.fields.filter((field) => dirty.has(field.baseField)).map((field) => [field.baseField, values[field.key]]));
+          return { id, request: buildStageUpdateRequest('design', fields, dirty), localFields };
+        } catch (error) {
+          throw new Error(`${target.evtId || target.eventName || id}：${error instanceof Error ? error.message : '校验失败'}`);
+        }
+      });
+      for (const { id, request, localFields } of requests) {
+        const response = await updateTrackingRecord(id, { ...request, actorId: actor.id, actorLarkId: actor.larkId });
+        const target = detailCacheRef.current[cacheKey(id)];
+        rememberDetailTree(patchTrackingDetail(target, 'design', localFields, response.currentStage));
+        delete draftCacheRef.current[id];
+        savedCount += 1;
+        persistDrafts();
+      }
+      toast.success(`已保存 ${savedCount} 个埋点的修改`);
+    } catch (error) {
+      throw new Error(`已保存 ${savedCount}/${pending.length} 个埋点，其余草稿已保留。${error instanceof Error ? error.message : '保存失败'}`);
+    } finally {
+      const selected = detail && detailCacheRef.current[cacheKey(detail.recordId)];
+      if (selected) setDetail(normalizeDetailForSelection(selected, selected.recordId));
+      savingDraftsRef.current = false;
+      setSavingDrafts(false);
+    }
+  };
+
   const handleRelatedEventSelect = (nextRecordId: string) => {
+    if (savingDraftsRef.current) return;
     const cached = detailCacheRef.current[cacheKey(nextRecordId)];
     if (cached) {
       const normalized = normalizeDetailForSelection(cached, nextRecordId);
@@ -170,11 +270,16 @@ const TrackingDetailPage = () => {
   };
 
   const handleBack = () => {
+    if (savingDraftsRef.current) return;
+    if (pendingDraftCount || uploadCount) {
+      setLeaveOpen(true);
+      return;
+    }
     navigate('/');
   };
 
   const handleDeleteRequest = async () => {
-    if (!detail || deletingRequest) return;
+    if (!detail || deletingRequest || savingDraftsRef.current || uploadCount) return;
     setDeletingRequest(true);
     try {
       const result = await deleteTrackingRequest(detail.recordId, {
@@ -183,6 +288,8 @@ const TrackingDetailPage = () => {
       });
       toast.success(`需求单已删除：${result.deletedRecordCount} 个事件、${result.deletedParamCount} 个参数`);
       detailCacheRef.current = {};
+      for (const id of pendingRecordIds) if (id) delete draftCacheRef.current[id];
+      persistDrafts();
       setDeleteRequestOpen(false);
       navigate('/');
     } catch (err) {
@@ -269,6 +376,22 @@ const TrackingDetailPage = () => {
 
   return (
     <div className="space-y-4">
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent className="rounded-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>仍有未保存的修改</AlertDialogTitle>
+            <AlertDialogDescription>
+              {uploadCount > 0 ? '图片正在上传，请等待上传完成再离开。' : '确定返回列表？草稿会保留在当前浏览器标签页，关闭标签页前请完成保存。'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-sm">继续编辑</AlertDialogCancel>
+            <AlertDialogAction disabled={uploadCount > 0} className="rounded-sm" onClick={() => navigate('/')}>
+              返回列表
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* 返回按钮 */}
       <div className="flex items-center justify-between gap-2">
         <Button
@@ -287,7 +410,7 @@ const TrackingDetailPage = () => {
                 variant="outline"
                 size="sm"
                 className="h-8 rounded-sm border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                disabled={deletingRequest}
+                disabled={deletingRequest || savingDrafts || uploadCount > 0}
               >
                 {deletingRequest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 删除需求单
@@ -301,12 +424,12 @@ const TrackingDetailPage = () => {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-sm" disabled={deletingRequest}>
+                <AlertDialogCancel className="rounded-sm" disabled={deletingRequest || savingDrafts || uploadCount > 0}>
                   取消
                 </AlertDialogCancel>
                 <AlertDialogAction
                   className="rounded-sm bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  disabled={deletingRequest}
+                  disabled={deletingRequest || savingDrafts || uploadCount > 0}
                   onClick={(event) => {
                     event.preventDefault();
                     void handleDeleteRequest();
@@ -341,6 +464,7 @@ const TrackingDetailPage = () => {
             activeStage={activeStage}
             permissions={detail.permissions}
             onStageChange={(stage) => {
+              if (savingDraftsRef.current) return;
               setActiveStage(stage);
               setSearchParams({});
             }}
@@ -365,6 +489,12 @@ const TrackingDetailPage = () => {
               onSavedPatch={handleLocalSavedPatch}
               onSelectEvent={handleRelatedEventSelect}
               onRelatedEventsChanged={handleSaved}
+              draft={activeStage === 'design' ? draftCacheRef.current[detail.recordId] : undefined}
+              onDraftChange={(key, value) => handleDraftChange(detail.recordId, key, value)}
+              pendingDraftCount={pendingDraftCount}
+              onSaveAllDrafts={handleSaveAllDrafts}
+              draftsBusy={savingDrafts || uploadCount > 0}
+              onUploadStateChange={(uploading) => setUploadCount((count) => Math.max(0, count + (uploading ? 1 : -1)))}
             />
           </div>
         </div>

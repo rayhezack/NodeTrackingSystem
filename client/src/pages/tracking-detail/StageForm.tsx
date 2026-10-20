@@ -69,6 +69,12 @@ interface StageFormProps {
   onSavedPatch?: (fields: Record<string, FormValue>, currentStage: string) => void;
   onSelectEvent?: (recordId: string) => void;
   onRelatedEventsChanged?: (recordId?: string) => void | Promise<void>;
+  draft?: StageDraft;
+  onDraftChange?: (key: string, value: FormValue) => void;
+  onUploadStateChange?: (uploading: boolean) => void;
+  draftsBusy?: boolean;
+  pendingDraftCount?: number;
+  onSaveAllDrafts?: () => void | Promise<void>;
 }
 
 const DETAIL_FIELD_GROUPS = [
@@ -92,7 +98,11 @@ const WEB_HANDLER_OPTIONS = [
   { value: '前端/服务端', label: '前端/服务端' },
 ];
 
-type FormValue = string | unknown[];
+export type FormValue = string | unknown[];
+
+export interface StageDraft {
+  formData: Record<string, FormValue>;
+}
 
 interface FieldSection {
   title: string;
@@ -132,7 +142,7 @@ function getFieldSections(stageId: string, fields: StageConfig['fields']): Field
   if (stageId === 'design') {
     const base = createSection(groups.design, fields);
     const definition = fields.filter((field) => ['eventDefinition', 'triggerTiming', 'commonProps'].includes(field.key));
-    const materials = fields.filter((field) => ['uiImages', 'uiPageUrl'].includes(field.key));
+    const materials = fields.filter((field) => field.key === 'uiImages');
     const version = fields.filter((field) => ['version', 'minVersion', 'changeType'].includes(field.key));
     return [
       base,
@@ -157,8 +167,38 @@ function createSection(
   };
 }
 
+export function serializeStageFields(
+  stageConfig: StageConfig,
+  formData: Record<string, FormValue>,
+  dirtyFieldNames: Set<string>,
+): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const field of stageConfig.fields) {
+    const value = formData[field.key];
+    if (field.required && !toTextValue(value).trim()) {
+      throw new Error(`请填写${field.label}`);
+    }
+    if (
+      field.type === 'url' &&
+      dirtyFieldNames.has(field.baseField) &&
+      toTextValue(value) &&
+      !isHttpUrl(toTextValue(value))
+    ) {
+      throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
+    }
+    if (field.type === 'user') {
+      fields[field.baseField] = toTrackingUserRefs(value);
+    } else if (field.type === 'attachment') {
+      fields[field.baseField] = toAttachmentFieldValue(value);
+    } else {
+      fields[field.baseField] = toTextValue(value);
+    }
+  }
+  return fields;
+}
+
 // 从 detail 的所有阶段字段分组中获取字段值
-function getFieldValue(
+export function getFieldValue(
   detail: TrackingDetail,
   field: StageConfig['fields'][number],
 ): FormValue {
@@ -199,60 +239,45 @@ const StageForm = ({
   onSavedPatch,
   onSelectEvent,
   onRelatedEventsChanged,
+  draft,
+  onDraftChange,
+  pendingDraftCount = 0,
+  onSaveAllDrafts,
+  onUploadStateChange,
+  draftsBusy = false,
 }: StageFormProps) => {
   const stageConfig: StageConfig | undefined = SIDEBAR_STAGES.find((s) => s.id === stageId);
-  const [formData, setFormData] = useState<Record<string, FormValue>>({});
-  const [dirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
+  const [localFormData, setFormData] = useState<Record<string, FormValue>>({});
+  const [localDirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const usesDrafts = stageId === 'design' && Boolean(onDraftChange);
+  const initial = Object.fromEntries((stageConfig?.fields || []).map((field) => [field.key, getFieldValue(detail, field)]));
+  const formData = usesDrafts ? { ...initial, ...draft?.formData } : localFormData;
+  const dirtyFieldNames = usesDrafts
+    ? new Set((stageConfig?.fields || []).filter((field) => Object.prototype.hasOwnProperty.call(draft?.formData || {}, field.key)).map((field) => field.baseField))
+    : localDirtyFieldNames;
 
-  // 初始化表单数据
   useEffect(() => {
-    if (!stageConfig) return;
-    const initial: Record<string, FormValue> = {};
-    for (const field of stageConfig.fields) {
-      initial[field.key] = getFieldValue(detail, field);
-    }
-    setFormData(initial);
+    if (usesDrafts || !stageConfig) return;
+    setFormData(Object.fromEntries(stageConfig.fields.map((field) => [field.key, getFieldValue(detail, field)])));
     setDirtyFieldNames(new Set());
-  }, [stageConfig, detail]);
+  }, [detail, stageConfig, usesDrafts]);
 
-  if (!stageConfig) {
-    return null;
-  }
+  if (!stageConfig) return null;
 
   const handleChange = (key: string, value: FormValue) => {
+    if (usesDrafts) {
+      onDraftChange?.(key, value);
+      return;
+    }
     setFormData((prev) => ({ ...prev, [key]: value }));
     const field = stageConfig.fields.find((item) => item.key === key);
-    if (field) {
-      setDirtyFieldNames((prev) => new Set(prev).add(field.baseField));
-    }
+    if (field) setDirtyFieldNames((prev) => new Set(prev).add(field.baseField));
   };
 
   const serializeFields = (): Record<string, unknown> => {
-    const fields: Record<string, unknown> = {};
-    for (const field of stageConfig.fields) {
-      const value = formData[field.key];
-      if (field.required && !toTextValue(value).trim()) {
-        throw new Error(`请填写${field.label}`);
-      }
-      if (
-        field.type === 'url' &&
-        dirtyFieldNames.has(field.baseField) &&
-        toTextValue(value) &&
-        !isHttpUrl(toTextValue(value))
-      ) {
-        throw new Error(`${field.label}必须是有效的 http 或 https 链接`);
-      }
-      if (field.type === 'user') {
-        fields[field.baseField] = toTrackingUserRefs(value);
-      } else if (field.type === 'attachment') {
-        fields[field.baseField] = toAttachmentFieldValue(value);
-      } else {
-        fields[field.baseField] = toTextValue(value);
-      }
-    }
-    return fields;
+    return serializeStageFields(stageConfig, formData, dirtyFieldNames);
   };
 
   const getDirtyLocalFields = (): Record<string, FormValue> => {
@@ -267,6 +292,12 @@ const StageForm = ({
 
   const handleSave = async () => {
     if (!canEdit) return;
+    if (usesDrafts && onSaveAllDrafts) {
+      try { await onSaveAllDrafts(); } catch (error) {
+        toast.error(error instanceof Error ? error.message : '保存失败');
+      }
+      return;
+    }
     if (dirtyFieldNames.size === 0) {
       toast.info('没有需要保存的修改');
       return;
@@ -304,6 +335,7 @@ const StageForm = ({
     }
     setCompleting(true);
     try {
+      if (usesDrafts && pendingDraftCount > 0) await onSaveAllDrafts?.();
       const fields = serializeFields();
       const request = buildStageCompletionRequest(
         stageId,
@@ -342,7 +374,7 @@ const StageForm = ({
     detail.reviewStatus,
     officialStatus,
   );
-  const busy = saving || completing;
+  const busy = saving || completing || draftsBusy;
   const disabled = !canEdit || busy;
   const completionCopy = getCompletionCopy(stageId, stageConfig.label);
 
@@ -351,7 +383,7 @@ const StageForm = ({
       <div>
         <h2 className="text-base font-medium text-foreground">{stageConfig.label}</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          {canEdit ? '编辑以下字段，完成后点击保存' : '当前用户无编辑权限，字段为只读状态'}
+          {canEdit ? usesDrafts ? `切换埋点自动保留草稿，完成后统一保存。当前有 ${pendingDraftCount} 个埋点未保存（参数编辑仍即时保存）` : '编辑以下字段，完成后点击保存' : '当前用户无编辑权限，字段为只读状态'}
         </p>
       </div>
 
@@ -359,14 +391,14 @@ const StageForm = ({
         <div className="space-y-4">
           <AiTrackingDraftPanel
             detail={detail}
-            canEdit={canEdit}
+            canEdit={canEdit && !busy}
             actorId={actorId}
             actorLarkId={actorLarkId}
             onApplied={onRelatedEventsChanged || onSaved}
           />
           <RelatedEventsPanel
             detail={detail}
-            canEdit={canEdit}
+            canEdit={canEdit && !busy}
             actorId={actorId}
             actorLarkId={actorLarkId}
             onSelectEvent={onSelectEvent}
@@ -476,6 +508,9 @@ const StageForm = ({
               <UiImageField
                 value={toTrackingAttachments(formData[field.key])}
                 source={detail.source}
+                pageUrl={toTextValue(formData.uiPageUrl)}
+                onPageUrlChange={(value) => handleChange('uiPageUrl', value)}
+                onUploadStateChange={onUploadStateChange}
                 onChange={(value) => handleChange(field.key, value)}
                 disabled={disabled}
                 placeholder={field.placeholder}
@@ -494,7 +529,7 @@ const StageForm = ({
             recordId={detail.recordId}
             source={detail.source}
             evtId={toTextValue(formData.evtId) || detail.evtId}
-            canEdit={detail.permissions.canEditParams}
+            canEdit={detail.permissions.canEditParams && !busy}
             actorId={actorId}
             actorLarkId={actorLarkId}
           />
@@ -534,7 +569,7 @@ const StageForm = ({
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {saving ? '保存中...' : '保存'}
+            {saving || draftsBusy ? '处理中...' : usesDrafts ? `保存全部修改${pendingDraftCount ? `（${pendingDraftCount}）` : ''}` : '保存'}
           </Button>
 
           <AlertDialog>

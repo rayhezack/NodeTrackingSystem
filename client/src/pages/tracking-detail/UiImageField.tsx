@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ExternalLink, Eye, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
@@ -25,6 +25,7 @@ interface UiImageFieldProps {
   disabled?: boolean;
   placeholder?: string;
   readOnly?: boolean;
+  onUploadStateChange?: (uploading: boolean) => void;
 }
 
 export default function UiImageField({
@@ -37,11 +38,13 @@ export default function UiImageField({
   disabled,
   placeholder,
   readOnly = false,
+  onUploadStateChange,
 }: UiImageFieldProps) {
   const [uploading, setUploading] = useState(false);
   const [previewFile, setPreviewFile] = useState<TrackingAttachment | null>(null);
   const [previewCache, setPreviewCache] = useState<Record<string, { url: string; attempted: boolean }>>({});
   const [resolvingKeys, setResolvingKeys] = useState<Record<string, boolean>>({});
+  const previewRetries = useRef(new Set<string>());
   const previewUrl = previewFile ? resolvedAttachmentUrl(previewFile, previewCache) : '';
   const previewName = previewFile ? attachmentName(previewFile, 0) : '';
 
@@ -49,7 +52,7 @@ export default function UiImageField({
     const unresolvedFiles = value
       .map((file) => ({ file, key: attachmentPreviewKey(file) }))
       .filter(({ file, key }) => {
-        if (!key || attachmentUrl(file)) return false;
+        if (!key || (attachmentUrl(file) && !previewRetries.current.has(key))) return false;
         if (previewCache[key]?.attempted || resolvingKeys[key]) return false;
         return canResolveAttachmentPreview(file);
       })
@@ -91,6 +94,7 @@ export default function UiImageField({
     }
 
     setUploading(true);
+    onUploadStateChange?.(true);
     try {
       const uploaded = await Promise.all(
         selectedFiles.map(async (file) => {
@@ -111,6 +115,7 @@ export default function UiImageField({
       toast.error(message);
     } finally {
       setUploading(false);
+      onUploadStateChange?.(false);
     }
   };
 
@@ -191,7 +196,13 @@ export default function UiImageField({
                     onClick={() => setPreviewFile(file)}
                     aria-label={`预览 ${fileName}`}
                   >
-                    <img src={url} alt={fileName} className="h-full w-full object-cover" loading="lazy" />
+                    <img
+                      src={url}
+                      alt={fileName}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      onError={() => retryPreview(file)}
+                    />
                   </button>
                 ) : (
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-background">
@@ -264,6 +275,7 @@ export default function UiImageField({
                 src={previewUrl}
                 alt={previewName || 'UI 图预览'}
                 className="mx-auto max-h-[68vh] max-w-full rounded-sm border border-border bg-background object-contain"
+                onError={() => previewFile && retryPreview(previewFile)}
               />
             ) : (
               <div className="flex h-48 flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card text-xs text-muted-foreground">
@@ -286,6 +298,17 @@ export default function UiImageField({
       </Dialog>
     </div>
   );
+
+  function retryPreview(file: TrackingAttachment) {
+    const key = attachmentPreviewKey(file);
+    if (!key) return;
+    const attempted = previewRetries.current.has(key);
+    previewRetries.current.add(key);
+    setPreviewCache((current) => ({
+      ...current,
+      [key]: { url: '', attempted },
+    }));
+  }
 }
 
 function attachmentName(file: TrackingAttachment, index: number): string {
@@ -297,6 +320,9 @@ function attachmentName(file: TrackingAttachment, index: number): string {
 }
 
 function attachmentUrl(file: TrackingAttachment): string {
+  // Feishu attachment URLs may be short-lived or require auth. Prefer resolving
+  // by file_token so the server can obtain a fresh temporary download URL.
+  if (textValue(file.file_token || file.fileToken || file.token).trim()) return '';
   const directUrl = textValue(
     file.url || file.download_url || file.downloadUrl || file.tmp_url || file.thumbnail_url || file.link,
   ).trim();
@@ -313,10 +339,9 @@ function resolvedAttachmentUrl(
   file: TrackingAttachment,
   previewCache: Record<string, { url: string; attempted: boolean }>,
 ): string {
-  const directUrl = attachmentUrl(file);
-  if (directUrl) return directUrl;
-  const key = attachmentPreviewKey(file);
-  return key ? previewCache[key]?.url || '' : '';
+  const cached = previewCache[attachmentPreviewKey(file)];
+  if (cached) return cached.url;
+  return attachmentUrl(file);
 }
 
 function canResolveAttachmentPreview(file: TrackingAttachment): boolean {

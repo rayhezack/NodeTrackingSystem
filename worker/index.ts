@@ -349,9 +349,8 @@ export default {
         const body = await request.json() as { attachment?: Record<string, unknown> };
         const attachment = body.attachment || {};
         const directUrl = firstText(attachment.url, attachment.download_url, attachment.downloadUrl, attachment.tmp_url);
-        if (directUrl) return json({ url: directUrl, source: 'direct' });
         const fileToken = firstText(attachment.file_token, attachment.fileToken, attachment.token);
-        if (!fileToken) return json({ url: '', reason: 'NO_PREVIEW_SOURCE' });
+        if (!fileToken) return json(directUrl ? { url: directUrl, source: 'direct' } : { url: '', reason: 'NO_PREVIEW_SOURCE' });
         const previewUrl = await getBitableMediaPreviewUrl(env, fileToken);
         return json(previewUrl ? { url: previewUrl, source: 'direct' } : { url: '', reason: 'STORAGE_LOOKUP_FAILED' });
       } catch (error) {
