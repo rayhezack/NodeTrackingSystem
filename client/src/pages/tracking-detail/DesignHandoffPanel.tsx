@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ClipboardList, Copy, Loader2 } from 'lucide-react';
+import { AlertCircle, ClipboardList, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { logger } from '@client/src/lib/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
@@ -11,6 +11,7 @@ import { buildParamClipboardText } from './param-designer/param-display.utils';
 import UiImageField from './UiImageField';
 import {
   getHandoffEvents,
+  getDesignBaseLinks,
   getHandoffPresentation,
   handoffTextValue,
   toAttachmentTextArray,
@@ -31,6 +32,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
   const selectedEvent = events.find((event) => event.recordId === selectedRecordId) || events[0];
   const selectedDetail = selectedEvent?.detail;
   const selectedEventRecordId = selectedEvent?.recordId;
+  const baseLinks = getDesignBaseLinks(selectedEvent?.source || detail.source);
 
   useEffect(() => {
     if (selectedEvent && selectedEvent.recordId !== selectedRecordId) {
@@ -108,6 +110,25 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
           <Copy className="h-3.5 w-3.5" />
           复制开发说明
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-y border-border/60 py-3">
+        <span className="text-xs font-medium">飞书 Base 设计数据</span>
+        <Button asChild variant="outline" size="sm" className="h-8 rounded-sm">
+          <a href={baseLinks.design} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-3.5 w-3.5" />
+            打开埋点设计表
+          </a>
+        </Button>
+        <Button asChild variant="outline" size="sm" className="h-8 rounded-sm">
+          <a href={baseLinks.params} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-3.5 w-3.5" />
+            打开设计参数表
+          </a>
+        </Button>
+        <p className="w-full text-xs text-muted-foreground">
+          打开后按当前 evt_id「{selectedEvent?.evtId || '未填写'}」查找；复制开发说明会包含表格链接。AI 读取需具备飞书 Base 访问权限。
+        </p>
       </div>
 
       {events.length > 1 && (
@@ -239,7 +260,12 @@ function LongSpec({ label, value }: { label: string; value: string }) {
 }
 
 function buildDesignHandoffText(detail: TrackingDetail | TrackingDetailSnapshot, params: ParamDetail[]): string {
+  const baseLinks = getDesignBaseLinks(detail.source);
   const lines = [
+    `埋点设计表：${baseLinks.design}`,
+    `设计参数明细表：${baseLinks.params}`,
+    `请在以上设计数据表中按 evt_id「${detail.evtId || '-'}」查找当前事件及其参数。`,
+    '',
     `埋点开发说明：${detail.evtId || '-'}`,
     `事件名：${detail.eventName || '-'}`,
     `优先级：${detail.priority || handoffTextValue(detail.designFields['优先级']) || '-'}`,

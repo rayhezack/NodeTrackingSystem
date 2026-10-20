@@ -1,6 +1,7 @@
 import type {
   RelatedTrackingEvent,
   TrackingAttachment,
+  TrackingSource,
   TrackingDetail,
   TrackingDetailSnapshot,
 } from '@shared/api.interface';
@@ -149,4 +150,16 @@ function isPreviewableUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Public Base navigation addresses for design data (not the official query library).
+export function getDesignBaseLinks(source: TrackingSource) {
+  const config = source === 'web'
+    ? { appToken: 'EX4RbTvp9agYNws6PIHcKD20nqf', designTable: 'tblsFFvYkTPkabFT', paramTable: 'tblMaw89yVi68YY6' }
+    : { appToken: 'Kgy0b4bvmaJSK8sjQDscUrNJnOf', designTable: 'tblqHhr5aZwr4QOZ', paramTable: 'tblesT69TDCUKzhs' };
+  const baseUrl = `https://bcn0tgplxp2e.feishu.cn/base/${config.appToken}`;
+  return {
+    design: `${baseUrl}?table=${config.designTable}`,
+    params: `${baseUrl}?table=${config.paramTable}`,
+  };
 }
