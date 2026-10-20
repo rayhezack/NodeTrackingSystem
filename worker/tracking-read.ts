@@ -371,6 +371,7 @@ function toParamDetail(record: BitableRecord, source: TrackingSource): ParamDeta
     triggerCondition: cellText(record.record['条件说明']),
     enumRange: cellText(record.record['枚举/取值范围']),
     definition: cellText(record.record['参数定义']),
+      requestNotes: cellText(record.record['本次需求说明']),
     defaultValue: cellText(record.record['默认值/示例']),
     example: cellText(record.record['默认值/示例']),
     platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),

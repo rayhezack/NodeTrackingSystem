@@ -47,6 +47,7 @@ const defaultForm = (evtId: string, source: TrackingSource): CreateParamRequest 
   definition: '',
   defaultValue: '',
   example: '',
+  requestNotes: '',
   platform: source === 'web' ? 'Web通用' : 'App通用',
   status: '草稿',
   changeType: '新增',
@@ -77,6 +78,7 @@ const ParamFormDialog = ({
         definition: initialData.definition,
         defaultValue: initialData.defaultValue,
         example: initialData.example,
+        requestNotes: initialData.requestNotes || '',
         platform: normalizePlatformValue(initialData.platform, source),
         status: initialData.status || '草稿',
         changeType: initialData.changeType || '修改',
@@ -227,7 +229,7 @@ const ParamFormDialog = ({
               className={textareaCls}
               value={form.definition || ''}
               onChange={(e) => updateField('definition', e.target.value)}
-              placeholder="参数的详细定义说明..."
+              placeholder="参数长期稳定的业务含义，不包含本次需求特有场景"
             />
           </FormField>
 
@@ -238,6 +240,15 @@ const ParamFormDialog = ({
               onChange={(e) => updateField('example', e.target.value)}
               placeholder="参数值示例..."
             />
+          </FormField>
+          <FormField label="本次需求说明" className="sm:col-span-2 lg:col-span-3">
+            <Textarea
+              className={textareaCls}
+              value={form.requestNotes || ''}
+              onChange={(e) => updateField('requestNotes', e.target.value)}
+              placeholder="本次新增取值、使用场景、触发与验收口径；不作为正式参数定义"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">仅保留在本需求中，归档不写入正式参数，后续复用不继承。</p>
           </FormField>
         </div>
 

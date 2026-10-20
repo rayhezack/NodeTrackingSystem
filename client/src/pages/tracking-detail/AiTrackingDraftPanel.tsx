@@ -549,7 +549,7 @@ const AiTrackingDraftPanel = ({
                                   <td className="px-3 py-2">{param.requiredRule}</td>
                                   <td className="px-3 py-2">{param.triggerCondition || '-'}</td>
                                   <td className="px-3 py-2">{param.platform || '-'}</td>
-                                  <td className="max-w-64 px-3 py-2">{param.definition}{param.uncertainties.length > 0 && <div className="mt-1 whitespace-pre-wrap text-amber-700">待确认：{param.uncertainties.join('\n')}</div>}</td>
+                                  <td className="max-w-64 px-3 py-2">{param.definition}{param.requestNotes && <div className="mt-1 whitespace-pre-wrap text-muted-foreground">本次需求说明：{param.requestNotes}</div>}{param.uncertainties.length > 0 && <div className="mt-1 whitespace-pre-wrap text-amber-700">待确认：{param.uncertainties.join('\n')}</div>}</td>
                                   <td className="max-w-64 whitespace-pre-wrap px-3 py-2">{param.enumRange || '-'}</td>
                                   <td className="px-3 py-2">{param.defaultValue || '-'}</td>
                                   <td className="px-3 py-2">{param.example || '-'}</td>

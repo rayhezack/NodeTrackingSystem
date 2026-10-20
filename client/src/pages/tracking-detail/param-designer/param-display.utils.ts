@@ -35,6 +35,7 @@ export function buildParamClipboardText(
     `- 枚举/取值范围：${item.enumRange || '-'}`,
     `- 条件说明：${item.triggerCondition || '-'}`,
     `- 示例：${item.example || item.defaultValue || '-'}`,
+    ...(item.requestNotes ? [`- 本次需求说明：${item.requestNotes}`] : []),
   ]);
 
   return [title, ...lines].join('\n');

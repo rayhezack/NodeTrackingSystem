@@ -203,7 +203,7 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({
         code: 0,
-        data: { items: [{ record_id: 'param-1', fields: { evt_id: 'home_show', '参数名': 'page_id', '来源设计记录ID': 'rec-1' } }], has_more: false },
+        data: { items: [{ record_id: 'param-1', fields: { evt_id: 'home_show', '参数名': 'page_id', '来源设计记录ID': 'rec-1', '本次需求说明': '仅本需求可见' } }], has_more: false },
       }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }));
@@ -220,6 +220,8 @@ describe('PolloCloud tracking write service', () => {
       '源事件记录ID': 'rec-1',
     }));
     expect(String(fetchMock.mock.calls[8][0])).toContain('/tables/tblEYv9lGZeenbT2/records/batch_create');
+    expect(JSON.parse(String(fetchMock.mock.calls[8][1]?.body)).records[0].fields).not.toHaveProperty('本次需求说明');
+    expect(String(fetchMock.mock.calls[8][1]?.body)).not.toContain('仅本需求可见');
     expect(JSON.parse(String(fetchMock.mock.calls[8][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
       '参数主键': 'home_show.page_id',
       '关联事件': ['official-1'],

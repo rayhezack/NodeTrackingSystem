@@ -140,6 +140,7 @@ const PARAM_BASE_FIELDS = [
   '枚举字典',
   '参数定义',
   '默认值/示例',
+  '本次需求说明',
   '参数状态',
   '版本',
   '变更类型',
@@ -810,6 +811,7 @@ export class TrackingService {
             definition: param.definition,
             defaultValue: param.defaultValue,
             example: param.example,
+            requestNotes: param.requestNotes,
             platform: param.platform,
             status: '草稿',
             changeType: event.changeType,
@@ -2388,6 +2390,7 @@ export class TrackingService {
       triggerCondition: cellText(record.record['条件说明']),
       enumRange: cellText(record.record['枚举/取值范围']),
       definition: cellText(record.record['参数定义']),
+      requestNotes: cellText(record.record['本次需求说明']),
       defaultValue: cellText(record.record['默认值/示例']),
       example: cellText(record.record['默认值/示例']),
       platform: normalizeParamApplicability(cellText(record.record[source === 'web' ? 'Web适用性' : 'App适用性']), source),
@@ -2409,6 +2412,7 @@ export class TrackingService {
       条件说明: body.triggerCondition || '',
       '枚举/取值范围': body.enumRange || '',
       参数定义: body.definition || '',
+      本次需求说明: body.requestNotes || '',
       '默认值/示例': body.example || body.defaultValue || '',
       [platformField]: normalizeParamApplicability(body.platform, source),
       参数状态: normalizeParamStatus(body.status),
@@ -4537,7 +4541,7 @@ function normalizeOfficialStatus(value?: string): string {
 }
 
 function hasApiParamFields(fields: Record<string, unknown>): boolean {
-  return ['paramName', 'paramType', 'required', 'requiredRule', 'triggerCondition', 'enumRange', 'definition', 'defaultValue', 'example', 'platform', 'status', 'version', 'changeType'].some((key) =>
+  return ['paramName', 'paramType', 'required', 'requiredRule', 'triggerCondition', 'enumRange', 'definition', 'requestNotes', 'defaultValue', 'example', 'platform', 'status', 'version', 'changeType'].some((key) =>
     Object.prototype.hasOwnProperty.call(fields, key),
   );
 }
@@ -4552,6 +4556,7 @@ function toParamPatch(fields: Partial<CreateParamRequest>, source: TrackingSourc
   }
   if (fields.triggerCondition !== undefined) patch['条件说明'] = fields.triggerCondition;
   if (fields.enumRange !== undefined) patch['枚举/取值范围'] = fields.enumRange;
+  if (fields.requestNotes !== undefined) patch['本次需求说明'] = fields.requestNotes;
   if (fields.definition !== undefined) patch['参数定义'] = fields.definition;
   if (fields.defaultValue !== undefined || fields.example !== undefined) {
     patch['默认值/示例'] = fields.example || fields.defaultValue || '';

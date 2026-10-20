@@ -108,6 +108,7 @@ const ParamSpecTable = ({
               </TableCell>
               <TableCell className="whitespace-normal align-top">
                 <TextBlock value={item.definition} fallback="未填写参数定义" />
+                {item.requestNotes && <div className="mt-2"><SpecLine label="本次需求说明" value={item.requestNotes} /></div>}
               </TableCell>
               <TableCell className="whitespace-normal align-top">
                 <div className="space-y-2">

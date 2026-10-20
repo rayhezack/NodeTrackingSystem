@@ -143,7 +143,7 @@ export async function applyAiDraftEvents(
   const paramRecords = targets.flatMap(({ event, id }) => event.params.map((param) => toParamRecord(ref.source, id, event.evtId, event.version, {
     evtId: event.evtId, paramName: param.paramName, paramType: param.paramType, required: ['必传', '条件必传'].includes(param.requiredRule),
     requiredRule: param.requiredRule, triggerCondition: param.triggerCondition, enumRange: param.enumRange, definition: param.definition,
-    defaultValue: param.defaultValue, example: param.example, platform: param.platform, status: '草稿', version: event.version, changeType: event.changeType,
+    defaultValue: param.defaultValue, example: param.example, requestNotes: param.requestNotes, platform: param.platform, status: '草稿', version: event.version, changeType: event.changeType,
   })));
   if (paramRecords.length) {
     const createdParams = await createBitableRecords(credentials, paramKey(ref.source), paramRecords, fetchImpl);
@@ -1118,14 +1118,14 @@ function toParamRecord(source: TrackingSource, designId: string, fallbackEvtId: 
   return {
     evt_id: evtId, 参数名: text(body.paramName), 数据类型: normalizeParamType(body.paramType),
     必传规则: normalizeRequiredRule(body.requiredRule, body.required), 条件说明: text(body.triggerCondition),
-    '枚举/取值范围': text(body.enumRange), 参数定义: text(body.definition), '默认值/示例': text(body.example || body.defaultValue),
+    '枚举/取值范围': text(body.enumRange), 参数定义: text(body.definition), 本次需求说明: text(body.requestNotes), '默认值/示例': text(body.example || body.defaultValue),
     [source === 'web' ? 'Web适用性' : 'App适用性']: normalizeApplicability(body.platform, source), 参数状态: normalizeParamStatus(body.status),
     版本: version || '1.0.0', 变更类型: normalizeChangeType(body.changeType), 来源设计记录ID: designId, 关联设计: [designId],
   };
 }
 
 function toParamPatch(source: TrackingSource, fields: Record<string, unknown>): Record<string, unknown> {
-  const apiNames = ['evtId', 'paramName', 'paramType', 'required', 'requiredRule', 'triggerCondition', 'enumRange', 'definition', 'defaultValue', 'example', 'platform', 'status', 'changeType'];
+  const apiNames = ['evtId', 'paramName', 'paramType', 'required', 'requiredRule', 'triggerCondition', 'enumRange', 'definition', 'requestNotes', 'defaultValue', 'example', 'platform', 'status', 'changeType'];
   if (!apiNames.some((name) => name in fields)) return { ...fields };
   const value = fields as Partial<CreateParamRequest>;
   const patch: Record<string, unknown> = {};
@@ -1135,6 +1135,7 @@ function toParamPatch(source: TrackingSource, fields: Record<string, unknown>): 
   if (value.required !== undefined || value.requiredRule !== undefined) patch['必传规则'] = normalizeRequiredRule(value.requiredRule, value.required);
   if (value.triggerCondition !== undefined) patch['条件说明'] = value.triggerCondition;
   if (value.enumRange !== undefined) patch['枚举/取值范围'] = value.enumRange;
+  if (value.requestNotes !== undefined) patch['本次需求说明'] = value.requestNotes;
   if (value.definition !== undefined) patch['参数定义'] = value.definition;
   if (value.example !== undefined || value.defaultValue !== undefined) patch['默认值/示例'] = value.example || value.defaultValue || '';
   if (value.platform !== undefined) patch[source === 'web' ? 'Web适用性' : 'App适用性'] = normalizeApplicability(value.platform, source);
@@ -1149,7 +1150,7 @@ function toParamDetail(source: TrackingSource, id: string, record: Record<string
   const paramName = text(record['参数名']);
   return { recordId: scopedId(source, id), paramKey: text(record['设计参数主键']) || `${evtId}.${paramName}`, evtId, paramName,
     paramType: text(record['数据类型']) || 'STRING', required: rule === '必传' || rule === '条件必传', requiredRule: normalizeRequiredRule(rule),
-    triggerCondition: text(record['条件说明']), enumRange: text(record['枚举/取值范围']), definition: text(record['参数定义']),
+    triggerCondition: text(record['条件说明']), enumRange: text(record['枚举/取值范围']), definition: text(record['参数定义']), requestNotes: text(record['本次需求说明']),
     defaultValue: text(record['默认值/示例']), example: text(record['默认值/示例']),
     platform: normalizeApplicability(record[source === 'web' ? 'Web适用性' : 'App适用性'], source), status: text(record['参数状态']) || '草稿',
     version: text(record['版本']), changeType: text(record['变更类型']) || '新增' };

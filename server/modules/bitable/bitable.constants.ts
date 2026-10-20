@@ -667,6 +667,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
       writeable: true,
     },
     {
+      id: 'fld1ETeoBf',
+      name: '本次需求说明',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
       id: 'fldSheG80P',
       name: '默认值/示例',
       type: 1,
@@ -1522,6 +1530,14 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     {
       id: 'fldK4NfHfC',
       name: '参数定义',
+      type: 1,
+      bizType: 'Text',
+      readable: true,
+      writeable: true,
+    },
+    {
+      id: 'fldWoBQoL1',
+      name: '本次需求说明',
       type: 1,
       bizType: 'Text',
       readable: true,

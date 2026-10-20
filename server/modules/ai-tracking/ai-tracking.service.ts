@@ -40,6 +40,7 @@ const modelParamSchema = z.object({
   definition: z.string().default(''),
   defaultValue: z.string().default(''),
   example: z.string().default(''),
+  requestNotes: z.string().default(''),
   platform: z.string().default(''),
   uncertainties: z.array(z.string()).default([]),
 });
@@ -377,6 +378,7 @@ export class AiTrackingService {
         definition: param.definition.trim() || '待人工确认',
         defaultValue: param.defaultValue.trim(),
         example: param.example.trim(),
+        requestNotes: param.requestNotes.trim(),
         platform: normalizeParamPlatform(param.platform, source),
         source: 'ai' as const,
         uncertainties: param.uncertainties,

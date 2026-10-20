@@ -388,6 +388,8 @@ export interface ParamDetail {
   status: string;
   version: string;
   changeType: string;
+  /** 仅属于当前需求，不进入正式参数定义或被复用继承。 */
+  requestNotes?: string;
 }
 
 export interface GetParamsResponse {
@@ -413,6 +415,8 @@ export interface CreateParamRequest {
   changeType?: string;
   actorId?: string;
   actorLarkId?: string;
+  /** 仅属于当前需求，不进入正式参数定义或被复用继承。 */
+  requestNotes?: string;
 }
 
 export interface CreateParamResponse {
@@ -506,6 +510,8 @@ export interface AiTrackingDraftParam {
   source: AiDraftParamSource;
   changeSummary?: string;
   uncertainties: string[];
+  /** 仅属于当前需求，不进入正式参数定义或被复用继承。 */
+  requestNotes?: string;
 }
 
 export interface AiTrackingDraftEvent {
