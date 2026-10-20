@@ -4,25 +4,32 @@ import { logger } from '@client/src/lib/logger';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
-import { getParams } from '@client/src/api/tracking';
-import type { ParamDetail, TrackingDetail, TrackingDetailSnapshot } from '@shared/api.interface';
+import { getParams, getTrackingDetail, resolveUiImagePreview } from '@client/src/api/tracking';
+import type { ParamDetail, TrackingDetail } from '@shared/api.interface';
 import ParamSpecTable from './param-designer/ParamSpecTable';
-import { buildParamClipboardText } from './param-designer/param-display.utils';
+import { buildDevelopmentContext, loadDevelopmentContext } from './development-context';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@client/src/components/ui/dialog';
+import { Textarea } from '@client/src/components/ui/textarea';
 import UiImageField from './UiImageField';
 import {
   getHandoffEvents,
   getDesignBaseLinks,
   getHandoffPresentation,
   handoffTextValue,
-  toAttachmentTextArray,
   type HandoffEvent,
 } from './design-handoff.utils';
 
 interface DesignHandoffPanelProps {
   detail: TrackingDetail;
+  actorId?: string;
+  actorLarkId?: string;
 }
 
-const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
+const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanelProps) => {
+  const [copying, setCopying] = useState(false);
+  const copyBusy = useRef(false);
+  const [copyProgress, setCopyProgress] = useState('');
+  const [copyFallback, setCopyFallback] = useState('');
   const events = useMemo(() => getHandoffEvents(detail), [detail]);
   const [selectedRecordId, setSelectedRecordId] = useState(detail.recordId);
   const [items, setItems] = useState<ParamDetail[]>([]);
@@ -73,12 +80,29 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
   );
 
   const handleCopy = async () => {
+    if (copyBusy.current) return;
+    copyBusy.current = true;
+    setCopying(true);
+    setCopyProgress('读取整份需求…');
     try {
-      if (!selectedDetail) return;
-      await copyText(buildDesignHandoffText(selectedDetail, items));
-      toast.success('研发对接说明已复制');
-    } catch {
-      toast.error('复制失败，请手动选择复制');
+      const context = await loadDevelopmentContext(detail.recordId, {
+        detail: async (id) => (await getTrackingDetail(id, actorId, actorLarkId)).data,
+        params: (id) => getParams(id, true),
+        preview: async (attachment) => (await resolveUiImagePreview({ attachment })).url,
+      }, (done, total) => setCopyProgress(`整理事件 ${done}/${total}…`));
+      const text = buildDevelopmentContext(context.detail, context.events);
+      try {
+        await copyText(text);
+        toast.success(`已复制整份需求：${context.events.length} 个事件、${context.events.reduce((sum, event) => sum + event.params.length, 0)} 条参数`);
+      } catch {
+        setCopyFallback(text);
+        toast.info('完整内容已生成，请点击复制或全选复制');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '读取整份需求失败，请重试');
+    } finally {
+      copyBusy.current = false;
+      setCopying(false);
     }
   };
 
@@ -93,7 +117,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
               {events.length} 个事件
             </Badge>
             <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
-              {items.length} 个参数
+              当前事件 {items.length} 个参数
             </Badge>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -105,10 +129,10 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
           size="sm"
           className="h-8 rounded-sm"
           onClick={handleCopy}
-          disabled={loading}
+          disabled={copying}
         >
-          <Copy className="h-3.5 w-3.5" />
-          复制开发说明
+          {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+          {copying ? copyProgress : `复制整份需求开发说明（${events.length} 个事件）`}
         </Button>
       </div>
 
@@ -130,6 +154,19 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
           打开后按当前 evt_id「{selectedEvent?.evtId || '未填写'}」查找；复制开发说明会包含表格链接。AI 读取需具备飞书 Base 访问权限。
         </p>
       </div>
+
+      <Dialog open={Boolean(copyFallback)} onOpenChange={(open) => !open && setCopyFallback('')}>
+        <DialogContent className="max-w-4xl rounded-sm">
+          <DialogHeader>
+            <DialogTitle>整份需求开发上下文</DialogTitle>
+            <DialogDescription>浏览器未允许自动复制。可点击下方按钮，或全选文本后复制。</DialogDescription>
+          </DialogHeader>
+          <Textarea aria-label="整份需求开发上下文" readOnly value={copyFallback} className="h-[55vh] font-mono text-xs" />
+          <Button onClick={() => copyText(copyFallback).then(() => toast.success('整份需求已复制')).catch(() => toast.error('请在文本框中全选后复制'))}>
+            <Copy className="h-3.5 w-3.5" />复制全部内容
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {events.length > 1 && (
         <div className="border-y border-border/60 bg-card/70 py-3">
@@ -156,6 +193,7 @@ const DesignHandoffPanel = ({ detail }: DesignHandoffPanelProps) => {
       <div className="grid gap-4 border-b border-border/60 pb-4 md:grid-cols-3">
         <LongSpec label="事件定义" value={handoffTextValue(selectedDetail?.designFields['事件定义'])} />
         <LongSpec label="触发时机" value={handoffTextValue(selectedDetail?.designFields['触发时机'])} />
+        <LongSpec label="本次需求补充说明" value={handoffTextValue(selectedDetail?.designFields['本次需求补充说明'])} />
         <LongSpec label="公共属性要求" value={handoffTextValue(selectedDetail?.designFields['公共属性要求'])} />
       </div>
 
@@ -259,33 +297,6 @@ function LongSpec({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buildDesignHandoffText(detail: TrackingDetail | TrackingDetailSnapshot, params: ParamDetail[]): string {
-  const baseLinks = getDesignBaseLinks(detail.source);
-  const lines = [
-    `埋点设计表：${baseLinks.design}`,
-    `设计参数明细表：${baseLinks.params}`,
-    `请在以上设计数据表中按 evt_id「${detail.evtId || '-'}」查找当前事件及其参数。`,
-    '',
-    `埋点开发说明：${detail.evtId || '-'}`,
-    `事件名：${detail.eventName || '-'}`,
-    `优先级：${detail.priority || handoffTextValue(detail.designFields['优先级']) || '-'}`,
-    `端：${handoffTextValue(detail.designFields['端']) || detail.platform || '-'}`,
-    `处理方：${handoffTextValue(detail.designFields['处理方']) || '-'}`,
-    `版本：${handoffTextValue(detail.designFields['版本']) || '-'}`,
-    `最低版本：${handoffTextValue(detail.designFields['最低版本']) || '-'}`,
-    `变更类型：${handoffTextValue(detail.designFields['变更类型']) || '-'}`,
-    '',
-    `事件定义：${handoffTextValue(detail.designFields['事件定义']) || '-'}`,
-    `触发时机：${handoffTextValue(detail.designFields['触发时机']) || '-'}`,
-    `公共属性要求：${handoffTextValue(detail.designFields['公共属性要求']) || '-'}`,
-    `UI图：${toAttachmentTextArray(detail.designFields['UI图']).join('、') || '-'}`,
-    `UI图对应网页链接：${handoffTextValue(detail.designFields['UI图对应网页链接']) || '-'}`,
-    '',
-    buildParamClipboardText(params, detail.source, '参数说明'),
-  ];
-  return lines.join('\n');
-}
-
 function formatPlatform(value: string): string {
   const normalized = value.trim();
   if (!normalized) return '未指定端';
@@ -306,6 +317,9 @@ async function copyText(text: string): Promise<void> {
   textarea.style.opacity = '0';
   document.body.appendChild(textarea);
   textarea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textarea);
+  try {
+    if (!document.execCommand('copy')) throw new Error('Clipboard unavailable');
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }

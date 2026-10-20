@@ -200,6 +200,7 @@ const WEB_DEPRECATED_PARAM_FIELDS: BitableFieldConfig[] = [
 
 export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = {
   workbench: [
+    { id: 'fldqlyAung', name: '本次需求补充说明', type: 1, bizType: 'Text', readable: true, writeable: true },
     {
       id: 'fldg05KBjv',
       name: '需求ID',
@@ -1101,6 +1102,7 @@ export const BITABLE_FIELDS: Record<BitableInstanceKey, BitableFieldConfig[]> = 
     },
   ],
   webWorkbench: [
+    { id: 'fldCJrE5RR', name: '本次需求补充说明', type: 1, bizType: 'Text', readable: true, writeable: true },
     {
       id: 'fldek7LT1q',
       name: '需求ID',

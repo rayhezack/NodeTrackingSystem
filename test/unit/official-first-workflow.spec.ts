@@ -88,7 +88,7 @@ describe('official-first workflow', () => {
     const param = { paramName: 'field_0', paramType: 'STRING', requiredRule: '条件必传', triggerCondition: '卡片有标识时', enumRange: 'show_case\nnew_value // 待确认', definition: '历史正式参数', defaultValue: '', example: 'show_case', platform: 'Web通用', source: 'ai' as const, uncertainties: [] };
     const events = enforceGovernance([draft({ params: [param, { ...param, paramName: 'page_name' }] })], library, plan);
     expect(events[0].params.some((item) => item.paramName === 'page_name')).toBe(false);
-    expect(events[0].commonProps).toContain('page_name');
+    expect(events[0].commonProps).toBe(library.events.find((event) => event.evtId === 'creation_template_view')!.commonProps);
     expect(events[0].params[0].enumRange).toBe('show_case\nnew_value');
     expect(events[0].params[0].uncertainties.join(' ')).toMatch(/草稿.*new_value/);
     expect(governanceReport(library, plan, events).checks.find((check) => check.name === '枚举和新增参数')?.status).toBe('pending');
@@ -101,6 +101,35 @@ describe('official-first workflow', () => {
     expect(() => enforceGovernance([{ ...base, params: [{ ...base.params[0], paramType: 'INTEGER' }] }], library, plan)).toThrow('类型冲突');
     expect(() => enforceGovernance([{ ...base, params: [{ ...base.params[0], triggerCondition: '' }] }], library, plan)).toThrow('条件冲突');
     expect(() => enforceGovernance([{ ...base, params: [base.params[0], base.params[0]] }], library, plan)).toThrow('重复参数');
+  });
+
+  it('preserves reused metadata and parameter definitions while retaining proposals only in request notes', async () => {
+    const library = await snapshot();
+    const formal = library.events.find((event) => event.evtId === 'creation_template_view')!;
+    formal.eventDefinition = '通用模板曝光';
+    formal.commonProps = 'page_name';
+    formal.handler = '前端';
+    formal.version = '1.0';
+    const plan = normalizeReusePlan(planFor(), library);
+    const base = enforceGovernance([draft()], library, plan)[0];
+    const result = enforceGovernance([{ ...base, eventName: 'Motion 新模板曝光', eventDefinition: '仅 Motion 页面',
+      triggerTiming: '悬停 Remix 时', commonProps: 'new_prop', version: '2.0', requestNotes: '本需求位置：右侧瀑布流',
+      params: [{ ...base.params[0], definition: '仅本项目按钮名称', example: '本需求新增 remix', defaultValue: 'remix',
+        enumRange: 'remix', requestNotes: '点击后未提交也记录' }],
+    }], library, plan)[0];
+    expect(result).toMatchObject({ eventName: formal.eventName, eventDefinition: formal.eventDefinition,
+      triggerTiming: formal.triggerTiming, commonProps: formal.commonProps, version: formal.version });
+    expect(result.requestNotes).toContain('本需求位置：右侧瀑布流');
+    expect(result.requestNotes).toContain('悬停 Remix 时');
+    expect(result.params[0]).toMatchObject({ definition: '历史正式参数', example: '', defaultValue: '',
+      enumRange: 'show_case\nremix', source: 'official_modified' });
+    expect(result.params[0].requestNotes).toContain('点击后未提交也记录');
+    expect(result.params[0].requestNotes).toContain('仅本项目按钮名称');
+    const applied = enforceGovernance([result], library, plan)[0];
+    expect(applied.requestNotes).toBe(result.requestNotes);
+    expect(applied.params[0]).toEqual(result.params[0]);
+    expect(applied.eventDefinition).toBe(formal.eventDefinition);
+    expect(() => assertFreshGovernance({ ...governanceReport(library, plan, [result]), workflowVersion: 'official-first-v2' } as never, library)).toThrow('旧版');
   });
 
   it('treats BOOL and BOOLEAN as compatible while preserving the formal type', async () => {

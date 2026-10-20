@@ -515,6 +515,7 @@ export interface AiTrackingDraftParam {
 }
 
 export interface AiTrackingDraftEvent {
+  requestNotes?: string;
   clientId: string;
   evtId: string;
   eventName: string;
@@ -580,7 +581,7 @@ export interface AiReuseDecision {
 }
 
 export interface AiGovernanceReport {
-  workflowVersion: 'official-first-v2';
+  workflowVersion: 'official-first-v3';
   source: TrackingSource;
   primaryBoard: string;
   secondaryBoard?: string;
@@ -626,6 +627,9 @@ export interface ApplyAiTrackingDraftResponse {
 
 // 正式查询库
 export interface OfficialEvent {
+  handler?: string;
+  commonProps?: string;
+  minVersion?: string;
   recordId: string;
   source: TrackingSource;
   evtId: string;

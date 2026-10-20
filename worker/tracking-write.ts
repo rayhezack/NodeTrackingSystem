@@ -76,7 +76,7 @@ const FIELD_PERMISSION: Record<string, PermissionKey> = {
   需求背景: 'canEditRequirement', 需求链接: 'canEditRequirement', '指标/使用场景': 'canEditRequirement',
   期望完成日期: 'canEditRequirement', 数据负责人: 'canEditRequirement', DS验收人: 'canEditRequirement',
   evt_id: 'canEditDesign', 事件中文名: 'canEditDesign', 事件定义: 'canEditDesign', 触发时机: 'canEditDesign',
-  UI图: 'canEditDesign', 'UI图对应网页链接': 'canEditDesign', 处理方: 'canEditDesign', 公共属性要求: 'canEditDesign',
+  本次需求补充说明: 'canEditDesign', UI图: 'canEditDesign', 'UI图对应网页链接': 'canEditDesign', 处理方: 'canEditDesign', 公共属性要求: 'canEditDesign',
   版本: 'canEditDesign', 最低版本: 'canEditDesign', 变更类型: 'canEditDesign', 优先级: 'canEditDesign', 端: 'canEditDesign',
   评审状态: 'canEditReview', 评审意见: 'canEditReview', 研发负责人: 'canEditDev', 埋点开发状态: 'canEditDev',
   DS验收状态: 'canEditAcceptance', DS验收证据: 'canEditAcceptance', DS验收时间: 'canEditAcceptance',
@@ -116,9 +116,9 @@ export async function applyAiDraftEvents(
     await updateBitableRecords(credentials, workbenchKey(ref.source), related.map((item) => ({ id: item.id, record: { 需求ID: requestId } })), fetchImpl);
   }
   const eventPatch = (event: AiTrackingDraftEvent): Record<string, unknown> => ({
-    evt_id: text(event.evtId), 事件中文名: text(event.eventName), 事件定义: text(event.eventDefinition), 触发时机: text(event.triggerTiming),
-    优先级: text(event.priority) || 'P1', 端: platformCell(event.platform, ref.source), 处理方: normalizeHandler(event.handler, ref.source),
-    公共属性要求: text(event.commonProps), 版本: text(event.version) || '待人工确认', 最低版本: text(event.minVersion) || text(event.version) || '待人工确认',
+    本次需求补充说明: text(event.requestNotes), evt_id: text(event.evtId), 事件中文名: text(event.eventName), 事件定义: text(event.eventDefinition), 触发时机: text(event.triggerTiming),
+    优先级: text(event.priority) || 'P1', 端: platformCell(event.platform, ref.source), 处理方: event.reuseSource ? event.handler : normalizeHandler(event.handler, ref.source),
+    公共属性要求: text(event.commonProps), 版本: event.reuseSource ? event.version : text(event.version) || '待人工确认', 最低版本: event.reuseSource ? event.minVersion : text(event.minVersion) || text(event.version) || '待人工确认',
     变更类型: normalizeChangeType(event.changeType), 流程阶段: '埋点设计', 评审状态: '草稿', 参数拆行状态: event.params.length ? '已拆行' : '未拆行',
   });
   const targets: Array<{ event: AiTrackingDraftEvent; id: string }> = [];

@@ -151,6 +151,7 @@ export const SIDEBAR_STAGES: StageConfig[] = [
       { key: 'platform', label: '端', type: 'select', baseField: '端', options: PLATFORM_OPTIONS },
       { key: 'eventDefinition', label: '事件定义', type: 'textarea', baseField: '事件定义', placeholder: '定义事件统计口径和边界...' },
       { key: 'triggerTiming', label: '触发时机', type: 'textarea', baseField: '触发时机', placeholder: '描述事件触发的具体时机...' },
+      { key: 'requestNotes', label: '本次需求补充说明', type: 'textarea', baseField: '本次需求补充说明', placeholder: '填写本需求的页面位置、新增取值、实施与验收要求；不改变正式定义和触发口径' },
       { key: 'uiImages', label: 'UI图', type: 'attachment', baseField: 'UI图', placeholder: '上传该埋点事件对应的 UI 截图、原型图或交互位置图' },
       { key: 'uiPageUrl', label: 'UI图对应网页链接', type: 'url', baseField: 'UI图对应网页链接', placeholder: '粘贴当前 UI 图对应的网页链接（可选）' },
       { key: 'handler', label: '处理方', type: 'select', baseField: '处理方', options: HANDLER_OPTIONS },

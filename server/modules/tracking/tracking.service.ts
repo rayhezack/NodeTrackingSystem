@@ -100,6 +100,7 @@ const WORKBENCH_FIELDS = [
   '变更类型',
   '处理方',
   '公共属性要求',
+  '本次需求补充说明',
   '参数拆行状态',
   '稳定归档时间',
   '创建时间',
@@ -246,6 +247,7 @@ const FIELD_PERMISSION_BY_STAGE_ID: Record<string, Record<string, PermissionKey>
     UI图: 'canEditDesign',
     'UI图对应网页链接': 'canEditDesign',
     处理方: 'canEditDesign',
+    本次需求补充说明: 'canEditDesign',
     公共属性要求: 'canEditDesign',
     版本: 'canEditDesign',
     最低版本: 'canEditDesign',
@@ -782,6 +784,8 @@ export class TrackingService {
       if (siblingEvents.length) {
         const siblingRecords = siblingEvents.map((event) => ({
           ...this.toSiblingEventRecord(source, currentRecord, requestId, requestName, event),
+          本次需求补充说明: event.requestNotes || '',
+          ...(event.reuseSource ? { 公共属性要求: event.commonProps, 版本: event.version, 最低版本: event.minVersion, 处理方: event.handler } : {}),
           参数拆行状态: event.params.length ? '已拆行' : '未拆行',
         }));
         const created = await this.bitable.batchAddRecords(workbench, siblingRecords);
@@ -838,6 +842,7 @@ export class TrackingService {
             触发时机: first.triggerTiming,
             处理方: first.handler,
             公共属性要求: first.commonProps,
+            本次需求补充说明: first.requestNotes || '',
             版本: first.version,
             最低版本: first.minVersion,
             变更类型: first.changeType,
@@ -1279,7 +1284,7 @@ export class TrackingService {
     };
   }
 
-  async getParams(recordId: string): Promise<GetParamsResponse> {
+  async getParams(recordId: string, includeInactive = false): Promise<GetParamsResponse> {
     const ref = parseScopedRecordId(recordId);
     const detail = await this.bitable.getRecord(workbenchKey(ref.source), ref.rawId);
     if (!detail) {
@@ -1289,7 +1294,7 @@ export class TrackingService {
     const evtId = cellText(detail.record['evt_id']);
     const paramRecords = await this.listParamsForDesign(ref.source, ref.rawId, evtId);
     const items = paramRecords
-      .filter((record) => !isRemovedDesignParam(record.record))
+      .filter((record) => includeInactive || !isRemovedDesignParam(record.record))
       .map((record) => this.toParamDetail(record, ref.source))
       .sort((a, b) => a.paramKey.localeCompare(b.paramKey));
 
@@ -2353,7 +2358,7 @@ export class TrackingService {
       dsAcceptor: dsAcceptor.items,
       dsAcceptorIds: dsAcceptor.ids,
       requirementFields,
-      designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
+      designFields: pickFields(record.record, ['evt_id', '事件中文名', '优先级', '端', '事件定义', '触发时机', '本次需求补充说明', 'UI图', 'UI图对应网页链接', '处理方', '公共属性要求', '版本', '最低版本', '变更类型', '参数拆行状态']),
       reviewFields: pickFields(record.record, ['评审状态', '评审意见']),
       devFields,
       acceptanceFields,

@@ -141,7 +141,7 @@ function getFieldSections(stageId: string, fields: StageConfig['fields']): Field
 
   if (stageId === 'design') {
     const base = createSection(groups.design, fields);
-    const definition = fields.filter((field) => ['eventDefinition', 'triggerTiming', 'commonProps'].includes(field.key));
+    const definition = fields.filter((field) => ['eventDefinition', 'triggerTiming', 'commonProps', 'requestNotes'].includes(field.key));
     const materials = fields.filter((field) => field.key === 'uiImages');
     const version = fields.filter((field) => ['version', 'minVersion', 'changeType'].includes(field.key));
     return [
@@ -408,7 +408,7 @@ const StageForm = ({
       )}
 
       {stageId === 'dev' && (
-        <DesignHandoffPanel detail={detail} />
+        <DesignHandoffPanel detail={detail} actorId={actorId} actorLarkId={actorLarkId} />
       )}
 
       <div className="space-y-5">

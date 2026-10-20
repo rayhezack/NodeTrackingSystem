@@ -274,10 +274,11 @@ export async function reuseOfficialTrackingEvent(
   }
 }
 
-export async function getParams(recordId: string): Promise<GetParamsResponse> {
+export async function getParams(recordId: string, includeInactive = false): Promise<GetParamsResponse> {
   try {
     const response = await axiosForBackend.get(
       `/api/tracking/records/${recordId}/params`,
+      { params: includeInactive ? { includeInactive: true } : undefined },
     );
     return response.data;
   } catch (error) {

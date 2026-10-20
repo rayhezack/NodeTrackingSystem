@@ -154,6 +154,20 @@ describe('PolloCloud tracking read service', () => {
     }]);
   });
 
+  it.each([false, true])('includes removed design parameters only for full export: %s', async (includeInactive) => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: { record_id: 'rec-1', fields: { evt_id: 'event' } } } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [
+        { record_id: 'p1', fields: { evt_id: 'event', 参数名: 'active', 来源设计记录ID: 'rec-1' } },
+        { record_id: 'p2', fields: { evt_id: 'event', 参数名: 'removed', 来源设计记录ID: 'rec-1', 参数状态: '废弃', 变更类型: '删除' } },
+        { record_id: 'p3', fields: { evt_id: 'other', 参数名: 'foreign', 来源设计记录ID: 'rec-other' } },
+      ], has_more: false } }));
+    const result = await getTrackingParams(credentials, 'app:rec-1', fetchMock as unknown as typeof fetch, includeInactive);
+    expect(result.total).toBe(includeInactive ? 2 : 1);
+    if (includeInactive) expect(result.items.find(item => item.paramName === 'removed')?.changeType).toBe('删除');
+  });
+
   it('loads design parameters linked to the selected event', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))

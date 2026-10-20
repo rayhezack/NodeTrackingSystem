@@ -349,6 +349,9 @@ describe('埋点参数 Base 回写', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0].paramName).toBe('active_param');
+    const exported = await service.getParams('app:rec_design', true);
+    expect(exported.items).toHaveLength(2);
+    expect(exported.items.some((item) => item.status === '废弃')).toBe(true);
   });
 
   it('删除参数时应真正删除设计参数记录，而不是写入废弃状态', async () => {

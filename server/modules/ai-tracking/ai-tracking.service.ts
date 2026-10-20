@@ -46,6 +46,7 @@ const modelParamSchema = z.object({
 });
 
 const modelEventSchema = z.object({
+  requestNotes: z.string().default(''),
   evtId: z.string().default(''),
   eventName: z.string().default(''),
   eventDefinition: z.string().default(''),
@@ -311,13 +312,13 @@ export class AiTrackingService {
     if (draft.status === 'failed') throw new BadRequestException('该草稿曾部分应用失败，请重新生成新版草稿后再操作');
 
     const selectedIds = new Set(body.selectedEventClientIds || draft.events.map((event) => event.clientId));
-    const events = draft.events.filter((event) => selectedIds.has(event.clientId));
+    let events = draft.events.filter((event) => selectedIds.has(event.clientId));
     if (!events.length) throw new BadRequestException('至少选择一个埋点事件');
     assertNoRequestDuplicates(detail, events);
     const snapshot = await this.queryLibrary.getGovernanceSnapshot(detail.source);
     try {
       const plan = assertFreshGovernance(draft.governance, snapshot);
-      enforceGovernance(events, snapshot, { ...plan, decisions: plan.decisions.filter(item => events.some(event => event.evtId === item.evtId)) });
+      events = enforceGovernance(events, snapshot, { ...plan, decisions: plan.decisions.filter(item => events.some(event => event.evtId === item.evtId)) });
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : '正式库校验失败');
     }
@@ -390,6 +391,7 @@ export class AiTrackingService {
       eventDefinition: input.eventDefinition.trim() || '待人工确认',
       triggerTiming: input.triggerTiming.trim() || '待人工确认',
       metricScenario: input.metricScenario,
+      requestNotes: input.requestNotes,
       priority: ['P0', 'P1', 'P2'].includes(input.priority) ? input.priority : 'P1',
       platform: normalizeEventPlatform(input.platform, source, requestPlatform),
       handler: normalizeEventHandler(input.handler, source),

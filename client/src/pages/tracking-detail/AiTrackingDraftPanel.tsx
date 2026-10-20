@@ -510,6 +510,7 @@ const AiTrackingDraftPanel = ({
                           <Spec label="处理方" value={event.handler} />
                           <Spec label="事件定义" value={event.eventDefinition} />
                           <Spec label="触发时机" value={event.triggerTiming} />
+                          <Spec label="本次需求补充说明" value={event.requestNotes || ''} />
                           <Spec label="公共属性要求" value={event.commonProps} />
                           <Spec label="版本" value={event.version} />
                           <Spec label="最低版本" value={event.minVersion} />

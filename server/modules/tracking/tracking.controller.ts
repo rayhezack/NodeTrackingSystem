@@ -148,8 +148,8 @@ export class TrackingController {
   }
 
   @Get('records/:recordId/params')
-  getParams(@Param('recordId') recordId: string) {
-    return this.trackingService.getParams(recordId);
+  getParams(@Param('recordId') recordId: string, @Query('includeInactive') includeInactive?: string) {
+    return this.trackingService.getParams(recordId, includeInactive === 'true');
   }
 
   @Post('records/:recordId/params')

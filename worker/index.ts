@@ -184,7 +184,7 @@ export default {
         }
         const trackingParamsMatch = url.pathname.match(/^\/api\/tracking\/records\/([^/]+)\/params$/);
         if (trackingParamsMatch) {
-          return json(await getTrackingParams(env, decodeURIComponent(trackingParamsMatch[1])));
+          return json(await getTrackingParams(env, decodeURIComponent(trackingParamsMatch[1]), fetch, url.searchParams.get('includeInactive') === 'true'));
         }
         const trackingDetailMatch = url.pathname.match(/^\/api\/tracking\/records\/([^/]+)$/);
         if (trackingDetailMatch) {

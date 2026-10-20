@@ -146,7 +146,7 @@ describe('AI 埋点草稿', () => {
       expect(model.generateJson).toHaveBeenCalledTimes(2);
       expect(model.generateJson.mock.calls[0][0][1].content).toContain("完整正式事件目录");
       expect(model.generateJson.mock.calls[1][0][1].content).toContain("完整公共属性");
-      expect(draft.governance?.workflowVersion).toBe("official-first-v2");
+      expect(draft.governance?.workflowVersion).toBe("official-first-v3");
       expect(draft.events[0].params[0].enumRange).toBe("home");
     }
   });
@@ -374,6 +374,23 @@ describe('AI 埋点草稿', () => {
     draft.governance = undefined;
     await expect(service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' })).rejects.toThrow('旧版');
     expect(tracking.applyAiDraftEvents).not.toHaveBeenCalled();
+  });
+
+  it('applies the governed result rather than an untrusted stored draft', async () => {
+    const { service, queryLibrary, tracking } = createFixture();
+    const { draft } = await service.generateDraft('app:rec_1', { actorId: 'actor_1' });
+    const formal = { recordId: 'app:formal', source: 'app' as const, evtId: draft.events[0].evtId,
+      eventName: '正式任务提交', eventDefinition: '通用任务提交', triggerTiming: '点击提交',
+      platform: 'iOS、Android', version: '1.0', status: '已上线', paramLink: '' };
+    const snapshot = await queryLibrary.getGovernanceSnapshot();
+    snapshot.events = [formal]; snapshot.contexts = [{ event: formal, params: [] }];
+    draft.governance!.decisions[0].decision = 'reuse';
+    draft.events[0].params = [];
+    draft.events[0].eventDefinition = '本需求 Motion 特定定义';
+    await service.applyDraft('app:rec_1', draft.id, { actorId: 'actor_1' });
+    expect(tracking.applyAiDraftEvents).toHaveBeenCalledWith('app:rec_1', [expect.objectContaining({
+      eventDefinition: '通用任务提交', triggerTiming: '点击提交', requestNotes: expect.stringContaining('本需求 Motion 特定定义'),
+    })], 'actor_1', undefined);
   });
 
   it('已有事件时必须新增同需求事件，不能覆盖当前事件', async () => {

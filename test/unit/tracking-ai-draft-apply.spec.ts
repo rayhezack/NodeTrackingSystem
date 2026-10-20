@@ -41,6 +41,7 @@ describe('AI 埋点草稿批量录入', () => {
       evtId: `agent_event_${eventIndex + 1}`,
       eventName: `Agent 事件 ${eventIndex + 1}`,
       eventDefinition: '事件定义',
+      requestNotes: '本需求右侧模板 Remix 点击',
       triggerTiming: '触发时机',
       metricScenario: '',
       priority: 'P0',
@@ -97,11 +98,12 @@ describe('AI 埋点草稿批量录入', () => {
       createdEventCount: 4,
       createdParamCount: 20,
     });
+    expect(bitable.batchUpdateRecords.mock.calls.some((call) => JSON.stringify(call).includes('本需求右侧模板 Remix 点击'))).toBe(true);
     expect(bitable.batchAddRecords).toHaveBeenCalledTimes(2);
     expect(bitable.batchAddRecords).toHaveBeenCalledWith(
       'webWorkbench',
       expect.arrayContaining([
-        expect.objectContaining({ evt_id: 'agent_event_2' }),
+        expect.objectContaining({ evt_id: 'agent_event_2', 本次需求补充说明: '本需求右侧模板 Remix 点击' }),
         expect.objectContaining({ evt_id: 'agent_event_4' }),
       ]),
     );
