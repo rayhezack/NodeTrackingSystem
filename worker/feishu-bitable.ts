@@ -69,7 +69,7 @@ export async function searchBitableRecords(
 export async function searchBitableRecordPage(
   env: FeishuCredentials,
   instance: BitableInstanceKey,
-  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string } = {},
+  options: { pageSize?: number; pageToken?: string; fieldNames?: readonly string[]; viewId?: string; filter?: { conjunction: 'and' | 'or'; conditions: Array<{ field_name: string; operator: string; value: string[] }> } } = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecordPage> {
   const config = BITABLE_INSTANCES[instance];
@@ -82,6 +82,7 @@ export async function searchBitableRecordPage(
   const body = {
     ...(options.fieldNames?.length ? { field_names: [...options.fieldNames] } : {}),
     ...(options.viewId ? { view_id: options.viewId } : {}),
+    ...(options.filter ? { filter: options.filter } : {}),
   };
   const response = await fetchImpl(
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/search?${query}`,

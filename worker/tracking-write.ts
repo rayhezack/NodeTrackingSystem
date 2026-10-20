@@ -330,9 +330,10 @@ export async function updateTrackingRecord(
   normalizeProgress(patch, current.record);
 
   const nextRecord = { ...current.record, ...patch };
-  const related = await listRelatedRecords(credentials, ref.source, current, fetchImpl);
-  const updates = new Map<string, Record<string, unknown>>([[ref.rawId, patch]]);
   const sharedPatch = pick(patch, SHARED_FIELDS);
+  const needsRelated = Object.keys(sharedPatch).length > 0 || body.targetStage || (body.stageId === 'design' && text(patch['评审状态']) === '评审中');
+  const related = needsRelated ? await listRelatedRecords(credentials, ref.source, current, fetchImpl) : [current];
+  const updates = new Map<string, Record<string, unknown>>([[ref.rawId, patch]]);
   if (Object.keys(sharedPatch).length) for (const item of related) if (item.id !== ref.rawId) updates.set(item.id, { ...(updates.get(item.id) || {}), ...sharedPatch });
   if (body.targetStage || (body.stageId === 'design' && text(patch['评审状态']) === '评审中')) {
     const workflowPatch = pick(patch, workflowFields(body.stageId));
@@ -643,7 +644,7 @@ function assertParamPermission(record: BitableRecord, actorId: string, configure
 }
 
 async function findPermissionRecord(credentials: WorkerCredentials, fetchImpl: FetchLike): Promise<BitableRecord | undefined> {
-  return (await listAll(credentials, 'workbench', fetchImpl)).find((item) => text(item.record.evt_id) === PERMISSION_RECORD_EVT_ID);
+  return (await listAll(credentials, 'workbench', fetchImpl, { conjunction: 'and', conditions: [{ field_name: 'evt_id', operator: 'is', value: [PERMISSION_RECORD_EVT_ID] }] })).find((item) => text(item.record.evt_id) === PERMISSION_RECORD_EVT_ID);
 }
 
 function emptyPermissionConfig(): PermissionConfig {
@@ -665,8 +666,9 @@ function parsePermissionConfig(value: unknown): PermissionConfig {
 }
 
 async function listRelatedRecords(credentials: WorkerCredentials, source: TrackingSource, current: BitableRecord, fetchImpl: FetchLike): Promise<BitableRecord[]> {
-  const all = await listAll(credentials, workbenchKey(source), fetchImpl);
   const requestId = text(current.record['需求ID']);
+  if (!requestId) return [current];
+  const all = await listAll(credentials, workbenchKey(source), fetchImpl, { conjunction: 'and', conditions: [{ field_name: '需求ID', operator: 'is', value: [requestId] }] });
   return all.filter((item) => item.id === current.id || (requestId && text(item.record['需求ID']) === requestId));
 }
 
@@ -677,11 +679,11 @@ async function listParams(credentials: WorkerCredentials, source: TrackingSource
   });
 }
 
-async function listAll(credentials: WorkerCredentials, instance: BitableInstanceKey, fetchImpl: FetchLike): Promise<BitableRecord[]> {
+async function listAll(credentials: WorkerCredentials, instance: BitableInstanceKey, fetchImpl: FetchLike, filter?: NonNullable<Parameters<typeof searchBitableRecordPage>[2]>['filter']): Promise<BitableRecord[]> {
   const records: BitableRecord[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < 20; page += 1) {
-    const result = await searchBitableRecordPage(credentials, instance, { pageSize: 500, pageToken }, fetchImpl);
+    const result = await searchBitableRecordPage(credentials, instance, { pageSize: 500, pageToken, filter }, fetchImpl);
     records.push(...result.records);
     if (!result.hasMore || !result.pageToken) return records;
     pageToken = result.pageToken;

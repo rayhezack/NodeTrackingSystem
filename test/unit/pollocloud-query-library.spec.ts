@@ -6,6 +6,39 @@ describe('PolloCloud query library', () => {
     resetFeishuTokenCache();
   });
 
+  it('reuses event scans across searches and expires snapshots after 30 seconds', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.includes('/auth/')) return jsonResponse({ code: 0, tenant_access_token: 'token', expire: 7200 });
+      return jsonResponse({ code: 0, data: { items: [], has_more: false } });
+    });
+    try {
+      await getOfficialEvents(credentials, {}, fetchMock as typeof fetch);
+      await getOfficialEvents(credentials, { keyword: 'scene' }, fetchMock as typeof fetch);
+      await getOfficialEvents(credentials, { keyword: 'click', pageToken: '20' }, fetchMock as typeof fetch);
+      expect(fetchMock.mock.calls.filter(([url]) => url.includes('/records/search'))).toHaveLength(2);
+      now.mockReturnValue(1_031_000);
+      await getOfficialEvents(credentials, { keyword: 'scene' }, fetchMock as typeof fetch);
+      expect(fetchMock.mock.calls.filter(([url]) => url.includes('/records/search'))).toHaveLength(4);
+    } finally { now.mockRestore(); }
+  });
+
+  it('deduplicates concurrent scans and retries a failed scan', async () => {
+    let fail = true;
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.includes('/auth/')) return jsonResponse({ code: 0, tenant_access_token: 'token', expire: 7200 });
+      if (fail) throw new Error('temporary failure');
+      return jsonResponse({ code: 0, data: { items: [], has_more: false } });
+    });
+    await expect(getOfficialEvents(credentials, {}, fetchMock as typeof fetch)).rejects.toThrow('temporary failure');
+    fail = false;
+    await Promise.all([
+      getOfficialEvents(credentials, {}, fetchMock as typeof fetch),
+      getOfficialEvents(credentials, {}, fetchMock as typeof fetch),
+    ]);
+    expect(fetchMock.mock.calls.filter(([url]) => url.includes('/records/search'))).toHaveLength(2);
+  });
+
   it('reads, filters and deduplicates official events from Feishu Base', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))

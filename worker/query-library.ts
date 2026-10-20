@@ -83,10 +83,12 @@ export async function getOfficialEvents(
   const offset = Math.max(Math.trunc(Number(params.pageToken) || 0), 0);
   const keyword = (params.keyword || '').trim().toLocaleLowerCase();
   const category = (params.category || '').trim();
-  const records = await searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, OFFICIAL_EVENT_VIEW_ID, fetchImpl);
-  const matchingParams = keyword
-    ? await searchAllRecords(credentials, officialParamDetailKey(source), officialParamFields(source), OFFICIAL_PARAM_VIEW_ID, fetchImpl)
-    : [];
+  const [records, matchingParams] = await Promise.all([
+    searchAllRecords(credentials, queryLibraryKey(source), OFFICIAL_FIELDS, OFFICIAL_EVENT_VIEW_ID, fetchImpl),
+    keyword
+      ? searchAllRecords(credentials, officialParamDetailKey(source), officialParamFields(source), OFFICIAL_PARAM_VIEW_ID, fetchImpl)
+      : Promise.resolve([]),
+  ]);
   const matchingEventIds = new Set<string>();
   const matchingRecordIds = new Set<string>();
   for (const param of matchingParams) {
@@ -184,7 +186,32 @@ export async function getOfficialEventContexts(
   });
 }
 
-async function searchAllRecords(
+// Short-lived snapshots avoid rescanning the same Base on every search/page/preview.
+// Authorization remains at the route; failed reads are never cached.
+const snapshotCaches = new WeakMap<FetchLike, Map<string, { expiresAt: number; pending: Promise<BitableRecord[]> }>>();
+
+function searchAllRecords(
+  credentials: FeishuCredentials,
+  instance: BitableInstanceKey,
+  fieldNames: readonly string[] | undefined,
+  viewId: string | undefined,
+  fetchImpl: FetchLike,
+): Promise<BitableRecord[]> {
+  if (!fieldNames) return readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl);
+  let cache = snapshotCaches.get(fetchImpl);
+  if (!cache) { cache = new Map(); snapshotCaches.set(fetchImpl, cache); }
+  const key = JSON.stringify([credentials.FEISHU_APP_ID, credentials.FEISHU_APP_SECRET, instance, fieldNames, viewId]);
+  const hit = cache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.pending;
+  for (const [key, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(key);
+  if (cache.size >= 32) cache.delete(cache.keys().next().value!);
+  const entry = { expiresAt: Date.now() + 30_000, pending: readAllRecords(credentials, instance, fieldNames, viewId, fetchImpl) };
+  cache.set(key, entry);
+  entry.pending.catch(() => { if (cache.get(key) === entry) cache.delete(key); });
+  return entry.pending;
+}
+
+async function readAllRecords(
   credentials: FeishuCredentials,
   instance: BitableInstanceKey,
   fieldNames: readonly string[] | undefined,

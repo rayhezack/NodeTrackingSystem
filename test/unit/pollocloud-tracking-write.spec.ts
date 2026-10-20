@@ -112,7 +112,6 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: workbenchRecord } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [workbenchRecord], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
 
     const result = await updateTrackingRecord(credentials, 'app:rec-1', {
@@ -121,8 +120,12 @@ describe('PolloCloud tracking write service', () => {
       actorId: 'forged-admin',
     }, 'data-owner', fetchMock as unknown as typeof fetch);
 
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).filter).toEqual({
+      conjunction: 'and', conditions: [{ field_name: 'evt_id', operator: 'is', value: ['__system_permissions__'] }],
+    });
     expect(result).toEqual({ success: true, recordId: 'app:rec-1', currentStage: '埋点设计' });
-    expect(JSON.parse(String(fetchMock.mock.calls[4][1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({
       records: [{ record_id: 'rec-1', fields: { '事件中文名': '新版首页曝光' } }],
     });
   });
@@ -152,6 +155,9 @@ describe('PolloCloud tracking write service', () => {
       },
     }, 'sunwen-1663469', fetchMock as unknown as typeof fetch);
 
+    expect(JSON.parse(String(fetchMock.mock.calls[4][1]?.body)).filter).toEqual({
+      conjunction: 'and', conditions: [{ field_name: '需求ID', operator: 'is', value: ['APP_REQ_1'] }],
+    });
     const updateBody = JSON.parse(String(fetchMock.mock.calls[5][1]?.body));
     expect(updateBody.records[0].fields['数据负责人']).toEqual([{ id: 'new-owner' }]);
     expect(JSON.parse(updateBody.records[0].fields['通知身份快照'])['数据负责人']).toEqual([{
@@ -192,7 +198,6 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: archivedRecord } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [archivedRecord], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-1', fields: {} }] } }))
@@ -208,14 +213,14 @@ describe('PolloCloud tracking write service', () => {
       fields: { '正式状态': '已上线' },
     }, 'data-owner', fetchMock as unknown as typeof fetch);
 
-    expect(String(fetchMock.mock.calls[6][0])).toContain('/tables/tblAhScEFQYAJC2g/records/batch_create');
-    expect(JSON.parse(String(fetchMock.mock.calls[6][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
+    expect(String(fetchMock.mock.calls[5][0])).toContain('/tables/tblAhScEFQYAJC2g/records/batch_create');
+    expect(JSON.parse(String(fetchMock.mock.calls[5][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
       evt_id: 'home_show',
       '状态': '已上线',
       '源事件记录ID': 'rec-1',
     }));
-    expect(String(fetchMock.mock.calls[9][0])).toContain('/tables/tblEYv9lGZeenbT2/records/batch_create');
-    expect(JSON.parse(String(fetchMock.mock.calls[9][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
+    expect(String(fetchMock.mock.calls[8][0])).toContain('/tables/tblEYv9lGZeenbT2/records/batch_create');
+    expect(JSON.parse(String(fetchMock.mock.calls[8][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
       '参数主键': 'home_show.page_id',
       '关联事件': ['official-1'],
     }));
@@ -236,7 +241,6 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: archivedRecord } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [archivedRecord], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'official-1', fields: { evt_id: 'home_show', '事件中文名': '正式首页曝光', 状态: '已上线' } }], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'design-param-1', fields: { evt_id: 'home_show', 参数名: 'page_id', 数据类型: 'NUMBER', 必传规则: '非必传', 参数定义: '设计稿误改定义', '枚举/取值范围': 'old // 原枚举\nnew // 新枚举', '来源设计记录ID': 'rec-1' } }], has_more: false } }))
@@ -313,7 +317,6 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: deprecatedDesign } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [deprecatedDesign], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [officialEvent], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [officialParam], has_more: false } }))
@@ -330,16 +333,16 @@ describe('PolloCloud tracking write service', () => {
       fields: { '正式状态': '已废弃' },
     }, 'data-owner', fetchMock as unknown as typeof fetch);
 
-    expect(String(fetchMock.mock.calls[9][0])).toContain('/tables/tblBioKXiaou302p/records/batch_create');
-    expect(JSON.parse(String(fetchMock.mock.calls[9][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
+    expect(String(fetchMock.mock.calls[8][0])).toContain('/tables/tblBioKXiaou302p/records/batch_create');
+    expect(JSON.parse(String(fetchMock.mock.calls[8][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
       废弃主键: 'home_show', 原工作台记录ID: 'rec-1', 原正式记录ID: 'official-1',
     }));
-    expect(String(fetchMock.mock.calls[11][0])).toContain('/tables/tbl3HA2sLaHuxRD1/records/batch_create');
-    expect(JSON.parse(String(fetchMock.mock.calls[11][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
+    expect(String(fetchMock.mock.calls[10][0])).toContain('/tables/tbl3HA2sLaHuxRD1/records/batch_create');
+    expect(JSON.parse(String(fetchMock.mock.calls[10][1]?.body)).records[0].fields).toEqual(expect.objectContaining({
       废弃参数主键: 'home_show.page_id', 原设计参数ID: 'param-1', 原正式参数ID: 'official-param-1', 参数状态: '已废弃',
     }));
-    expect(String(fetchMock.mock.calls[12][0])).toContain('/tables/tblEYv9lGZeenbT2/records/batch_delete');
-    expect(String(fetchMock.mock.calls[13][0])).toContain('/tables/tblAhScEFQYAJC2g/records/batch_delete');
+    expect(String(fetchMock.mock.calls[11][0])).toContain('/tables/tblEYv9lGZeenbT2/records/batch_delete');
+    expect(String(fetchMock.mock.calls[12][0])).toContain('/tables/tblAhScEFQYAJC2g/records/batch_delete');
   });
 });
 
