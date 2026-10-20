@@ -310,9 +310,9 @@ const AiTrackingDraftPanel = ({
 
   return (
     <>
-      <div className="border-y border-border bg-muted/20 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+      <div className="min-w-0 max-w-full overflow-hidden border-y border-border bg-muted/20 px-4 py-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 max-w-full flex-1 items-center gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
               <Bot className="h-4 w-4" />
             </div>
@@ -330,7 +330,7 @@ const AiTrackingDraftPanel = ({
                   </Badge>
                 )}
               </div>
-              <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              <div className="mt-0.5 min-w-0 max-w-full truncate text-xs text-muted-foreground" title={requirementLink || undefined}>
                 {requirementLink || '当前需求缺少 PRD 链接'}
               </div>
             </div>

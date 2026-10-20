@@ -322,7 +322,7 @@ const TrackingDetailPage = () => {
       </div>
 
       {/* 详情卡片 */}
-      <div className="overflow-hidden rounded-sm bg-card shadow-none">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-sm bg-card shadow-none">
         {/* 顶部信息栏 */}
         <DetailHeader detail={detail} />
 
@@ -347,7 +347,7 @@ const TrackingDetailPage = () => {
           />
 
           {/* 右侧内容区 */}
-          <div className="min-h-[500px] flex-1 border-t border-border/60 p-6 md:border-t-0 md:border-l md:border-border/60">
+          <div className="min-h-[500px] min-w-0 flex-1 border-t border-border/60 p-6 md:border-t-0 md:border-l md:border-border/60">
             <StageForm
               key={`${activeStage}-${detail.recordId}`}
               stageId={activeStage}
