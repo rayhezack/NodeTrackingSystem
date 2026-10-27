@@ -230,7 +230,7 @@ export async function deleteBitableRecords(
 
 export { resetFeishuTokenCache };
 
-const URL_FIELDS = new Set(['需求链接', 'UI图对应网页链接']);
+const URL_FIELDS = new Set(['需求链接', 'UI图对应网页链接', '参数明细入口']);
 
 function normalizeWorkerFields(fields: Record<string, unknown>): Record<string, unknown> {
   const normalized = { ...fields };

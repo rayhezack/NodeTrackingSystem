@@ -68,6 +68,7 @@ describe('PolloCloud Feishu bitable read client', () => {
     await createBitableRecords(credentials, 'workbench', [{
       需求链接: 'https://example.feishu.cn/wiki/prd_1',
       'UI图对应网页链接': [{ Link: 'https://example.com/design' }],
+      参数明细入口: 'https://example.feishu.cn/base/app?table=tbl_params',
     }], fetchMock as unknown as typeof fetch);
     await updateBitableRecords(credentials, 'workbench', [{
       id: 'rec-1',
@@ -78,6 +79,7 @@ describe('PolloCloud Feishu bitable read client', () => {
       records: [{ fields: {
         需求链接: { link: 'https://example.feishu.cn/wiki/prd_1', text: 'https://example.feishu.cn/wiki/prd_1' },
         'UI图对应网页链接': { link: 'https://example.com/design', text: 'https://example.com/design' },
+        参数明细入口: { link: 'https://example.feishu.cn/base/app?table=tbl_params', text: 'https://example.feishu.cn/base/app?table=tbl_params' },
       } }],
     });
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
