@@ -62,6 +62,21 @@ describe('persistent Base writer coordination using real SQLite constraints', ()
     await expect(reserveBaseCreates(db, 'webEnumDictionary', values)).rejects.toThrow('已记录');
     await expect(reserveBaseCreates(db, 'webEnumDictionary', [{ ...values[0], 枚举值: 'agent' }])).resolves.toHaveLength(1);
   });
+  it('handles a full 500-enum batch within D1 binding limits and rejects duplicates before writing', async () => {
+    const bounded: D1Database = { prepare(query: string) {
+      const statement = db.prepare(query);
+      return { ...statement, bind(...values: unknown[]) {
+        expect(values.length).toBeLessThanOrEqual(100);
+        return statement.bind(...values);
+      } };
+    } };
+    const values = Array.from({ length: 500 }, (_, index) => ({ evt_id: 'event', 参数名: 'mode', 枚举值: `value_${index}` }));
+    const claims = await reserveBaseCreates(bounded, 'webEnumDictionary', values);
+    await confirmBaseCreates(bounded, 'webEnumDictionary', claims, values.map((_, index) => `record_${index}`));
+    const row = await db.prepare('SELECT COUNT(*) AS count FROM tracking_base_keys WHERE record_id IS NOT NULL').first<{ count: number }>();
+    expect(row?.count).toBe(500);
+    await expect(reserveBaseCreates(db, 'webEnumDictionary', [values[0], values[0]])).rejects.toThrow('重复唯一键');
+  });
   it('covers parameter edits and AI apply, but does not block read endpoints or long AI generation', () => {
     expect(isBaseMutation('PATCH', '/api/tracking/records/web:a')).toBe(true);
     expect(isBaseMutation('POST', '/api/tracking/ai/records/web:a/drafts/d/apply')).toBe(true);
