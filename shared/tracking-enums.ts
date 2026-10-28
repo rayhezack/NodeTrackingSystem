@@ -21,6 +21,9 @@ export function parseTrackingEnums(input: string): EnumEntry[] {
   for (const line of lines.map((item) => item.trim()).filter(Boolean)) {
     const parts = line.match(/^(.+?)\s*(?:\/\/|#|：|:)\s*(.+)$/);
     const label = parts?.[2]?.trim() || '';
+    if (parts && /[:：]/.test(line) && !line.includes('//') && /^[A-Za-z][A-Za-z ]+$/.test(parts[1].trim()) && /^[a-z][a-z0-9_]+$/.test(label)) {
+      throw new TrackingEnumError(`枚举名称与机器码方向不明确，需确认：${line.slice(0, 100)}`);
+    }
     const values = (parts?.[1] || line).split(/[,，、]+/).map((value) => value.trim()).filter(Boolean);
     for (const [index, value] of values.entries()) {
       if (/\/\//.test(label) || /^(同|自由|任意|待确认|待人工确认|如[：:]|默认URL|当前|本次)/i.test(value)

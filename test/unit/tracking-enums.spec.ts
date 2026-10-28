@@ -8,8 +8,12 @@ describe('structured enum contract', () => {
       { value: 'director_create', label: '', definition: '' }, { value: 'TextToImage', label: '文本生图', definition: '文本生图' }, { value: 'AIPhotoEditor', label: '图片编辑', definition: '图片编辑' },
     ]);
   });
-  it.each(['同 form_type（EntryCodeType），如 TextToVideo', '任意字符串', '...'])('rejects an ambiguous description instead of inventing enum values: %s', (value) => {
+  it.each(['同 form_type（EntryCodeType），如 TextToVideo', '任意字符串', '...', '....', '......'])('rejects an ambiguous description instead of inventing enum values: %s', (value) => {
     expect(() => parseTrackingEnums(value)).toThrow('需要治理');
+  });
+  it('requires confirmation for display-name to machine-code mappings while accepting value-to-Chinese-label annotations', () => {
+    expect(() => parseTrackingEnums('AI Photo Editor：ai_photo_editor')).toThrow('方向不明确');
+    expect(parseTrackingEnums('detail：详情页')[0].value).toBe('detail');
   });
   it('uses only active dictionary rows linked to the actual formal parameter', () => {
     const rows = [
