@@ -42,7 +42,9 @@ describe('persistent Base writer coordination using real SQLite constraints', ()
   it('retains an uncertain write lock until an operator reconciles it, without unsafe lease takeover', async () => {
     await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 502 }));
     const blocked = jest.fn(async () => new Response('{}'));
-    expect((await withBaseWriteGuard(db, '/archive', blocked)).status).toBe(409);
+    const response = await withBaseWriteGuard(db, '/archive', blocked);
+    expect(response.status).toBe(409);
+    expect((await response.json()).message).toContain('异常待核对');
     expect(blocked).not.toHaveBeenCalled();
     const row = await db.prepare('SELECT status FROM tracking_base_writes').first<{ status: string }>();
     expect(row?.status).toBe('needs_reconciliation');
@@ -53,6 +55,13 @@ describe('persistent Base writer coordination using real SQLite constraints', ()
     expect(write).not.toHaveBeenCalled();
     await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 422 }));
     expect((await withBaseWriteGuard(db, '/archive', write)).status).toBe(200);
+  });
+  it('does not keep a global lock after a missing-event validation response', async () => {
+    const rejected = await withBaseWriteGuard(db, '/api/tracking/records/blank', async () => new Response(JSON.stringify({ message: '归档事件缺少 evt_id 或事件名' }), { status: 422 }));
+    expect(rejected.status).toBe(422);
+    const next = jest.fn(async () => new Response('{}'));
+    expect((await withBaseWriteGuard(db, '/api/tracking/records/blank/reuse-official-event', next)).status).toBe(200);
+    expect(next).toHaveBeenCalledTimes(1);
   });
   it('records unique create claims permanently so an eventually consistent Base read cannot cause duplicate inserts', async () => {
     const values = [{ evt_id: 'test_event', 参数名: 'mode', 枚举值: 'Agent' }];

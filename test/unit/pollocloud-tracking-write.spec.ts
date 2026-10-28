@@ -130,6 +130,29 @@ describe('PolloCloud tracking write service', () => {
     });
   });
 
+  it.each(['需求录入', '埋点设计'])('saves an empty event draft in %s without invoking archive synchronization', async (stage) => {
+    const current = { ...workbenchRecord, fields: { ...workbenchRecord.fields, evt_id: '', 事件中文名: '', 流程阶段: stage } };
+    const transport = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: current } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }));
+    await expect(updateTrackingRecord(credentials, 'web:rec-1', { stageId: 'design', fields: { 公共属性要求: 'user_id' } }, 'data-owner', transport)).resolves.toMatchObject({ success: true });
+    expect(transport).toHaveBeenCalledTimes(4);
+    expect(transport.mock.calls.some(([url]) => String(url).includes('/tables/tbly7VI4kwFz5qwR/'))).toBe(false);
+  });
+
+  it('reports a missing event ID as a recoverable validation error only when archiving', async () => {
+    const current = { ...workbenchRecord, fields: { ...workbenchRecord.fields, evt_id: '', 流程阶段: '上线监控', 上线监控状态: '通过' } };
+    const transport = jest.fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { record: current } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [current], has_more: false } }));
+    await expect(updateTrackingRecord(credentials, 'web:rec-1', { stageId: 'launch', targetStage: '稳定归档' }, 'data-owner', transport)).rejects.toMatchObject({ status: 422 });
+    expect(transport.mock.calls.some(([url]) => /batch_(update|create)/.test(String(url)))).toBe(false);
+  });
+
   it('refreshes the notification identity snapshot when a workflow owner changes', async () => {
     const current = {
       ...workbenchRecord,

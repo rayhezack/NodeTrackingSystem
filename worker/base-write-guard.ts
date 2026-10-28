@@ -8,7 +8,13 @@ export async function withBaseWriteGuard(db: D1Database | undefined, path: strin
   await db.prepare('CREATE TABLE IF NOT EXISTS tracking_base_writer (id TEXT PRIMARY KEY, owner TEXT NOT NULL, started_at INTEGER NOT NULL)').run();
   await db.prepare('INSERT INTO tracking_base_writer(id, owner, started_at) VALUES(?, ?, ?) ON CONFLICT(id) DO NOTHING').bind('global', owner, Date.now()).run();
   const lock = await db.prepare('SELECT owner FROM tracking_base_writer WHERE id = ?').bind('global').first<{ owner: string }>();
-  if (lock?.owner !== owner) return error('另一个 Base 写入任务正在处理，请稍后重试；若任务中断，请管理员核查写入记录后恢复', 409);
+  if (lock?.owner !== owner) {
+    const task = lock?.owner ? await db.prepare('SELECT status, finished_at FROM tracking_base_writes WHERE id = ?').bind(lock.owner).first<{ status: string; finished_at: number | null }>() : null;
+    if (task?.status === 'needs_reconciliation' || task?.finished_at) {
+      return error(`上一次 Base 写入异常待核对，未完成内容已保留。请管理员恢复任务 ${lock?.owner}`, 409);
+    }
+    return error('另一个 Base 写入任务正在处理，请稍后重试；未完成内容会保留', 409);
+  }
   // Do not automatically steal an expired lease: an old HTTP write may still commit at Base.
   let confirmed = false;
   try {

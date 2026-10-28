@@ -755,10 +755,10 @@ async function syncOfficialLibrary(
   const publishStatus = text(record['发布状态']);
   const monitorStatus = text(record['上线监控状态']);
   const evtId = text(record.evt_id);
-  if (!evtId || !text(record['事件中文名'])) throw new Error('归档事件缺少 evt_id 或事件名');
   const shouldDeprecate = stage === '已废弃' || (stage === '稳定归档' && (officialStatus === '已废弃' || normalizeChangeType(record['变更类型']) === '废弃'));
   const shouldPublish = officialStatus === '已上线' || stage === '稳定归档' || (stage === '上线监控' && publishStatus === '发布成功' && ['通过', '豁免'].includes(monitorStatus));
   if (!shouldDeprecate && !shouldPublish) return;
+  if (!evtId || !text(record['事件中文名'])) throw new TrackingWriteError('归档事件缺少 evt_id 或事件名，请先补全事件信息', 422);
 
   const officialEvents = cache.events || (cache.events = await listAll(credentials, queryLibraryKey(source), fetchImpl));
   const existingEvent = officialEvents.find((item) => text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase());
