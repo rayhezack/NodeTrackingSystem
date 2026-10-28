@@ -19,12 +19,12 @@ import { animate, motion, useMotionValue, useReducedMotion, useSpring, useTransf
    browser at device resolution and stays crisp at any zoom.
    The stretch is a CSS transform now, so nothing needs the pass. */
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const TRACK = 60, HEIGHT = 32, THUMB = 24;
+const TRACK = 44, HEIGHT = 24, THUMB = 18;
 /* 36 in a 46 track, so five pixels of track show all the way
    round. PAD is the same five: the inset at the ends and the
    inset above and below are the same gap seen twice. */
-/* Compact toolbar adaptation: 24 in a 32 track leaves the same
-   symmetric rule with 4px of air, instead of the demo's 36/46. */
+/* Compact toolbar adaptation: 18 in a 24 track leaves the same
+   symmetric rule with 3px of air, instead of the demo's 36/46. */
 const PAD = (HEIGHT - THUMB) / 2;
 const SHUT_X = PAD, OPEN_X = TRACK - THUMB - PAD, MID_X = (SHUT_X + OPEN_X) / 2;
 

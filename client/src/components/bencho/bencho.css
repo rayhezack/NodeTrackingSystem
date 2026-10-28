@@ -169,14 +169,14 @@
 .liq-label[data-active] { color: var(--accent-foreground); font-weight: 600; }
 /* ALWAYS A PILL. A switch is a pill: squaring it turns a thing
    you slide into a thing you click. The droplet stays round too. */
-.liq-sw { position: relative; width: var(--liq-track, 60px); height: var(--liq-height, 32px); padding: 0; border: 0; border-radius: 999px; background: var(--fill-slab); cursor: pointer; touch-action: none; transition: background 420ms ease; }
+.liq-sw { position: relative; width: var(--liq-track, 44px); height: var(--liq-height, 24px); padding: 0; border: 0; border-radius: 999px; background: var(--fill-slab); cursor: pointer; touch-action: none; transition: background 420ms ease; }
 .liq-sw[data-on="true"] { background: var(--fill-on); }
 .liq-sw:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .liq-sw:disabled { cursor: not-allowed; opacity: 0.55; }
 .liq-sw-blobs { position: absolute; inset: 0; }
 /* left: 0 is not optional. An inline element's static position
    follows its line box, which would push the thumb off the rail. */
-.liq-thumb { position: absolute; left: 0; top: 50%; width: var(--liq-thumb, 24px); height: var(--liq-thumb, 24px); margin-top: calc(var(--liq-thumb, 24px) / -2); border-radius: 999px; background: color-mix(in srgb, var(--fill-on) 24%, var(--fill-slab)); transition: background 420ms ease; }
+.liq-thumb { position: absolute; left: 0; top: 50%; width: var(--liq-thumb, 18px); height: var(--liq-thumb, 18px); margin-top: calc(var(--liq-thumb, 18px) / -2); border-radius: 999px; background: color-mix(in srgb, var(--fill-on) 24%, var(--fill-slab)); transition: background 420ms ease; }
 /* Transform belongs to Framer. A CSS transition on it would
    re-interpolate every spring frame. Only the colour eases here. */
 .liq-sw[data-on="true"] .liq-thumb { background: var(--primary-foreground); }
