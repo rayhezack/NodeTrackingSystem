@@ -468,7 +468,8 @@ export async function reuseOfficialTrackingEvent(
   const ref = parseScopedId(recordId);
   const current = await getBitableRecord(credentials, workbenchKey(ref.source), ref.rawId, fetchImpl);
   if (!current) throw new TrackingWriteError('埋点需求不存在', 404);
-  if (!recordPermissions(current.record, actorId, (await loadPermissionConfig(credentials, fetchImpl)).admins).canEditDesign) {
+  const admins = (await loadPermissionConfig(credentials, fetchImpl)).admins;
+  if (!recordPermissions(current.record, actorId, admins).canEditDesign) {
     throw new TrackingWriteError('当前用户无权限复用已有事件', 403);
   }
   const officialRef = parseScopedId(text(body.officialRecordId));
@@ -480,11 +481,13 @@ export async function reuseOfficialTrackingEvent(
   const eventName = text(official.record['事件中文名']);
   if (!evtId || !eventName) throw new TrackingWriteError('正式事件缺少 evt_id 或事件名，无法复用', 400);
 
-  const related = await listRelatedRecords(credentials, ref.source, current, fetchImpl);
+  const relatedSnapshot = await listRelatedRecords(credentials, ref.source, current, fetchImpl);
+  const related = [current, ...relatedSnapshot.filter((item) => item.id !== current.id)];
   const reuseCurrent = !text(current.record.evt_id) && !related.some((item) => item.id !== current.id && text(item.record.evt_id));
-  if (related.some((item) => item.id !== (reuseCurrent ? current.id : '') && text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase())) {
-    throw new TrackingWriteError(`当前需求内已存在 evt_id：${evtId}`, 400);
-  }
+  const matches = related.filter((item) => text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase());
+  if (matches.length > 1) throw new TrackingWriteError(`当前需求内存在多条重复事件 ${evtId}，请先治理`, 422);
+  const resume = matches[0];
+  if (resume && !recordPermissions(resume.record, actorId, admins).canEditDesign) throw new TrackingWriteError('当前用户无权限编辑已复用的事件', 403);
   let requestId = text(current.record['需求ID']);
   if (!requestId) {
     requestId = createRequestId(ref.source);
@@ -511,8 +514,14 @@ export async function reuseOfficialTrackingEvent(
     处理方: normalizeHandler(current.record['处理方'], ref.source), 公共属性要求: text(current.record['公共属性要求']),
     参数拆行状态: officialParams.length ? '已拆行' : '未拆行',
   };
-  let targetId = ref.rawId;
-  if (reuseCurrent) {
+  assertDistinctParams(officialParams, '选中的正式参数');
+  const existingParams = resume ? await listParams(credentials, ref.source, resume.id, evtId, fetchImpl) : [];
+  assertDistinctParams(existingParams, '当前设计');
+  const enumRows = officialParams.length ? await listAll(credentials, enumDictionaryKey(ref.source), fetchImpl) : [];
+  let targetId = resume?.id || ref.rawId;
+  if (resume) {
+    // A retry may follow a partially completed import. Keep all user edits and workflow metadata.
+  } else if (reuseCurrent) {
     await updateBitableRecords(credentials, workbenchKey(ref.source), [{ id: targetId, record: designPatch }], fetchImpl);
   } else {
     const [created] = await createBitableRecords(credentials, workbenchKey(ref.source), [{
@@ -525,19 +534,31 @@ export async function reuseOfficialTrackingEvent(
     if (!created) throw new Error('Feishu Base did not return the reused event');
     targetId = created.id;
   }
-  const designParams = officialParams.map((item) => ({
+  const existingByName = new Map(existingParams.map((item) => [text(item.record['参数名']), item]));
+  const enumLinks = (item: BitableRecord): string[] => dictionaryEnums(enumRows, evtId, text(item.record['参数名']), item.id, 'official').map((row) => row.id);
+  const missingParams = officialParams.filter((item) => !existingByName.has(text(item.record['参数名'])));
+  const designParams = missingParams.map((item) => ({
     evt_id: evtId, 参数名: text(item.record['参数名']), 数据类型: normalizeParamType(item.record['数据类型']),
     必传规则: normalizeRequiredRule(item.record['必传规则']), 条件说明: text(item.record['条件说明']),
     '枚举/取值范围': text(item.record['枚举/取值范围']), 参数定义: text(item.record['参数定义']),
     '默认值/示例': text(item.record['备注']).replace(/^默认值\/示例[:：]\s*/, ''),
     [ref.source === 'web' ? 'Web适用性' : 'App适用性']: normalizeApplicability(item.record[ref.source === 'web' ? 'Web适用性' : 'App适用性'], ref.source),
-    参数状态: '草稿', 版本: version, 变更类型: '修改', 来源设计记录ID: targetId, 关联设计: [targetId],
+    参数状态: '草稿', 版本: text(resume?.record['版本']) || version, 变更类型: '修改', 来源设计记录ID: targetId, 关联设计: [targetId],
+    ...(enumLinks(item).length ? { 枚举字典: enumLinks(item) } : {}),
   })).filter((item) => text(item['参数名']));
   if (designParams.length) {
     const createdParams = await createBitableRecords(credentials, paramKey(ref.source), designParams, fetchImpl);
     assertCreatedCount(createdParams, designParams, '复用埋点参数');
-    await syncEnumDictionary(credentials, ref.source, 'design', createdParams.map((item, index) => ({ id: item.id, record: designParams[index] })), fetchImpl);
+    // Reuse references existing dictionary rows; never reinterpret legacy range descriptions as new enum values.
   }
+  const repairs = officialParams.flatMap((item) => {
+    const existing = existingByName.get(text(item.record['参数名']));
+    if (!existing) return [];
+    const previous = cellIds(existing.record['枚举字典']);
+    const next = unique([...previous, ...enumLinks(item)]);
+    return next.length === previous.length ? [] : [{ id: existing.id, record: { 枚举字典: next } }];
+  });
+  if (repairs.length) await updateBitableRecords(credentials, paramKey(ref.source), repairs, fetchImpl);
   return { success: true, recordId: scopedId(ref.source, targetId), currentStage: '埋点设计', importedParamCount: designParams.length, skippedParamCount: officialParams.length - designParams.length };
 }
 
