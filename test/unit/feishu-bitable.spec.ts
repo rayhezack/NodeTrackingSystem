@@ -95,7 +95,7 @@ describe('PolloCloud Feishu bitable read client', () => {
 
     await expect(createBitableRecords(credentials, 'workbench', [{ 需求链接: 'not-a-url' }], fetchMock as unknown as typeof fetch))
       .rejects.toThrow('Feishu Base URL field requires an http(s) URL');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

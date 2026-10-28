@@ -1,3 +1,4 @@
+export class BaseFieldValidationError extends Error { constructor(message: string) { super(message); this.name = 'BaseFieldValidationError'; } }
 import { reserveBaseCreates, confirmBaseCreates } from './base-write-identity';
 import { getFeishuTenantToken, resetFeishuTokenCache, type FeishuCredentials } from './feishu-token';
 
@@ -147,7 +148,8 @@ export async function createBitableRecords(
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecord[]> {
   if (!records.length) return [];
-  if (records.length > 500) throw new Error('Feishu bitable batch create supports at most 500 records');
+  if (records.length > 500) throw new BaseFieldValidationError('Feishu bitable batch create supports at most 500 records');
+  const normalized = records.map((fields) => ({ fields: normalizeWorkerFields(fields) }));
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
   const reservations = await reserveBaseCreates(env.DB, instance, records);
@@ -156,7 +158,7 @@ export async function createBitableRecords(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: records.map((fields) => ({ fields: normalizeWorkerFields(fields) })) }),
+      body: JSON.stringify({ records: normalized }),
     },
   );
   const payload = await response.json() as {
@@ -184,7 +186,8 @@ export async function updateBitableRecords(
   fetchImpl: FetchLike = fetch,
 ): Promise<BitableRecord[]> {
   if (!records.length) return [];
-  if (records.length > 500) throw new Error('Feishu bitable batch update supports at most 500 records');
+  if (records.length > 500) throw new BaseFieldValidationError('Feishu bitable batch update supports at most 500 records');
+  const normalized = records.map(({ id, record }) => ({ record_id: id, fields: normalizeWorkerFields(record) }));
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
   const response = await fetchImpl(
@@ -192,7 +195,7 @@ export async function updateBitableRecords(
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: records.map(({ id, record }) => ({ record_id: id, fields: normalizeWorkerFields(record) })) }),
+      body: JSON.stringify({ records: normalized }),
     },
   );
   const payload = await response.json() as {
@@ -263,7 +266,7 @@ function normalizeWorkerAttachmentCell(value: unknown): Array<{ file_token: stri
       : item && typeof item === 'object'
         ? String((item as Record<string, unknown>).file_token || (item as Record<string, unknown>).fileToken || (item as Record<string, unknown>).token || '').trim()
         : '';
-    if (!token) throw new Error('Feishu Base Attachment field UI图 requires file_token; please re-upload the image');
+    if (!token) throw new BaseFieldValidationError('Feishu Base Attachment field UI图 requires file_token; please re-upload the image');
     return { file_token: token };
   });
 }
@@ -291,5 +294,5 @@ function assertWorkerHttpUrl(value: string): void {
   } catch {
     // Normalize all invalid URL input to one actionable error below.
   }
-  throw new Error(`Feishu Base URL field requires an http(s) URL: ${value}`);
+  throw new BaseFieldValidationError(`Feishu Base URL field requires an http(s) URL: ${value}`);
 }
