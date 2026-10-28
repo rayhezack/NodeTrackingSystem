@@ -1748,6 +1748,7 @@ export class TrackingService {
 
       const paramKey = cellText(officialParam['参数主键']).trim();
       const existing = existingByParamKey.get(paramKey);
+      if (existing && cellText(existing.record['参数状态']) === '待治理') throw new BadRequestException(`正式参数 ${paramKey} 尚待治理，不能自动追加枚举`);
       const paramName = cellText(designParam.record['参数名']);
       for (const entry of parseTrackingEnums(cellText(designParam.record['枚举/取值范围']))) {
         if (entry.label) labels.set(enumIdentity(evtId, paramName, entry.value), entry);

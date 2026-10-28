@@ -53,6 +53,14 @@ function fixture() {
 describe('archive integrity safeguards', () => {
   beforeEach(() => resetFeishuTokenCache());
   const body = { stageId: 'launch', targetStage: '稳定归档', fields: {} };
+  it('does not approve enums attached to a pending-governance parameter', async () => {
+    const { records, fetchMock } = fixture();
+    records[tables.params][0].fields['参数状态'] = '待治理';
+    await expect(updateTrackingRecord(credentials, 'web:design-event', body, 'owner', fetchMock)).rejects.toThrow('尚待治理');
+    expect(records[tables.workbench][0].fields['流程阶段']).toBe('上线监控');
+    expect(records[tables.params][0].fields['枚举/取值范围']).toBe('home_agent');
+  });
+
   it('rejects repeated design parameters before inserting formal parameters', async () => {
     const { records, fetchMock } = fixture();
     records[tables.params] = [];

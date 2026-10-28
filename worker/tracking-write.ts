@@ -1,4 +1,4 @@
-import { assertDistinctParams, dictionaryEnums, dictionaryRange, enumIdentity, mergeTrackingEnums, parseTrackingEnums } from '../shared/tracking-enums';
+import { TrackingEnumError, assertDistinctParams, dictionaryEnums, dictionaryRange, enumIdentity, mergeTrackingEnums, parseTrackingEnums } from '../shared/tracking-enums';
 import type {
   BatchDeleteParamsRequest,
   BatchDeleteParamsResponse,
@@ -822,6 +822,7 @@ async function syncOfficialLibrary(
       备注: text(designParam.record['备注']) || (text(designParam.record['默认值/示例']) ? `默认值/示例：${text(designParam.record['默认值/示例'])}` : ''),
     };
     const existing = existingByKey.get(paramKeyValue);
+    if (existing && text(existing.record['参数状态']) === '待治理') throw new TrackingEnumError(`正式参数 ${paramKeyValue} 尚待治理，不能自动追加或批准枚举`);
     const designEnumRows = dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design');
     cache.labels ||= new Map();
     for (const entry of parseTrackingEnums(text(designParam.record['枚举/取值范围']))) {
