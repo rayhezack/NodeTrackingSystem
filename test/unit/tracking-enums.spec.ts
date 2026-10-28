@@ -3,6 +3,12 @@ describe('structured enum contract', () => {
   it('deduplicates exact values while preserving meaningful case and slashes', () => {
     expect(mergeTrackingEnums('Agent\nagent\ntext/image_to_video', 'Agent\nnew')).toBe('Agent\nagent\ntext/image_to_video\nnew');
   });
+  it('keeps open numeric ranges as ranges without registering partial samples or ellipses as enum values', () => {
+    expect(parseTrackingEnums('1\n2\n...')).toEqual([]);
+    expect(mergeTrackingEnums('1\n2\n...', '1,2,...')).toBe('1\n2\n...');
+    expect(() => mergeTrackingEnums('1\n2\n...', 'home')).toThrow('口径冲突');
+    expect(() => parseTrackingEnums('home\n...')).toThrow('需要治理');
+  });
   it('understands unambiguous legacy comma plus inline labels without creating glued enum values', () => {
     expect(parseTrackingEnums('director_create,TextToImage // 文本生图；AIPhotoEditor // 图片编辑')).toEqual([
       { value: 'director_create', label: '', definition: '' }, { value: 'TextToImage', label: '文本生图', definition: '文本生图' }, { value: 'AIPhotoEditor', label: '图片编辑', definition: '图片编辑' },

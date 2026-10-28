@@ -13,9 +13,15 @@ export function enumLinkIds(value: unknown): string[] {
 export function enumIdentity(evtId: string, paramName: string, value: string): string {
   return JSON.stringify([evtId.trim(), paramName.trim(), value.trim()]);
 }
+/** Examples such as 1, 2, ... describe an open numeric range, not an exhaustive enum list. */
+export function isOpenNumericRange(input: string): boolean {
+  const parts = input.trim().split(/[\n\r,，、]+/).map((item) => item.trim()).filter(Boolean);
+  return parts.length >= 2 && /^(?:\.{3,}|…+)$/.test(parts[parts.length - 1])
+    && parts.slice(0, -1).every((item) => /^-?\d+(?:\.\d+)?$/.test(item));
+}
 export function parseTrackingEnums(input: string): EnumEntry[] {
   const raw = input.replace(/\r\n?/g, '\n').trim();
-  if (!raw || ['-', '—', '无', '暂无', '无特殊参数'].includes(raw)) return [];
+  if (!raw || ['-', '—', '无', '暂无', '无特殊参数'].includes(raw) || isOpenNumericRange(raw)) return [];
   const lines = raw.split(/[\n;；]+/);
   const result = new Map<string, EnumEntry>();
   for (const line of lines.map((item) => item.trim()).filter(Boolean)) {
@@ -38,6 +44,15 @@ export function parseTrackingEnums(input: string): EnumEntry[] {
   return [...result.values()];
 }
 export function mergeTrackingEnums(...ranges: string[]): string {
+  const numericRanges = ranges.filter(isOpenNumericRange);
+  if (numericRanges.length) {
+    const normalize = (range: string) => range.trim().split(/[\n\r,，、]+/).map((item) => item.trim()).filter(Boolean).join('\n');
+    if (new Set(numericRanges.map(normalize)).size > 1
+      || ranges.filter((range) => !isOpenNumericRange(range)).some((range) => parseTrackingEnums(range).some((entry) => !/^-?\d+(?:\.\d+)?$/.test(entry.value)))) {
+      throw new TrackingEnumError('数值范围与枚举口径冲突，请先确认');
+    }
+    return normalize(numericRanges[0]);
+  }
   const values = new Set(ranges.flatMap((range) => parseTrackingEnums(range).map((entry) => entry.value)));
   return [...values].join('\n');
 }

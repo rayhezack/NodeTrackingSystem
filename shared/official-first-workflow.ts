@@ -1,4 +1,4 @@
-import { dictionaryEnums, dictionaryRange } from './tracking-enums';
+import { dictionaryEnums, dictionaryRange, isOpenNumericRange } from './tracking-enums';
 import type {
   AiGovernanceReport, AiReuseDecision, AiTrackingDraftEvent, OfficialEventContext,
   OfficialEvent, OfficialParam, TrackingSource,
@@ -63,7 +63,7 @@ export async function readGovernanceSnapshot(
         paramType: cell(row.record['数据类型']), requiredRule: cell(row.record['必传规则']),
         required: ['必传', '条件必传'].includes(cell(row.record['必传规则'])),
         triggerCondition: cell(row.record['条件说明']),
-        enumRange: dictionaryRange(dictionaryEnums(enums, event.evtId, cell(row.record['参数名']), row.id, 'official')) || cell(row.record['枚举/取值范围']),
+        enumRange: isOpenNumericRange(cell(row.record['枚举/取值范围'])) ? cell(row.record['枚举/取值范围']) : dictionaryRange(dictionaryEnums(enums, event.evtId, cell(row.record['参数名']), row.id, 'official')) || cell(row.record['枚举/取值范围']),
         definition: cell(row.record['参数定义']), example: cell(row.record['备注']),
         platform: cell(row.record[source === 'web' ? 'Web适用性' : 'App适用性']),
         status: cell(row.record['参数状态']),

@@ -1,4 +1,4 @@
-import { dictionaryEnums, dictionaryRange } from '../shared/tracking-enums';
+import { dictionaryEnums, dictionaryRange, isOpenNumericRange } from '../shared/tracking-enums';
 import type {
   GetOfficialEventsParams,
   GetOfficialEventsResponse,
@@ -151,7 +151,7 @@ export async function getOfficialParams(
     .map((item) => {
       const param = toOfficialParam(item, ref.source);
       const values = dictionaryEnums(enumRows, evtId, param.paramName, item.id, 'official');
-      return values.length ? { ...param, enumRange: dictionaryRange(values) } : param;
+      return values.length && !isOpenNumericRange(param.enumRange || '') ? { ...param, enumRange: dictionaryRange(values) } : param;
     })
     .filter((item) => item.paramKey || item.paramName)
     .filter((item) => item.status !== '已废弃')
