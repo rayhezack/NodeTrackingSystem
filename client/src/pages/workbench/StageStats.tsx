@@ -31,9 +31,9 @@ const StageStats = ({
   onStageClick,
 }: StageStatsProps) => {
   return (
-    <section className="mb-6" data-ai-section-type="card-stat">
+    <section data-ai-section-type="card-stat">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-foreground">阶段总览</h2>
+        <h2 className="text-base font-semibold text-foreground">阶段总览</h2>
         <Button
           variant="ghost"
           size="sm"
@@ -48,7 +48,7 @@ const StageStats = ({
         </Button>
       </div>
       {error ? (
-        <div className="flex items-center gap-2 rounded-sm border border-dashed border-border bg-card p-4 text-sm text-destructive">
+        <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-card p-4 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" />
           <span>{error}</span>
           <Button
@@ -66,7 +66,7 @@ const StageStats = ({
             ? Array.from({ length: 7 }).map((_, i) => (
                 <div
                   key={i}
-                  className="rounded-sm border border-border bg-card p-4"
+                  className="rounded-lg border border-border/60 bg-card p-4 shadow-sm"
                 >
                   <Skeleton className="mb-2 h-3 w-16" />
                   <Skeleton className="h-7 w-10" />
@@ -79,11 +79,12 @@ const StageStats = ({
                   <button
                     key={stage}
                     type="button"
+                    aria-pressed={activeStage === stage}
                     onClick={() => onStageClick(stage)}
-                    className={`group flex flex-col rounded-sm border bg-card p-4 text-left transition-colors hover:bg-accent ${
+                    className={`group flex min-h-[106px] flex-col rounded-lg border p-4 text-left bg-card transition-colors hover:border-primary/40 hover:bg-accent/30 ${
                       activeStage === stage
-                        ? 'border-primary/50 bg-primary/5'
-                        : 'border-border'
+                        ? 'border-primary/40 ring-2 ring-primary/15'
+                        : 'border-border/60'
                     }`}
                   >
                     <span className="text-xs text-muted-foreground">

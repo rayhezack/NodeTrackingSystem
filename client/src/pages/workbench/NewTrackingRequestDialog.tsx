@@ -12,6 +12,7 @@ import {
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
 import { Textarea } from '@client/src/components/ui/textarea';
+import { SingleDatePicker } from '@client/src/components/ui/single-date-picker';
 import {
   Select,
   SelectContent,
@@ -184,17 +185,17 @@ export default function NewTrackingRequestDialog({
     }
   };
 
-  const inputCls = 'h-8 rounded-sm text-xs';
-  const textareaCls = 'rounded-sm text-xs min-h-[64px]';
+  const inputCls = 'h-8 rounded-md text-xs';
+  const textareaCls = 'rounded-md text-xs min-h-[64px]';
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && !saving && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto rounded-sm">
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto rounded-lg">
         <DialogHeader>
           <DialogTitle className="text-base">新增埋点需求</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
+        <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
           提需阶段只录入业务目标、适用端、优先级和项目参与人；evt_id、正式事件名、事件定义、触发时机和参数设计在「埋点设计」节点填写。
         </div>
 
@@ -235,11 +236,10 @@ export default function NewTrackingRequestDialog({
             </Select>
           </Field>
           <Field label="期望完成日期">
-            <Input
-              type="date"
-              className={inputCls}
+            <SingleDatePicker
               value={form.expectedCompletionDate}
-              onChange={(event) => updateField('expectedCompletionDate', event.target.value)}
+              onChange={(value) => updateField('expectedCompletionDate', value)}
+              disabled={saving}
             />
           </Field>
           <Field label="PRD 文档链接" required className="md:col-span-2">
@@ -252,7 +252,7 @@ export default function NewTrackingRequestDialog({
               placeholder="请粘贴飞书 PRD 文档链接（wiki 或 docx）；没有 PRD 无法进行埋点设计"
             />
           </Field>
-          <div className="md:col-span-2 rounded-sm border border-border bg-muted/20 p-3">
+          <div className="md:col-span-2 rounded-md border border-border bg-muted/20 p-3">
             <div className="mb-3">
               <h3 className="text-sm font-medium text-foreground">项目参与人</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -312,13 +312,13 @@ export default function NewTrackingRequestDialog({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm"
+            className="h-8 rounded-full"
             onClick={onClose}
             disabled={saving}
           >
             取消
           </Button>
-          <Button size="sm" className="h-8 rounded-sm" onClick={handleSubmit} disabled={saving}>
+          <Button size="sm" className="h-8 rounded-full" onClick={handleSubmit} disabled={saving}>
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             {saving ? '创建中...' : '创建需求'}
           </Button>

@@ -1,12 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { AlertTriangle, GitBranch, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { GitBranch, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -60,8 +59,8 @@ export default function RelatedEventsPanel({
   const [open, setOpen] = useState(false);
   const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deletingEvent, setDeletingEvent] = useState<RelatedTrackingEvent | null>(null);
+  const pendingDeleteRef = useRef<{ event: RelatedTrackingEvent; timer: ReturnType<typeof setTimeout>; toastId: string | number } | null>(null);
+  const [hiddenEventIds, setHiddenEventIds] = useState<Set<string>>(() => new Set());
   const [form, setForm] = useState<EventForm>(() => defaultForm(detail));
   const events = detail.relatedEvents?.length
     ? detail.relatedEvents
@@ -122,31 +121,63 @@ export default function RelatedEventsPanel({
     await onChanged?.(result.recordId);
   };
 
-  const handleDeleteEventConfirm = async () => {
-    if (!deletingEvent) return;
-    setDeleteBusy(true);
+  const commitDelete = async (event: RelatedTrackingEvent) => {
     try {
-      const result = await deleteTrackingEvent(deletingEvent.recordId, {
+      const result = await deleteTrackingEvent(event.recordId, {
         actorId,
         actorLarkId,
       });
-      toast.success(`已删除事件，并清理 ${result.deletedParamCount} 个设计参数`);
-      setDeletingEvent(null);
-      if (deletingEvent.isCurrent && result.redirectRecordId) {
+      if (pendingDeleteRef.current?.event.recordId === event.recordId) {
+        pendingDeleteRef.current = null;
+      }
+      if (event.isCurrent && result.redirectRecordId) {
         await onChanged?.(result.redirectRecordId);
       } else {
         await onChanged?.(detail.recordId);
       }
     } catch (error) {
+      setHiddenEventIds((current) => {
+        const next = new Set(current);
+        next.delete(event.recordId);
+        return next;
+      });
       const msg = error instanceof Error ? error.message : '删除事件失败';
       toast.error(msg);
-    } finally {
-      setDeleteBusy(false);
     }
   };
 
+  const undoDelete = (event: RelatedTrackingEvent, toastId: string | number) => {
+    const pending = pendingDeleteRef.current;
+    if (!pending || pending.event.recordId !== event.recordId) return;
+    clearTimeout(pending.timer);
+    pendingDeleteRef.current = null;
+    setHiddenEventIds((current) => {
+      const next = new Set(current);
+      next.delete(event.recordId);
+      return next;
+    });
+    toast.dismiss(toastId);
+  };
+
+  const handleDeleteEvent = (event: RelatedTrackingEvent) => {
+    if (pendingDeleteRef.current) return;
+    setHiddenEventIds((current) => new Set(current).add(event.recordId));
+    const toastId = toast('事件已删除', {
+      duration: 2600,
+      className: '!border-[#0a1317] !bg-[#0a1317] !text-white',
+      action: {
+        label: '撤销',
+        onClick: () => undoDelete(event, toastId),
+      },
+    });
+    const timer = setTimeout(() => void commitDelete(event), 2600);
+    pendingDeleteRef.current = { event, timer, toastId };
+  };
+
+  const visibleEvents = events.filter((event) => !hiddenEventIds.has(event.recordId));
+
   return (
-    <div className="rounded-sm border border-border/70 bg-muted/20 p-3">
+    <div className="rounded-md border border-border/70 bg-muted/20 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -165,7 +196,7 @@ export default function RelatedEventsPanel({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-sm"
+              className="h-8 rounded-full"
               onClick={() => setReuseOpen(true)}
             >
               <GitBranch className="h-3.5 w-3.5" />
@@ -174,7 +205,7 @@ export default function RelatedEventsPanel({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-sm"
+              className="h-8 rounded-full"
               onClick={() => setOpen(true)}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -184,11 +215,11 @@ export default function RelatedEventsPanel({
         )}
       </div>
 
-      <div className="mt-3 divide-y divide-border/60 overflow-hidden rounded-sm border border-border/60 bg-card">
-        {events.map((event) => (
+      <div className="mt-3 divide-y divide-border/60 overflow-hidden rounded-md border border-border/60 bg-card">
+        {visibleEvents.map((event) => (
           <div
             key={event.recordId}
-            className={`flex min-w-0 items-center gap-3 px-3 py-2 text-left text-xs transition-colors ${
+            className={`group flex min-w-0 items-center gap-3 px-3 py-2 text-left text-xs transition-colors ${
               event.isCurrent
                 ? 'bg-primary/5 text-primary'
                 : 'text-foreground hover:bg-accent/60'
@@ -204,7 +235,7 @@ export default function RelatedEventsPanel({
                   <span className="min-w-0 truncate font-mono font-medium">
                     {event.evtId || '待填写 evt_id'}
                   </span>
-                  <Badge variant="outline" className="h-5 shrink-0 rounded-sm border-border/60 px-1.5 text-[10px]">
+                  <Badge variant="outline" className="h-5 shrink-0 rounded-full border-border/60 px-1.5 text-xs">
                     {event.uiStage || event.stage || '-'}
                   </Badge>
                 </div>
@@ -215,9 +246,10 @@ export default function RelatedEventsPanel({
               {canDeleteEvent(event, events.length, canEdit) && (
                 <button
                   type="button"
-                  className="rounded-sm p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => setDeletingEvent(event)}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+                  onClick={() => handleDeleteEvent(event)}
                   title="删除该设计事件"
+                  aria-label={`删除${event.evtId || event.eventName || '埋点事件'}`}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -228,19 +260,19 @@ export default function RelatedEventsPanel({
       </div>
 
       <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && !saving && setOpen(false)}>
-        <DialogContent className="max-w-3xl rounded-sm">
+        <DialogContent className="max-w-3xl rounded-lg">
           <DialogHeader>
             <DialogTitle className="text-base">新增同需求埋点事件</DialogTitle>
           </DialogHeader>
 
-          <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
+          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
             该事件会归入当前需求，自动复用需求ID、需求背景、需求链接和项目参与人；这里只填写事件级设计信息。
           </div>
 
           <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
             <Field label="evt_id">
               <Input
-                className="h-8 rounded-sm text-xs"
+                className="h-8 rounded-md text-xs"
                 value={form.evtId}
                 onChange={(event) => updateField('evtId', event.target.value)}
                 placeholder="如：video_play_click，可稍后填写"
@@ -249,7 +281,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="事件名" required>
               <Input
-                className="h-8 rounded-sm text-xs"
+                className="h-8 rounded-md text-xs"
                 value={form.eventName}
                 onChange={(event) => updateField('eventName', event.target.value)}
                 placeholder="如：视频播放按钮点击"
@@ -258,7 +290,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="优先级">
               <Select value={form.priority} onValueChange={(value) => updateField('priority', value)} disabled={saving}>
-                <SelectTrigger className="h-8 rounded-sm text-xs">
+                <SelectTrigger className="h-8 rounded-md text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -270,7 +302,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="端">
               <Select value={form.platform} onValueChange={(value) => updateField('platform', value)} disabled={saving}>
-                <SelectTrigger className="h-8 rounded-sm text-xs">
+                <SelectTrigger className="h-8 rounded-md text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -282,7 +314,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="版本">
               <Input
-                className="h-8 rounded-sm text-xs"
+                className="h-8 rounded-md text-xs"
                 value={form.version}
                 onChange={(event) => updateField('version', event.target.value)}
                 placeholder="如：1.0.0"
@@ -291,7 +323,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="最低版本">
               <Input
-                className="h-8 rounded-sm text-xs"
+                className="h-8 rounded-md text-xs"
                 value={form.minVersion}
                 onChange={(event) => updateField('minVersion', event.target.value)}
                 placeholder="如：1.0.0"
@@ -300,7 +332,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="事件定义" className="md:col-span-2">
               <Textarea
-                className="min-h-[72px] rounded-sm text-xs"
+                className="min-h-[72px] rounded-md text-xs"
                 value={form.eventDefinition}
                 onChange={(event) => updateField('eventDefinition', event.target.value)}
                 placeholder="定义事件统计口径和边界..."
@@ -309,7 +341,7 @@ export default function RelatedEventsPanel({
             </Field>
             <Field label="触发时机" className="md:col-span-2">
               <Textarea
-                className="min-h-[72px] rounded-sm text-xs"
+                className="min-h-[72px] rounded-md text-xs"
                 value={form.triggerTiming}
                 onChange={(event) => updateField('triggerTiming', event.target.value)}
                 placeholder="描述事件触发的具体时机..."
@@ -322,13 +354,13 @@ export default function RelatedEventsPanel({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm"
+              className="h-8 rounded-full"
               onClick={() => setOpen(false)}
               disabled={saving}
             >
               取消
             </Button>
-            <Button size="sm" className="h-8 rounded-sm" onClick={handleCreate} disabled={saving}>
+            <Button size="sm" className="h-8 rounded-full" onClick={handleCreate} disabled={saving}>
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               {saving ? '创建中...' : '创建事件'}
             </Button>
@@ -345,49 +377,6 @@ export default function RelatedEventsPanel({
         onReused={handleReuseSuccess}
       />
 
-      <Dialog open={Boolean(deletingEvent)} onOpenChange={(nextOpen) => !nextOpen && !deleteBusy && setDeletingEvent(null)}>
-        <DialogContent className="max-w-md rounded-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              确认删除埋点事件
-            </DialogTitle>
-            <DialogDescription asChild>
-              <div className="text-xs text-muted-foreground">
-                确定要删除事件{' '}
-                <span className="font-mono font-medium text-foreground">
-                  {deletingEvent?.evtId || deletingEvent?.eventName || '未命名事件'}
-                </span>
-                吗？
-                <div className="mt-2">
-                  该操作会删除当前工作流中的设计事件，并同步清理该事件下的设计参数；不会删除正式查询库里的已上线事件。
-                </div>
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-sm"
-              onClick={() => setDeletingEvent(null)}
-              disabled={deleteBusy}
-            >
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8 rounded-sm"
-              onClick={handleDeleteEventConfirm}
-              disabled={deleteBusy}
-            >
-              {deleteBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-              {deleteBusy ? '删除中...' : '确认删除'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -422,7 +411,7 @@ function textValue(value: unknown): string {
 function canDeleteEvent(event: RelatedTrackingEvent, eventCount: number, canEdit: boolean): boolean {
   if (!canEdit || eventCount <= 1) return false;
   const stage = event.uiStage || event.stage || '';
-  return ['埋点提需', '埋点设计', '需求录入'].includes(stage);
+  return !['埋点上线', '归档', '上线监控', '稳定归档', '已上线', '已废弃'].includes(stage);
 }
 
 function Field({

@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@client/src/components/ui/dialog';
+import { Checklist } from '@client/src/components/bencho/Checklist';
 import { Button } from '@client/src/components/ui/button';
 
 interface DeleteParamDialogProps {
@@ -46,7 +47,7 @@ const DeleteParamDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !deleting && onClose()}>
-      <DialogContent className="max-w-md rounded-sm">
+      <DialogContent className="max-w-md rounded-lg">
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -57,14 +58,6 @@ const DeleteParamDialog = ({
               {isBatch ? (
                 <>
                   确定要删除已选择的 <span className="font-medium text-foreground">{keys.length}</span> 个参数吗？
-                  <div className="mt-2 max-h-28 overflow-y-auto rounded-sm bg-muted/50 p-2 font-mono text-[11px] text-foreground">
-                    {keys.slice(0, 8).map((key) => (
-                      <div key={key} className="truncate">{key}</div>
-                    ))}
-                    {keys.length > 8 && (
-                      <div className="text-muted-foreground">还有 {keys.length - 8} 个参数...</div>
-                    )}
-                  </div>
                 </>
               ) : (
                 <>
@@ -77,11 +70,12 @@ const DeleteParamDialog = ({
             </div>
           </DialogDescription>
         </DialogHeader>
+        <Checklist className="max-h-64 overflow-y-auto" label="待删除参数" strikeSelected items={keys.map(key => ({ id: key, label: key, checked: true, disabled: true }))} onToggle={() => undefined} />
         <DialogFooter>
           <Button
             variant="outline"
             size="sm"
-            className="rounded-sm h-8"
+            className="rounded-full h-8"
             onClick={onClose}
             disabled={deleting}
           >
@@ -90,7 +84,7 @@ const DeleteParamDialog = ({
           <Button
             variant="destructive"
             size="sm"
-            className="rounded-sm h-8"
+            className="rounded-full h-8"
             onClick={handleConfirm}
             disabled={deleting}
           >

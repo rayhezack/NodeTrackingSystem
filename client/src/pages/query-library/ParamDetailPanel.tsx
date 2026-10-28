@@ -38,9 +38,9 @@ export function ParamDetailPanel({ rowData, keyword, onKeywordChange, onRetry }:
   return <div className="min-w-0 px-4 py-4 sm:px-6">
     <div className="relative mb-3 max-w-sm">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input aria-label="筛选当前事件参数" value={keyword} onChange={(event) => onKeywordChange(event.target.value)} placeholder="筛选参数 key、定义或枚举" className="h-9 rounded-sm pl-8 text-xs" />
+      <Input aria-label="筛选当前事件参数" value={keyword} onChange={(event) => onKeywordChange(event.target.value)} placeholder="筛选参数 key、定义或枚举" className="h-9 rounded-full border-0 bg-muted pl-8 text-xs focus-visible:ring-0" />
     </div>
-    <div className="overflow-x-auto border border-border">
+    <div className="overflow-x-auto rounded-xl bg-muted/30">
       <table className="w-full min-w-[680px] border-collapse text-left text-xs">
         <thead className="bg-muted/50 text-muted-foreground"><tr>{["参数名称", "类型 / 必传", "枚举 / 范围", "定义 / 备注"].map((label) => <th key={label} scope="col" className="border-b border-border px-3 py-2 font-medium">{label}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">

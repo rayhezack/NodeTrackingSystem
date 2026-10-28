@@ -6,9 +6,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "lucide-react"
-import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
+import { DayButton, DayPicker, getDefaultClassNames, type DropdownProps } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button, buttonVariants } from "@/components/ui/button"
 
 function Calendar({
@@ -48,17 +49,17 @@ function Calendar({
         ),
         month: cn("flex flex-col w-full gap-4", defaultClassNames.month),
         nav: cn(
-          "flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
+          "pointer-events-none flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
+          "pointer-events-auto size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
+          "pointer-events-auto size-(--cell-size) aria-disabled:opacity-50 p-0 select-none",
           defaultClassNames.button_next
         ),
         month_caption: cn(
@@ -155,6 +156,7 @@ function Calendar({
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
           )
         },
+        Dropdown: CalendarDropdown,
         DayButton: CalendarDayButton,
         WeekNumber: ({ children, ...props }) => {
           return (
@@ -170,6 +172,24 @@ function Calendar({
       {...props}
     />
   )
+}
+
+/* DayPicker supplies the options and range limits; the app owns their
+   presentation. Both year and month use the same themed, keyboard-accessible
+   menu instead of opening the operating system's native select. */
+function CalendarDropdown({ options, value, onChange, disabled, name, "aria-label": label }: DropdownProps) {
+  return (
+    <Select value={String(value)} disabled={disabled} onValueChange={(next) => {
+      onChange?.({ target: { value: next } } as React.ChangeEvent<HTMLSelectElement>);
+    }}>
+      <SelectTrigger aria-label={label} name={name} size="sm" className="w-auto min-w-16 rounded-full border-0 bg-muted px-2.5 text-xs shadow-none focus-visible:ring-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper" className="max-h-64 min-w-24 rounded-xl p-1">
+        {options?.map((option) => <SelectItem key={option.value} value={String(option.value)} disabled={option.disabled} className="rounded-full text-sm">{option.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
 }
 
 function CalendarDayButton({

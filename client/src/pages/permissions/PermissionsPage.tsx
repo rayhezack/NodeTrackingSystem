@@ -121,8 +121,7 @@ export default function PermissionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-[1200px] px-6 py-6">
+    <div className="space-y-6">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-lg font-semibold text-foreground">
@@ -137,7 +136,7 @@ export default function PermissionsPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm"
+              className="h-9 rounded-full"
               onClick={loadConfig}
               disabled={loading || saving}
             >
@@ -146,7 +145,7 @@ export default function PermissionsPage() {
             </Button>
             <Button
               size="sm"
-              className="h-8 rounded-sm"
+              className="h-9 rounded-full"
               onClick={handleSave}
               disabled={!canManage || loading || saving}
             >
@@ -161,30 +160,30 @@ export default function PermissionsPage() {
         </div>
 
         {!initialized && !loading && canManage && (
-          <div className="mb-4 rounded-sm border border-[hsl(38_92%_82%)] bg-[hsl(38_92%_96%)] px-3 py-2 text-xs text-[hsl(38_92%_35%)]">
+          <div className="mb-4 rounded-xl border border-warning/25 bg-[var(--status-warning-bg)] px-3 py-2 text-xs text-warning">
             当前还没有初始化权限配置。首次保存后，你会自动成为管理员，后续只有管理员可以修改这里。
           </div>
         )}
 
         {!canManage && !loading && (
-          <div className="mb-4 rounded-sm border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <div className="mb-4 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             当前用户没有权限管理权限，仅可查看现有配置。
           </div>
         )}
 
         {error && (
-          <div className="mb-4 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
             权限配置加载失败：{error}
           </div>
         )}
 
-        <div className="rounded-sm border border-border bg-card">
+        <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
           {loading ? (
             <div className="space-y-4 p-4">
               {Array.from({ length: 2 }).map((_, index) => (
                 <div key={index} className="space-y-2">
-                  <Skeleton className="h-4 w-28 rounded-sm" />
-                  <Skeleton className="h-8 w-full rounded-sm" />
+                  <Skeleton className="h-4 w-28 rounded-md" />
+                  <Skeleton className="h-8 w-full rounded-md" />
                 </div>
               ))}
             </div>
@@ -198,7 +197,7 @@ export default function PermissionsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-medium text-foreground">{role.label}</h2>
-                      <Badge variant="outline" className="h-5 rounded-sm text-[10px]">
+                      <Badge variant="outline" className="h-5 rounded-full text-xs">
                         {role.editable ? `${(config[role.key] || []).length} 人` : '自动'}
                       </Badge>
                     </div>
@@ -220,7 +219,7 @@ export default function PermissionsPage() {
                       includeExternalContacts={false}
                     />
                   ) : (
-                    <div className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
                       普通用户无需逐个添加；当前由 PolloCloud 的公司员工登录范围控制应用访问。
                       被加入某条需求的需求提出人、数据负责人、研发负责人或埋点校验人，会自动获得对应项目节点权限。
                     </div>
@@ -230,7 +229,6 @@ export default function PermissionsPage() {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }

@@ -10,8 +10,8 @@ interface StageSidebarProps {
 
 const StageSidebar = ({ activeStage, permissions, onStageChange }: StageSidebarProps) => {
   return (
-    <nav className="w-full md:w-[200px] shrink-0">
-      <div className="sticky top-4 space-y-0.5">
+    <nav aria-label="生命周期阶段" className="w-full shrink-0 overflow-x-auto bg-card p-3 md:w-[196px] md:overflow-visible">
+      <div className="flex w-max gap-1 md:sticky md:top-4 md:w-auto md:flex-col">
         {SIDEBAR_STAGES.map((stage) => {
           const isActive = activeStage === stage.id;
           const canEdit = permissions[stage.permissionKey];
@@ -20,10 +20,11 @@ const StageSidebar = ({ activeStage, permissions, onStageChange }: StageSidebarP
             <button
               key={stage.id}
               type="button"
+              aria-current={isActive ? 'step' : undefined}
               onClick={() => onStageChange(stage.id)}
-              className={`group flex w-full items-center justify-between rounded-sm px-3 py-2 text-left text-sm transition-colors ${
+              className={`group flex shrink-0 items-center justify-between gap-3 rounded-full md:w-full px-3 py-2.5 text-left text-sm transition-colors ${
                 isActive
-                  ? 'bg-primary/10 text-primary font-medium'
+                  ? 'bg-primary-soft text-accent-foreground font-semibold'
                   : 'text-foreground hover:bg-accent'
               }`}
             >
@@ -31,7 +32,7 @@ const StageSidebar = ({ activeStage, permissions, onStageChange }: StageSidebarP
                 <span>{stage.label}</span>
                 {!canEdit && (
                   <span
-                    className="text-[10px] text-muted-foreground"
+                    className="text-xs text-muted-foreground"
                     title="无编辑权限"
                   >
                     只读

@@ -950,8 +950,8 @@ export class TrackingService {
       cellText(current.record['流程阶段']) || '需求录入',
       cellText(current.record['评审状态']),
     );
-    if (!['埋点提需', '埋点设计'].includes(uiStage)) {
-      throw new BadRequestException('仅支持删除需求录入或埋点设计阶段的事件');
+    if (['埋点上线', '归档', '上线监控', '稳定归档'].includes(uiStage)) {
+      throw new BadRequestException('事件进入上线或归档链路后不可删除');
     }
 
     const relatedRecords = await this.listRelatedWorkbenchRecords(source, current);

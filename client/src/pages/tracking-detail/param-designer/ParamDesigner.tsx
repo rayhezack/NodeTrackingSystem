@@ -49,6 +49,7 @@ const ParamDesigner = ({
   const [deletingParam, setDeletingParam] = useState<ParamDetail | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [selectedParamIds, setSelectedParamIds] = useState<string[]>([]);
+  const [removingIds, setRemovingIds] = useState<string[]>([]);
 
   const loadParams = useCallback(async () => {
     setLoading(true);
@@ -112,22 +113,25 @@ const ParamDesigner = ({
 
   const handleDeleteConfirm = async () => {
     if (!deletingParam) return;
-    await deleteParam(deletingParam.recordId, actorId, actorLarkId);
-    setItems((prev) => prev.filter((item) => item.recordId !== deletingParam.recordId));
-    setSelectedParamIds((prev) => prev.filter((id) => id !== deletingParam.recordId));
-    setDeletingParam(null);
+    const id = deletingParam.recordId;
+    setRemovingIds([id]);
+    try {
+      await deleteParam(id, actorId, actorLarkId);
+      setItems(previous => previous.filter(item => item.recordId !== id));
+      setSelectedParamIds(previous => previous.filter(value => value !== id));
+      setDeletingParam(null);
+    } finally { setRemovingIds([]); }
   };
 
   const handleBatchDeleteConfirm = async () => {
     if (!selectedParamIds.length) return;
     const idsToDelete = [...selectedParamIds];
-    await batchDeleteParams(recordId, {
-      paramRecordIds: idsToDelete,
-      actorId,
-      actorLarkId,
-    });
-    setItems((prev) => prev.filter((item) => !idsToDelete.includes(item.recordId)));
-    setSelectedParamIds([]);
+    setRemovingIds(idsToDelete);
+    try {
+      await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
+      setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
+      setSelectedParamIds([]);
+    } finally { setRemovingIds([]); }
   };
 
   const handleCopyParams = async () => {
@@ -143,7 +147,7 @@ const ParamDesigner = ({
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-medium text-foreground">参数设计</h2>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -151,13 +155,13 @@ const ParamDesigner = ({
             </p>
           </div>
           {canEdit && (
-            <Button size="sm" className="rounded-sm h-8" disabled>
+            <Button size="sm" className="rounded-full h-8" disabled>
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               新增参数
             </Button>
           )}
         </div>
-        <div className="rounded-sm border border-border bg-card">
+        <div className="rounded-md border border-border bg-card">
           <div className="h-9 border-b border-border bg-muted/30 animate-pulse" />
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-9 border-b border-border animate-pulse bg-muted/10" />
@@ -177,14 +181,14 @@ const ParamDesigner = ({
             配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
           </p>
         </div>
-        <div className="flex flex-col items-center justify-center rounded-sm border border-border bg-card py-16">
+        <div className="flex flex-col items-center justify-center rounded-md border border-border bg-card py-16">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
           <p className="text-sm font-medium text-foreground">加载失败</p>
           <p className="mt-1 text-xs text-muted-foreground">{error}</p>
           <Button
             variant="outline"
             size="sm"
-            className="mt-4 rounded-sm h-8"
+            className="mt-4 rounded-full h-8"
             onClick={loadParams}
           >
             重试
@@ -198,7 +202,7 @@ const ParamDesigner = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium text-foreground">
             参数设计
@@ -215,7 +219,7 @@ const ParamDesigner = ({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm"
+              className="h-8 rounded-full"
               onClick={handleCopyParams}
             >
               <Copy className="h-3.5 w-3.5" />
@@ -226,7 +230,7 @@ const ParamDesigner = ({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm text-destructive hover:text-destructive"
+              className="h-8 rounded-full text-foreground hover:bg-muted"
               onClick={() => setBatchDeleteOpen(true)}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -234,7 +238,7 @@ const ParamDesigner = ({
             </Button>
           )}
           {canEdit && (
-            <Button size="sm" className="h-8 rounded-sm" onClick={handleCreate}>
+            <Button size="sm" className="h-8 rounded-full" onClick={handleCreate}>
               <Plus className="h-3.5 w-3.5" />
               新增参数
             </Button>
@@ -243,7 +247,7 @@ const ParamDesigner = ({
       </div>
 
       {isEmpty ? (
-        <div className="flex flex-col items-center justify-center rounded-sm border border-dashed border-border bg-muted/30 py-16">
+        <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 py-16">
           <Wrench className="h-10 w-10 text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground font-medium">暂无参数</p>
           <p className="mt-1 text-xs text-muted-foreground/70">
@@ -256,6 +260,7 @@ const ParamDesigner = ({
           source={source}
           canEdit={canEdit}
           selectedIds={selectedParamIds}
+          removingIds={removingIds}
           onSelectionChange={setSelectedParamIds}
           onEdit={handleEdit}
           onDelete={handleDelete}

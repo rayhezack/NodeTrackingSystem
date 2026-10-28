@@ -65,3 +65,8 @@ pnpm-lock.yaml
 # Agent files
 .agent/
 .npm_cache
+
+# Local agent instructions, links and session caches
+.agents/
+.claude/
+.impeccable/

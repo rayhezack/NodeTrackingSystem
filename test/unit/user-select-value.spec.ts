@@ -14,7 +14,7 @@ function loadUserSelectValueUtils(): UserSelectValueUtils {
 describe('人员选择器持久化值回显', () => {
   const utils = loadUserSelectValueUtils();
 
-  it('对象模式应补查只有数字 ID、没有姓名的人员', () => {
+  it('对象模式应补查缺少姓名或头像的数字 ID 人员', () => {
     expect(typeof utils.getObjectUserIdsToFetch).toBe('function');
     if (!utils.getObjectUserIdsToFetch) return;
 
@@ -22,9 +22,10 @@ describe('人员选择器持久化值回显', () => {
       utils.getObjectUserIdsToFetch([
         { user_id: '1867390536304713' },
         { user_id: '1867390536304714', name: '已有姓名' },
+        { user_id: '1867390536304715', name: '完整资料', avatar: 'https://example.invalid/avatar.png' },
         { user_id: 'ou_sunwen' },
       ]),
-    ).toEqual(['1867390536304713']);
+    ).toEqual(['1867390536304713', '1867390536304714']);
   });
 
   it('对象模式应使用补查到的真实姓名替换未知用户', () => {

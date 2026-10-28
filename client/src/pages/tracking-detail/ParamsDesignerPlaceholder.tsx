@@ -10,7 +10,7 @@ const ParamsDesignerPlaceholder = () => {
         </p>
       </div>
 
-      <div className="flex flex-col items-center justify-center rounded-sm border border-dashed border-border bg-muted/30 py-16">
+      <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 py-16">
         <Wrench className="h-10 w-10 text-muted-foreground/50 mb-3" />
         <p className="text-sm text-muted-foreground font-medium">参数设计器开发中</p>
         <p className="mt-1 text-xs text-muted-foreground/70">

@@ -1,7 +1,88 @@
 .query-library {
-  --ql-ink-rgb: 15, 23, 42;
+  --ql-ink-rgb: 10, 19, 23;
   min-width: 0;
 }
+
+.query-library .seek-search {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 1 auto;
+  align-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--muted);
+  transition: width 180ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.query-library .seek-search.is-open {
+  width: min(260px, 100%);
+  overflow: visible;
+  border-color: transparent;
+  box-shadow: none;
+}
+.seek-search-trigger {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: 9999px;
+}
+.seek-search-trigger:hover { color: var(--primary); background: var(--accent); }
+.seek-search-trigger:focus-visible, .seek-search-clear:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.seek-search-input {
+  min-width: 0;
+  width: 100%;
+  height: 34px;
+  border: 0;
+  padding: 0 28px 0 2px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12px;
+  outline: none;
+  border-radius: 9999px;
+}
+.seek-search-input::placeholder { color: var(--muted-foreground); }
+.seek-search-clear {
+  position: absolute;
+  right: 7px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 9999px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.seek-search-clear:hover { background: var(--accent); color: var(--foreground); }
+.seek-search-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: -1px;
+  z-index: 20;
+  width: min(300px, 80vw);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 8px 20px rgb(15 23 42 / 10%);
+}
+.seek-search-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--foreground);
+  font-size: 12px;
+  text-align: left;
+}
+.seek-search-option:hover, .seek-search-option:focus-visible, .seek-search-option[aria-selected="true"] { background: var(--accent); outline: none; }
 
 /* ══ Label input ═══════════════════════════════════════════
    Bencho's ink/ground/font roles are mapped to the app's
@@ -16,7 +97,7 @@
   position: relative;
   display: grid;
   place-items: center;
-  padding-top: 10px;
+  padding-top: 8px;
   font-family: var(--font-ui);
 }
 
@@ -46,7 +127,7 @@
   position: absolute;
   left: var(--lbi-x);
   top: 50%;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   white-space: pre;
   color: var(--ink-4);
@@ -56,7 +137,7 @@
   cursor: text;
   user-select: none;
 }
-.lbi[data-up="true"] .lbi-label { transform: translateY(-50%) translateY(-26px) scale(0.78); color: var(--ink-3); }
+.lbi[data-up="true"] .lbi-label { transform: translateY(-50%) translateY(-20px) scale(0.78); color: var(--ink-3); }
 .lbi[data-focus="true"] .lbi-label { color: var(--primary); }
 .lbi-label span { display: inline-block; }
 /* Each letter hops once as the label rises. */
@@ -69,16 +150,28 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  padding: 0 14px 0 var(--lbi-x);
+  padding: 0 12px 0 34px;
   border: 0;
   border-radius: inherit;
   background: transparent;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--fill-on);
   outline: none;
 }
 .lbi-field:disabled { cursor: not-allowed; opacity: 0.55; }
+.lbi-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  z-index: 1;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.lbi[data-focus="true"] .lbi-icon { color: var(--primary); }
 
 /* ══ Radial menu ═══════════════════════════════════════════
    Its local tokens resolve to the app's flat surfaces and
@@ -92,8 +185,8 @@
   --pane: var(--card);
   --pane-edge: var(--border);
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   flex: none;
   display: grid;
   place-items: center;
@@ -102,14 +195,14 @@
 .fan-arc { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .fan-opt {
   position: absolute;
-  left: -18px;
-  top: -18px;
-  width: 36px;
-  height: 36px;
+  left: -15px;
+  top: -15px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border: 1px solid var(--pane-edge);
-  border-radius: 3px;
+  border-radius: 9999px;
   background: var(--pane);
   color: var(--ink);
   cursor: pointer;
@@ -127,7 +220,7 @@
   right: calc(100% + 6px);
   transform: translateY(-50%);
   padding: 2px 4px;
-  border-radius: 2px;
+  border-radius: 9999px;
   background: var(--card);
   font-size: 11px;
   color: var(--ink-4);
@@ -145,12 +238,12 @@
 .fan-core {
   position: relative;
   z-index: 3;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 3px;
+  border-radius: 9999px;
   background: var(--fill-slab);
   color: var(--fill-on);
   cursor: pointer;
@@ -171,3 +264,18 @@
   38% { transform: translateY(-3px); }
   100% { transform: translateY(0); }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .query-library .seek-search { transition: none; }
+}
+
+/* One quiet search surface: no nested input border or focus halo.
+   Keyboard focus remains identifiable through the caret and the outer
+   surface tint, without painting rings across the placeholder. */
+.query-library .seek-search .seek-search-input,
+.query-library .seek-search .seek-search-input:focus,
+.query-library .seek-search .seek-search-input:focus-visible {
+  border: 0; outline: none; box-shadow: none; background: transparent;
+}
+.query-library .seek-search:focus-within { background: var(--accent); }
+.query-library .seek-search-trigger { width: 36px; height: 36px; flex-basis: 36px; }

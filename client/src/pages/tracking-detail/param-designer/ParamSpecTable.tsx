@@ -1,15 +1,8 @@
-import { Edit, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Edit, Loader2, Trash2 } from 'lucide-react';
 import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
-import { Checkbox } from '@client/src/components/ui/checkbox';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from '@client/src/components/ui/table';
+import { ChecklistCheckbox } from '@client/src/components/bencho/Checklist';
 import type { ParamDetail, TrackingSource } from '@shared/api.interface';
 import { normalizePlatformDisplay } from './param-display.utils';
 
@@ -18,156 +11,62 @@ interface ParamSpecTableProps {
   source: TrackingSource;
   canEdit?: boolean;
   selectedIds?: string[];
+  removingIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
   onEdit?: (item: ParamDetail) => void;
   onDelete?: (item: ParamDetail) => void;
 }
 
-const ParamSpecTable = ({
-  items,
-  source,
-  canEdit = false,
-  selectedIds = [],
-  onSelectionChange,
-  onEdit,
-  onDelete,
-}: ParamSpecTableProps) => {
+const ParamSpecTable = ({ items, source, canEdit = false, selectedIds = [], removingIds = [], onSelectionChange, onEdit, onDelete }: ParamSpecTableProps) => {
   const selectable = canEdit && Boolean(onSelectionChange);
-  const selectedSet = new Set(selectedIds);
-  const allSelected = selectable && items.length > 0 && items.every((item) => selectedSet.has(item.recordId));
-  const partiallySelected = selectable && !allSelected && items.some((item) => selectedSet.has(item.recordId));
-
-  const updateOne = (recordId: string, checked: boolean) => {
-    if (!onSelectionChange) return;
+  const still = Boolean(useReducedMotion());
+  const selected = new Set(selectedIds), removing = new Set(removingIds);
+  const all = items.length > 0 && items.every(item => selected.has(item.recordId));
+  const busy = removingIds.length > 0;
+  const toggle = (id: string, checked: boolean) => {
     const next = new Set(selectedIds);
-    if (checked) {
-      next.add(recordId);
-    } else {
-      next.delete(recordId);
-    }
-    onSelectionChange(Array.from(next));
+    if (checked) next.add(id); else next.delete(id);
+    onSelectionChange?.([...next]);
   };
-
-  return (
-    <div className="overflow-hidden border-y border-border/60 bg-card/70">
-      <Table className="min-w-[900px] table-fixed">
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-muted/30">
-            {selectable && (
-              <TableHead className="h-9 w-[44px] py-0 text-xs font-medium">
-                <Checkbox
-                  checked={allSelected || (partiallySelected ? 'indeterminate' : false)}
-                  onCheckedChange={(checked) => onSelectionChange?.(checked === true ? items.map((item) => item.recordId) : [])}
-                  aria-label="选择全部参数"
-                />
-              </TableHead>
-            )}
-            <TableHead className="h-9 w-[260px] py-0 text-xs font-medium">参数</TableHead>
-            <TableHead className="h-9 w-[150px] py-0 text-xs font-medium">类型 / 规则</TableHead>
-            <TableHead className="h-9 py-0 text-xs font-medium">参数定义</TableHead>
-            <TableHead className="h-9 w-[240px] py-0 text-xs font-medium">枚举 / 示例</TableHead>
-            <TableHead className="h-9 w-[180px] py-0 text-xs font-medium">条件说明</TableHead>
-            {canEdit && (
-              <TableHead className="h-9 w-[120px] py-0 text-xs font-medium">操作</TableHead>
-            )}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.recordId} className="align-top border-border/60 transition-colors hover:bg-muted/20">
-              {selectable && (
-                <TableCell className="align-top">
-                  <Checkbox
-                    checked={selectedSet.has(item.recordId)}
-                    onCheckedChange={(checked) => updateOne(item.recordId, checked === true)}
-                    aria-label={`选择参数 ${item.paramKey}`}
-                  />
-                </TableCell>
-              )}
-              <TableCell className="whitespace-normal align-top">
-                <div className="space-y-1">
-                  <div className="break-all font-mono text-xs text-foreground">{item.paramKey}</div>
-                  <div className="break-words text-xs text-muted-foreground">{item.paramName || '-'}</div>
-                </div>
-              </TableCell>
-              <TableCell className="whitespace-normal align-top">
-                <div className="flex flex-col items-start gap-1.5">
-                  <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
-                    {item.paramType || 'STRING'}
-                  </Badge>
-                  <Badge
-                    variant={item.requiredRule === '非必传' ? 'outline' : 'default'}
-                    className="h-5 rounded-sm px-1.5 text-[10px] font-normal"
-                  >
-                    {item.requiredRule || (item.required ? '必传' : '非必传')}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {normalizePlatformDisplay(item.platform, source)}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="whitespace-normal align-top">
-                <TextBlock value={item.definition} fallback="未填写参数定义" />
-                {item.requestNotes && <div className="mt-2"><SpecLine label="本次需求说明" value={item.requestNotes} /></div>}
-              </TableCell>
-              <TableCell className="whitespace-normal align-top">
-                <div className="space-y-2">
-                  <SpecLine label="枚举" value={item.enumRange} />
-                  <SpecLine label="示例" value={item.example || item.defaultValue} />
-                </div>
-              </TableCell>
-              <TableCell className="whitespace-normal align-top">
-                <TextBlock value={item.triggerCondition} fallback="-" />
-              </TableCell>
-              {canEdit && (
-                <TableCell className="whitespace-nowrap align-top">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => onEdit?.(item)}
-                    >
-                      <Edit className="h-3.5 w-3.5" />
-                      编辑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 rounded-sm px-2 text-xs text-muted-foreground hover:text-destructive"
-                      onClick={() => onDelete?.(item)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      删除
-                    </Button>
-                  </div>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
+  return <div className="param-spec-list" aria-label="参数设计列表">
+    {selectable && <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <ChecklistCheckbox checked={all} mixed={!all && selectedIds.length > 0} disabled={busy} label="选择全部参数"
+        onChange={checked => onSelectionChange?.(checked ? items.map(item => item.recordId) : [])} />
+      <span>选择参数{selectedIds.length ? ` · 已选 ${selectedIds.length} 个` : ''}</span>
+    </div>}
+    <AnimatePresence initial={false}>
+      {items.map(item => <motion.section key={item.recordId} className="param-spec-row"
+        aria-label={item.paramKey} aria-busy={removing.has(item.recordId)} data-selected={selected.has(item.recordId) || undefined}
+        layout={!still} initial={false}
+        /* Removal is driven by the API result, never by a demo reset.
+           The departing row folds away; the remaining rows spring into place. */
+        exit={still ? { opacity: 0 } : { opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0, marginTop: 0, x: 24 }}
+        transition={still ? { duration: 0 } : { type: 'spring', stiffness: 380, damping: 34, mass: 0.9 }}>
+        <div className="param-spec-top">
+          {selectable && <ChecklistCheckbox checked={selected.has(item.recordId)} disabled={busy} label={`选择参数 ${item.paramKey}`} onChange={checked => toggle(item.recordId, checked)} />}
+          <div className="param-spec-title">
+            <span className="chk-say"><code>{item.paramKey}</code>
+              <motion.span className="chk-rule" aria-hidden="true" initial={false}
+                animate={{ scaleX: removing.has(item.recordId) ? 1 : 0 }} transition={{ duration: still ? 0 : 0.18 }} />
+            </span>
+            <small>{item.paramName || '-'} · {normalizePlatformDisplay(item.platform, source)}</small>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="outline" className="border-0 bg-card text-xs font-normal">{item.paramType || 'STRING'}</Badge>
+              <Badge variant="outline" className="border-0 bg-card text-xs font-normal">{item.requiredRule || (item.required ? '必传' : '非必传')}</Badge>
+            </div>
+          </div>
+          {canEdit && <div className="param-spec-actions">
+            <Button variant="ghost" size="icon" aria-label={`编辑参数 ${item.paramKey}`} title="编辑参数" disabled={busy} onClick={() => onEdit?.(item)}><Edit /></Button>
+            <Button variant="ghost" size="icon" aria-label={`删除参数 ${item.paramKey}`} title="删除参数" disabled={busy} onClick={() => onDelete?.(item)}>{removing.has(item.recordId) ? <Loader2 className="animate-spin" /> : <Trash2 />}</Button>
+          </div>}
+        </div>
+        <dl className="param-spec-fields">
+          <div><dt>参数定义</dt><dd>{item.definition || '未填写参数定义'}</dd>{item.requestNotes && <><dt className="mt-3">本次需求说明</dt><dd>{item.requestNotes}</dd></>}</div>
+          <div><dt>枚举 / 示例</dt><dd className="param-enum">{item.enumRange || '-'}{(item.example || item.defaultValue) && <><br /><span className="text-muted-foreground">示例：</span>{item.example || item.defaultValue}</>}</dd></div>
+          <div><dt>条件说明</dt><dd>{item.triggerCondition || '-'}</dd></div>
+        </dl>
+      </motion.section>)}
+    </AnimatePresence>
+  </div>;
 };
-
 export default ParamSpecTable;
-
-function SpecLine({ label, value }: { label: string; value?: string }) {
-  const text = (value || '').trim();
-  return (
-    <div>
-      <div className="mb-0.5 text-[10px] text-muted-foreground">{label}</div>
-      <TextBlock value={text} fallback="-" />
-    </div>
-  );
-}
-
-function TextBlock({ value, fallback }: { value?: string; fallback: string }) {
-  const text = (value || '').trim();
-  return (
-    <div className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
-      {text || <span className="text-muted-foreground">{fallback}</span>}
-    </div>
-  );
-}

@@ -15,11 +15,7 @@ import {
   BITABLE_TABLE_IDS,
   type BitableInstanceKey,
 } from './bitable.constants';
-import {
-  isPluginMissingError,
-  LocalBitableFallback,
-  shouldUseLocalBitableFallback,
-} from './local-fallback';
+import { isPluginMissingError } from './local-fallback';
 
 export interface BitableRecord {
   id: string;
@@ -78,7 +74,6 @@ type BitablePluginConfig = {
 @Injectable()
 export class BitableService {
   private readonly logger = new Logger(BitableService.name);
-  private readonly localFallback = new LocalBitableFallback();
   private readonly searchCacheTtlMs = 10_000;
   private readonly searchCache = new Map<string, { expiresAt: number; result: BitableSearchResult }>();
   private readonly pendingSearches = new Map<string, Promise<BitableSearchResult>>();
@@ -159,9 +154,6 @@ export class BitableService {
             .call('searchRecords', safeParams);
           return result as BitableSearchResult;
         } catch (error) {
-          if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
-            return this.localFallback.searchRecords(instanceKey, safeParams);
-          }
           const missingFieldName = extractMissingFieldName(error);
           const removedFromParams = removeFieldName(safeParams, missingFieldName);
           const removedFromConfig = this.removeFieldFromConfig(config, missingFieldName);
@@ -184,9 +176,6 @@ export class BitableService {
         }
       }
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'searchRecords')) {
-        return this.localFallback.searchRecords(instanceKey, safeParams);
-      }
       this.handleError(config.id, 'searchRecords', error);
     }
   }
@@ -210,9 +199,6 @@ export class BitableService {
           }
           return { id: typed.id, record: typed.record };
         } catch (error) {
-          if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
-            return this.localFallback.getRecord(instanceKey, recordId);
-          }
           const missingFieldName = extractMissingFieldName(error);
           if (
             missingFieldName &&
@@ -233,9 +219,6 @@ export class BitableService {
         }
       }
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'getRecord')) {
-        return this.localFallback.getRecord(instanceKey, recordId);
-      }
       this.handleError(config.id, 'getRecord', error);
     }
   }
@@ -261,9 +244,6 @@ export class BitableService {
             });
           return (result as { records: { id: string }[] }).records;
         } catch (error) {
-          if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
-            return this.localFallback.batchAddRecords(instanceKey, safeRecords);
-          }
           assertNoAcceptanceEvidenceSchemaDrift(error, safeRecords);
           const missingFieldName = extractMissingFieldName(error);
           const removedFromRecords = removeFieldFromRecords(safeRecords, missingFieldName);
@@ -287,9 +267,6 @@ export class BitableService {
         }
       }
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'batchAddRecords')) {
-        return this.localFallback.batchAddRecords(instanceKey, safeRecords);
-      }
       this.handleError(config.id, 'batchAddRecords', error);
     }
   }
@@ -314,9 +291,6 @@ export class BitableService {
             .call('batchUpdateRecords', { records: safeUpdates });
           return (result as { records: { id: string }[] }).records;
         } catch (error) {
-          if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
-            return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
-          }
           assertNoAcceptanceEvidenceSchemaDrift(
             error,
             safeUpdates.map((update) => update.record),
@@ -343,9 +317,6 @@ export class BitableService {
         }
       }
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'batchUpdateRecords')) {
-        return this.localFallback.batchUpdateRecords(instanceKey, safeUpdates);
-      }
       this.handleError(config.id, 'batchUpdateRecords', error);
     }
   }
@@ -362,9 +333,6 @@ export class BitableService {
         .call('deleteRecords', { recordIDs: recordIds });
       return (result as { success: boolean }).success;
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'deleteRecords')) {
-        return this.localFallback.deleteRecords(instanceKey, recordIds);
-      }
       this.handleError(config.id, 'deleteRecords', error);
     }
   }
@@ -425,30 +393,8 @@ export class BitableService {
         .call('aggregateQuery', params);
       return result as BitableAggregateResult;
     } catch (error) {
-      if (this.canUseLocalFallback(error, instanceKey, 'aggregateQuery')) {
-        return this.localFallback.aggregateQuery();
-      }
       this.handleError(config.id, 'aggregateQuery', error);
     }
-  }
-
-  private canUseLocalFallback(
-    error: unknown,
-    instanceKey: BitableInstanceKey,
-    actionKey: string,
-  ): boolean {
-    if (!isPluginMissingError(error) || !shouldUseLocalBitableFallback()) {
-      return false;
-    }
-
-    this.logger.warn(
-      JSON.stringify({
-        message: 'Using local bitable fallback because official plugin is missing in local dev',
-        instanceKey,
-        actionKey,
-      }),
-    );
-    return true;
   }
 
   private removeFieldFromConfig(
@@ -488,7 +434,7 @@ export class BitableService {
     actionKey: string,
     error: unknown,
   ): never {
-    if (error instanceof BadRequestException) {
+    if (error instanceof BadRequestException || error instanceof ServiceUnavailableException) {
       throw error;
     }
     const errorMessage = errorText(error);

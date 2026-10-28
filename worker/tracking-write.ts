@@ -426,7 +426,7 @@ export async function deleteTrackingEvent(
   const admins = (await loadPermissionConfig(credentials, fetchImpl)).admins;
   if (!recordPermissions(current.record, actorId, admins).canEditDesign) throw new TrackingWriteError('当前用户无权限删除设计事件', 403);
   const currentUiStage = uiStage(text(current.record['流程阶段']) || '需求录入', text(current.record['评审状态']));
-  if (!['埋点提需', '埋点设计'].includes(currentUiStage)) throw new TrackingWriteError('仅支持删除需求录入或埋点设计阶段的事件', 400);
+  if (['埋点上线', '归档'].includes(currentUiStage) || hasOfficialFootprint(current.record)) throw new TrackingWriteError('事件进入上线或归档链路后不可删除', 400);
   const related = await listRelatedRecords(credentials, ref.source, current, fetchImpl);
   if (related.length <= 1) throw new TrackingWriteError('一个需求至少需要保留一个埋点事件，不能删除最后一个事件', 400);
   const params = await listParams(credentials, ref.source, ref.rawId, text(current.record.evt_id), fetchImpl);

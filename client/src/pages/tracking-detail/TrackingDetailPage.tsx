@@ -305,24 +305,24 @@ const TrackingDetailPage = () => {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="rounded-sm h-8" disabled>
+          <Button variant="ghost" size="sm" className="rounded-full h-8" disabled>
             <ArrowLeft className="h-4 w-4" />
             返回
           </Button>
         </div>
-        <div className="overflow-hidden rounded-sm border border-border bg-card">
+        <div className="overflow-hidden rounded-md border border-border bg-card">
           <div className="h-20 animate-pulse bg-muted/30" />
           <div className="h-16 border-t border-border animate-pulse bg-muted/20" />
           <div className="flex min-h-[500px]">
             <div className="w-[200px] border-r border-border animate-pulse bg-muted/10" />
             <div className="flex-1 p-6">
               <div className="space-y-4">
-                <div className="h-6 w-32 animate-pulse bg-muted/30 rounded-sm" />
+                <div className="h-6 w-32 animate-pulse bg-muted/30 rounded-md" />
                 <div className="grid grid-cols-2 gap-4">
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="space-y-2">
-                      <div className="h-3 w-16 animate-pulse bg-muted/30 rounded-sm" />
-                      <div className="h-8 w-full animate-pulse bg-muted/20 rounded-sm" />
+                      <div className="h-3 w-16 animate-pulse bg-muted/30 rounded-md" />
+                      <div className="h-8 w-full animate-pulse bg-muted/20 rounded-md" />
                     </div>
                   ))}
                 </div>
@@ -342,21 +342,21 @@ const TrackingDetailPage = () => {
           <Button
             variant="ghost"
             size="sm"
-            className="rounded-sm h-8"
+            className="rounded-full h-8"
             onClick={handleBack}
           >
             <ArrowLeft className="h-4 w-4" />
             返回
           </Button>
         </div>
-        <div className="flex flex-col items-center justify-center rounded-sm border border-border bg-card py-20">
+        <div className="flex flex-col items-center justify-center rounded-md border border-border bg-card py-20">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
           <p className="text-sm font-medium text-foreground">加载失败</p>
           <p className="mt-1 text-xs text-muted-foreground">{error || '记录不存在'}</p>
           <Button
             variant="outline"
             size="sm"
-            className="mt-4 rounded-sm"
+            className="mt-4 rounded-full"
             onClick={() => recordId && window.location.reload()}
           >
             重试
@@ -377,7 +377,7 @@ const TrackingDetailPage = () => {
   return (
     <div className="space-y-4">
       <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
-        <AlertDialogContent className="rounded-sm">
+        <AlertDialogContent className="rounded-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>仍有未保存的修改</AlertDialogTitle>
             <AlertDialogDescription>
@@ -385,8 +385,8 @@ const TrackingDetailPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-sm">继续编辑</AlertDialogCancel>
-            <AlertDialogAction disabled={uploadCount > 0} className="rounded-sm" onClick={() => navigate('/')}>
+            <AlertDialogCancel className="rounded-full">继续编辑</AlertDialogCancel>
+            <AlertDialogAction disabled={uploadCount > 0} className="rounded-full" onClick={() => navigate('/')}>
               返回列表
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -397,7 +397,7 @@ const TrackingDetailPage = () => {
         <Button
           variant="ghost"
           size="sm"
-          className="rounded-sm h-8"
+          className="rounded-full h-8"
           onClick={handleBack}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -409,14 +409,14 @@ const TrackingDetailPage = () => {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-sm border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="h-8 rounded-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                 disabled={deletingRequest || savingDrafts || uploadCount > 0}
               >
                 {deletingRequest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 删除需求单
               </Button>
             </AlertDialogTrigger>
-            <AlertDialogContent className="rounded-sm">
+            <AlertDialogContent className="rounded-lg">
               <AlertDialogHeader>
                 <AlertDialogTitle>确认删除整个需求单？</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -424,11 +424,11 @@ const TrackingDetailPage = () => {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-sm" disabled={deletingRequest || savingDrafts || uploadCount > 0}>
+                <AlertDialogCancel className="rounded-full" disabled={deletingRequest || savingDrafts || uploadCount > 0}>
                   取消
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  className="rounded-sm bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   disabled={deletingRequest || savingDrafts || uploadCount > 0}
                   onClick={(event) => {
                     event.preventDefault();
@@ -445,7 +445,7 @@ const TrackingDetailPage = () => {
       </div>
 
       {/* 详情卡片 */}
-      <div className="min-w-0 max-w-full overflow-hidden rounded-sm bg-card shadow-none">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
         {/* 顶部信息栏 */}
         <DetailHeader detail={detail} />
 
@@ -471,7 +471,7 @@ const TrackingDetailPage = () => {
           />
 
           {/* 右侧内容区 */}
-          <div className="min-h-[500px] min-w-0 flex-1 border-t border-border/60 p-6 md:border-t-0 md:border-l md:border-border/60">
+          <div className="min-h-[500px] min-w-0 flex-1 border-t border-border/60 bg-card p-4 sm:p-6 md:border-t-0 md:border-l md:border-border/60">
             <StageForm
               key={`${activeStage}-${detail.recordId}`}
               stageId={activeStage}

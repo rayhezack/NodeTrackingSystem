@@ -113,10 +113,10 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-medium text-foreground">研发对接速览</h3>
-            <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+            <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
               {events.length} 个事件
             </Badge>
-            <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+            <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
               当前事件 {items.length} 个参数
             </Badge>
           </div>
@@ -127,7 +127,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
         <Button
           variant="outline"
           size="sm"
-          className="h-8 rounded-sm"
+          className="h-8 rounded-full"
           onClick={handleCopy}
           disabled={copying}
         >
@@ -138,13 +138,13 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
 
       <div className="flex flex-wrap items-center gap-2 border-y border-border/60 py-3">
         <span className="text-xs font-medium">飞书 Base 设计数据</span>
-        <Button asChild variant="outline" size="sm" className="h-8 rounded-sm">
+        <Button asChild variant="outline" size="sm" className="h-8 rounded-full">
           <a href={baseLinks.design} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-3.5 w-3.5" />
             打开埋点设计表
           </a>
         </Button>
-        <Button asChild variant="outline" size="sm" className="h-8 rounded-sm">
+        <Button asChild variant="outline" size="sm" className="h-8 rounded-full">
           <a href={baseLinks.params} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-3.5 w-3.5" />
             打开设计参数表
@@ -156,7 +156,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
       </div>
 
       <Dialog open={Boolean(copyFallback)} onOpenChange={(open) => !open && setCopyFallback('')}>
-        <DialogContent className="max-w-4xl rounded-sm">
+        <DialogContent className="max-w-4xl rounded-lg">
           <DialogHeader>
             <DialogTitle>整份需求开发上下文</DialogTitle>
             <DialogDescription>浏览器未允许自动复制。可点击下方按钮，或全选文本后复制。</DialogDescription>
@@ -200,7 +200,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground">
           UI 图
-          <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+          <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
             {presentation.uiImages.length} 张
           </Badge>
         </div>
@@ -225,7 +225,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
             <AlertCircle className="h-4 w-4 text-destructive" />
             参数说明加载失败：{error}
           </div>
-          <Button variant="outline" size="sm" className="h-7 rounded-sm" onClick={loadParams}>
+          <Button variant="outline" size="sm" className="h-7 rounded-full" onClick={loadParams}>
             重试
           </Button>
         </div>
@@ -256,7 +256,7 @@ function EventSelector({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-        className={`min-w-0 rounded-sm border px-3 py-2 text-left transition-colors ${
+        className={`min-w-0 rounded-md border px-3 py-2 text-left transition-colors ${
         selected
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border bg-background text-foreground hover:bg-accent'
@@ -266,7 +266,7 @@ function EventSelector({
         <span className="min-w-0 break-all font-mono text-xs font-medium">
           {event.evtId || '待填写 evt_id'}
         </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {formatPlatform(event.platform)}
         </span>
       </div>
@@ -280,7 +280,7 @@ function EventSelector({
 function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-l-2 border-primary/30 bg-card/60 px-3 py-1.5">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 break-words text-xs text-foreground">{value}</div>
     </div>
   );
@@ -289,7 +289,7 @@ function SummaryCell({ label, value }: { label: string; value: string }) {
 function LongSpec({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-l-2 border-border bg-card/60 px-3 py-1.5">
-      <div className="mb-1 text-[10px] text-muted-foreground">{label}</div>
+      <div className="mb-1 text-xs text-muted-foreground">{label}</div>
       <div className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
         {value || <span className="text-muted-foreground">未填写</span>}
       </div>

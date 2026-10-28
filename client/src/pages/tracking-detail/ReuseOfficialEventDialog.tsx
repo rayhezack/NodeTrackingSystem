@@ -11,14 +11,7 @@ import {
   DialogTitle,
 } from '@client/src/components/ui/dialog';
 import { Input } from '@client/src/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@client/src/components/ui/table';
+import { Checklist, ChecklistCheckbox } from '@client/src/components/bencho/Checklist';
 import { getOfficialEvents, getOfficialParams } from '@client/src/api/query-library';
 import { reuseOfficialTrackingEvent } from '@client/src/api/tracking';
 import type {
@@ -187,7 +180,7 @@ export default function ReuseOfficialEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && !saving && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-sm border-border outline-none focus:outline-none">
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden rounded-lg border-border outline-none focus:outline-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <GitBranch className="h-4 w-4 text-primary" />
@@ -195,7 +188,7 @@ export default function ReuseOfficialEventDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-sm border border-[hsl(217_91%_86%)] bg-[hsl(217_91%_97%)] px-3 py-2 text-xs text-muted-foreground">
+        <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
           从{detail.source === 'web' ? ' Web ' : ' App '}正式查询库勾选多个已有事件，点击事件行预览并选择要导入的参数（默认不导入旧参数），系统会回填事件定义、触发时机和版本；只有勾选的正式参数会复制为本次需求的设计参数草稿。{reuseTargetCopy}
         </div>
 
@@ -205,7 +198,7 @@ export default function ReuseOfficialEventDialog({
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="h-8 rounded-sm pl-8 text-xs"
+                  className="h-8 rounded-md pl-8 text-xs"
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                   onKeyDown={(event) => {
@@ -217,7 +210,7 @@ export default function ReuseOfficialEventDialog({
               </div>
               <Button
                 size="sm"
-                className="h-8 rounded-sm"
+                className="h-8 rounded-full"
                 onClick={() => fetchEvents(keyword)}
                 disabled={loading || saving}
               >
@@ -226,72 +219,29 @@ export default function ReuseOfficialEventDialog({
               </Button>
             </div>
 
-            <div className="rounded-sm border border-border bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="w-8">
-                      <input type="checkbox" aria-label="全选已加载事件" disabled={saving || !events.length}
-                        checked={events.length > 0 && events.every((event) => Boolean(chosen[event.recordId]))}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setChosen((prev) => {
-                            const next = { ...prev };
-                            for (const event of events) {
-                              if (checked) next[event.recordId] = event;
-                              else delete next[event.recordId];
-                            }
-                            return next;
-                          });
-                        }} />
-                    </TableHead>
-                    <TableHead className="w-48 text-xs">evt_id</TableHead>
-                    <TableHead className="text-xs">事件名</TableHead>
-                    <TableHead className="w-24 text-xs">版本</TableHead>
-                    <TableHead className="w-20 text-xs">状态</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && !events.length ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-28 text-center text-xs text-muted-foreground">
-                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-                        正在加载正式事件...
-                      </TableCell>
-                    </TableRow>
-                  ) : events.length ? (
-                    events.map((event) => (
-                      <TableRow
-                        key={event.recordId}
-                        className={`cursor-pointer ${selected?.recordId === event.recordId ? 'bg-primary/10 hover:bg-primary/10' : ''}`}
-                        onClick={() => !saving && setSelected(event)}
-                      >
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" aria-label={`复用 ${event.evtId}`} disabled={saving}
-                            checked={Boolean(chosen[event.recordId])}
-                            onChange={(e) => toggleEvent(event, e.target.checked)} />
-                        </TableCell>
-                        <TableCell className="max-w-[220px] truncate font-mono text-xs">
-                          {event.evtId}
-                        </TableCell>
-                        <TableCell className="text-xs">{event.eventName}</TableCell>
-                        <TableCell className="text-xs">{event.version || '-'}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
-                            {event.status || '-'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-28 text-center text-xs text-muted-foreground">
-                        未找到正式事件
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+            <div className="overflow-hidden rounded-2xl bg-muted/50 p-2">
+              <div className="mb-1 flex items-center gap-2 px-2 text-xs text-muted-foreground">
+                <ChecklistCheckbox label="全选已加载事件" disabled={saving || !events.length}
+                  checked={events.length > 0 && events.every(event => Boolean(chosen[event.recordId]))}
+                  mixed={events.some(event => Boolean(chosen[event.recordId])) && !events.every(event => Boolean(chosen[event.recordId]))}
+                  onChange={checked => setChosen(previous => {
+                    const next = { ...previous };
+                    for (const event of events) { if (checked) next[event.recordId] = event; else delete next[event.recordId]; }
+                    return next;
+                  })} />
+                <span>正式事件 · {events.length} 个</span>
+                <span className="ml-auto">勾选复用 · 点击名称预览</span>
+              </div>
+              {loading && !events.length ? <div className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />正在加载正式事件...</div>
+                : events.length ? <div className="max-h-[50vh] overflow-y-auto rounded-2xl">
+                  <Checklist label="可复用正式事件" activeId={selected?.recordId}
+                    items={events.map(event => ({ id: event.recordId, label: event.evtId,
+                      description: `${event.eventName} · ${event.version || '未标注版本'}`,
+                      meta: <Badge variant="outline" className="border-0 bg-muted text-xs font-normal">{event.status || '-'}</Badge>,
+                      checked: Boolean(chosen[event.recordId]), disabled: saving }))}
+                    onToggle={(id, checked) => { const event = events.find(item => item.recordId === id); if (event) toggleEvent(event, checked); }}
+                    onPreview={id => { const event = events.find(item => item.recordId === id); if (event) setSelected(event); }} />
+                </div> : <div className="py-12 text-center text-sm text-muted-foreground">未找到正式事件</div>}
             </div>
             {pageToken && <Button variant="outline" size="sm" disabled={loading || saving} onClick={() => fetchEvents(submittedKeyword, pageToken)}>加载更多</Button>}
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -301,7 +251,7 @@ export default function ReuseOfficialEventDialog({
             </div>
           </div>
 
-          <div className="min-w-0 space-y-3 rounded-sm border border-border bg-muted/20 p-3">
+          <div className="min-w-0 space-y-4 rounded-2xl bg-muted/50 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Database className="h-4 w-4 text-primary" />
               复用预览
@@ -314,8 +264,8 @@ export default function ReuseOfficialEventDialog({
                   <PreviewLine label="端" value={selected.platform} />
                   <PreviewLine label="版本" value={selected.version} />
                 </div>
-                <div className="rounded-sm border border-border bg-card">
-                  <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                <div className="overflow-hidden rounded-2xl bg-card">
+                  <div className="px-4 py-3 text-xs text-muted-foreground">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span>
                         可选正式参数 {loadingParams ? '' : `(${params.length})`} · 已选择 {selectedParamKeys.length} 个
@@ -349,26 +299,11 @@ export default function ReuseOfficialEventDialog({
                         正在加载参数...
                       </div>
                     ) : params.length ? (
-                      <div className="divide-y divide-border">
-                        {params.map((param) => (
-                          <label key={param.paramKey || param.paramName} className="flex cursor-pointer gap-2 px-3 py-2 text-xs hover:bg-accent/60">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                              checked={selectedParamKeys.includes(paramKeyOf(param))}
-                              onChange={(event) => setSelectedParamKeys(event.target.checked ? [...selectedParamKeys, paramKeyOf(param)] : selectedParamKeys.filter((key) => key !== paramKeyOf(param)))}
-                              disabled={saving}
-                            />
-                            <div className="min-w-0">
-                              <div className="break-all font-mono text-foreground">{param.paramKey || param.paramName}</div>
-                              <div className="mt-1 text-muted-foreground">
-                                {param.paramType || '-'} · {param.requiredRule || '非必传'}
-                                {param.enumRange ? ` · 枚举：${param.enumRange}` : ''}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
+                      <Checklist label="可导入正式参数" items={params.map(param => ({
+                        id: paramKeyOf(param), label: param.paramKey || param.paramName || '',
+                        description: `${param.paramType || '-'} · ${param.requiredRule || '非必传'}${param.enumRange ? ` · 枚举：${param.enumRange}` : ''}`,
+                        checked: selectedParamKeys.includes(paramKeyOf(param)), disabled: saving,
+                      }))} onToggle={(key, checked) => setSelectedParamKeys(checked ? [...selectedParamKeys, key] : selectedParamKeys.filter(value => value !== key))} />
                     ) : (
                       <div className="py-8 text-center text-xs text-muted-foreground">
                         该正式事件暂无参数明细
@@ -378,7 +313,7 @@ export default function ReuseOfficialEventDialog({
                 </div>
               </>
             ) : (
-              <div className="rounded-sm border border-dashed border-border bg-card py-12 text-center text-xs text-muted-foreground">
+              <div className="rounded-md border border-dashed border-border bg-card py-12 text-center text-xs text-muted-foreground">
                 请先从左侧选择一个正式事件
               </div>
             )}
@@ -389,7 +324,7 @@ export default function ReuseOfficialEventDialog({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm"
+            className="h-8 rounded-full"
             onClick={onClose}
             disabled={saving}
           >
@@ -397,7 +332,7 @@ export default function ReuseOfficialEventDialog({
           </Button>
           <Button
             size="sm"
-            className="h-8 rounded-sm"
+            className="h-8 rounded-full"
             onClick={handleReuse}
             disabled={!Object.keys(chosen).length || saving}
           >
