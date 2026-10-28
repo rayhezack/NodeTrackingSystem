@@ -1265,6 +1265,12 @@ export class TrackingService {
     }
     const mergedUpdates = mergeBitableRecordUpdates(updates);
 
+    const archiving = Boolean(body.targetStage) && currentStage === '稳定归档';
+    if (archiving) {
+      for (const update of mergedUpdates) {
+        await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
+      }
+    }
     await this.bitable.batchUpdateRecords(
       workbench,
       mergedUpdates.map((update) => ({ id: update.id, record: update.record })),
@@ -1272,8 +1278,10 @@ export class TrackingService {
     if (hasEvtIdPatch && nextEvtId && nextEvtId !== currentEvtId) {
       await this.syncParamEvtId(ref.source, ref.rawId, currentEvtId, nextEvtId);
     }
-    for (const update of mergedUpdates) {
-      await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
+    if (!archiving) {
+      for (const update of mergedUpdates) {
+        await this.syncOfficialQueryLibrary(ref.source, update.id, update.nextRecord);
+      }
     }
     const notification = await this.notifyWorkflowTransition(ref.source, recordId, current.record, nextRecord, body, mergedUpdates);
     return {
@@ -1549,11 +1557,14 @@ export class TrackingService {
       };
 
       if (existing) {
-        if (mode === 'official' && !isRemoved) {
+        const alreadyOfficial = cellText(existing.record['枚举状态']) === '正式'
+          || cellIds(existing.record['关联正式参数']).length > 0;
+        if ((mode === 'official' && !isRemoved) || (mode === 'design' && alreadyOfficial)) {
           const previousLinks = cellIds(existing.record[linkedField]);
           const nextLinks = uniqueStrings([...previousLinks, paramRecordId]);
-          if (nextLinks.length !== previousLinks.length) {
-            updates.push({ id: existing.id, record: { [linkedField]: nextLinks } });
+          const promote = mode === 'official' && cellText(existing.record['枚举状态']) === '草稿';
+          if (nextLinks.length !== previousLinks.length || promote) {
+            updates.push({ id: existing.id, record: { [linkedField]: nextLinks, ...(promote ? { 枚举状态: '正式' } : {}) } });
           }
         } else {
           updates.push({ id: existing.id, record: recordPatch });

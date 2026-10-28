@@ -339,17 +339,23 @@ export async function updateTrackingRecord(
     const workflowPatch = pick(patch, workflowFields(body.stageId));
     for (const item of related) if (item.id !== ref.rawId) updates.set(item.id, { ...(updates.get(item.id) || {}), ...workflowPatch });
   }
+  // Publish every sibling before marking the request archived. A failed sync remains retryable.
+  const archiving = Boolean(body.targetStage) && currentStage === '稳定归档';
+  const officialSyncCache: OfficialSyncCache = {};
+  const syncUpdates = async () => {
+    for (const [id, itemPatch] of updates) {
+      const original = related.find((item) => item.id === id)?.record || (id === current.id ? current.record : {});
+      await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl, officialSyncCache);
+    }
+  };
+  if (archiving) await syncUpdates();
   await updateBitableRecords(credentials, workbenchKey(ref.source), [...updates].map(([id, record]) => ({ id, record })), fetchImpl);
 
   if ('evt_id' in patch && text(patch.evt_id) !== text(current.record.evt_id)) {
     const params = await listParams(credentials, ref.source, ref.rawId, text(current.record.evt_id), fetchImpl);
     if (params.length) await updateBitableRecords(credentials, paramKey(ref.source), params.map((item) => ({ id: item.id, record: { evt_id: text(patch.evt_id) } })), fetchImpl);
   }
-  const officialSyncCache: OfficialSyncCache = {};
-  for (const [id, itemPatch] of updates) {
-    const original = related.find((item) => item.id === id)?.record || (id === current.id ? current.record : {});
-    await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl, officialSyncCache);
-  }
+  if (!archiving) await syncUpdates();
   const notification = await notifyTransition(credentials, ref.source, recordId, current.record, nextRecord, body, related, fetchImpl);
   return { success: true, recordId, currentStage, ...(notification ? { notification } : {}) };
 }
@@ -1032,8 +1038,10 @@ async function syncEnumDictionary(
       if (existing) {
         const previousLinks = cellIds(existing.record[linkedField]);
         const nextLinks = unique([...previousLinks, target.id]);
-        const patch = mode === 'official' && !removed
-          ? { [linkedField]: nextLinks }
+        const alreadyOfficial = text(existing.record['枚举状态']) === '正式'
+          || cellIds(existing.record['关联正式参数']).length > 0;
+        const patch = (mode === 'official' && !removed) || (mode === 'design' && alreadyOfficial)
+          ? { [linkedField]: nextLinks, ...(mode === 'official' && text(existing.record['枚举状态']) === '草稿' ? { 枚举状态: '正式' } : {}) }
           : {
               evt_id: target.evtId, 参数名: target.paramName, 枚举值: entry.value,
               枚举中文名: entry.label, 枚举定义: entry.definition, 枚举状态: status,
