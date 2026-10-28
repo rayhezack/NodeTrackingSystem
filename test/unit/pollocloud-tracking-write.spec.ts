@@ -245,10 +245,10 @@ describe('PolloCloud tracking write service', () => {
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'rec-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'official-1', fields: { evt_id: 'home_show', '事件中文名': '正式首页曝光', 状态: '已上线' } }], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'design-param-1', fields: { evt_id: 'home_show', 参数名: 'page_id', 数据类型: 'NUMBER', 必传规则: '非必传', 参数定义: '设计稿误改定义', '枚举/取值范围': 'old // 原枚举\nnew // 新枚举', '来源设计记录ID': 'rec-1' } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'design-param-1', fields: { evt_id: 'home_show', 参数名: 'page_id', 数据类型: 'NUMBER', 必传规则: '非必传', 参数定义: '设计稿误改定义', '枚举/取值范围': 'old\nnew', '来源设计记录ID': 'rec-1' } }], has_more: false } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'official-param-1', fields: { 参数主键: 'home_show.page_id', evt_id: 'home_show', 事件中文名: '正式首页曝光', 参数名: 'page_id', 数据类型: 'STRING', 必传规则: '必传', 参数定义: '正式定义', '枚举/取值范围': 'old // 原枚举', 版本: '1.0.0', 参数状态: '正式', 关联事件: ['official-1'] } }], has_more: false } }))
-      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [{ record_id: 'enum-old', fields: { 枚举主键: 'home_show.page_id.old', evt_id: 'home_show', 参数名: 'page_id', 枚举值: 'old', 枚举中文名: '原枚举', 枚举状态: '正式', 关联正式参数: [] } }], has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'enum-old', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'enum-new', fields: {} }] } }))
       .mockResolvedValueOnce(jsonResponse({ code: 0, data: { records: [{ record_id: 'official-param-1', fields: {} }] } }));
@@ -262,7 +262,7 @@ describe('PolloCloud tracking write service', () => {
       .filter(([url]) => String(url).includes('/tables/tblEYv9lGZeenbT2/records/batch_update'))
       .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
     expect(officialParamUpdates).toEqual([
-      { records: [{ record_id: 'official-param-1', fields: { '枚举/取值范围': 'old // 原枚举\nnew // 新枚举' } }] },
+      { records: [{ record_id: 'official-param-1', fields: { '枚举/取值范围': 'old\nnew' } }] },
       { records: [{ record_id: 'official-param-1', fields: { 枚举字典: ['enum-old', 'enum-new'] } }] },
     ]);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/tables/tblAhScEFQYAJC2g/records/batch_update'))).toBe(false);

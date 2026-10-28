@@ -1,3 +1,4 @@
+import { reserveBaseCreates, confirmBaseCreates } from './base-write-identity';
 import { getFeishuTenantToken, resetFeishuTokenCache, type FeishuCredentials } from './feishu-token';
 
 export const BITABLE_INSTANCES = {
@@ -149,6 +150,7 @@ export async function createBitableRecords(
   if (records.length > 500) throw new Error('Feishu bitable batch create supports at most 500 records');
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
+  const reservations = await reserveBaseCreates(env.DB, instance, records);
   const response = await fetchImpl(
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/batch_create?user_id_type=user_id`,
     {
@@ -165,7 +167,11 @@ export async function createBitableRecords(
   if (!response.ok || payload.code !== 0) {
     throw new Error(`Feishu bitable create failed: ${response.status} ${payload.msg || 'unknown error'}`);
   }
-  return (payload.data?.records || []).map((record) => ({
+  const returned = payload.data?.records || [];
+  if (returned.length !== records.length || returned.some((record) => !record.record_id)) throw new Error('Feishu Base 批量写入返回数量或记录 ID 不完整，已停止归档');
+  if (new Set(returned.map((record) => record.record_id)).size !== returned.length) throw new Error('Feishu Base 新增返回重复记录 ID');
+  await confirmBaseCreates(env.DB, instance, reservations, returned.map((record) => record.record_id!));
+  return returned.map((record) => ({
     id: record.record_id || '',
     record: record.fields || {},
   })).filter((record) => record.id);
@@ -197,7 +203,11 @@ export async function updateBitableRecords(
   if (!response.ok || payload.code !== 0) {
     throw new Error(`Feishu bitable update failed: ${response.status} ${payload.msg || 'unknown error'}`);
   }
-  return (payload.data?.records || []).map((record) => ({
+  const returned = payload.data?.records || [];
+  if (returned.length !== records.length || returned.some((record) => !record.record_id)) throw new Error('Feishu Base 批量写入返回数量或记录 ID 不完整，已停止归档');
+  const expectedIds = new Set(records.map((record) => record.id));
+  if (returned.some((record) => !expectedIds.has(record.record_id!)) || new Set(returned.map((record) => record.record_id)).size !== returned.length) throw new Error('Feishu Base 更新返回记录 ID 不匹配');
+  return returned.map((record) => ({
     id: record.record_id || '',
     record: record.fields || {},
   })).filter((record) => record.id);

@@ -365,7 +365,7 @@ describe('工作流 Base 回写', () => {
               数据类型: 'STRING',
               必传规则: '必传',
               条件说明: '点击入口时必传',
-              '枚举/取值范围': 'submit/cancel',
+              '枚举/取值范围': 'submit\ncancel',
               参数定义: '按钮名称',
               '默认值/示例': 'submit',
               App适用性: 'App通用',
@@ -496,7 +496,7 @@ describe('工作流 Base 回写', () => {
         数据类型: 'STRING',
         必传规则: '必传',
         条件说明: '点击入口时必传',
-        '枚举/取值范围': 'submit/cancel',
+        '枚举/取值范围': 'submit\ncancel',
         参数定义: '按钮名称',
         版本: '2.0.0',
         参数状态: '正式',
@@ -584,10 +584,9 @@ describe('工作流 Base 回写', () => {
         },
       }),
       batchUpdateRecords: jest.fn().mockResolvedValue([{ id: 'rec_1' }]),
-      searchRecords: jest.fn().mockResolvedValue({
-        records: [{ id: 'rec_official', record: { evt_id: 'test_event' } }],
-        hasMore: false,
-      }),
+      searchRecords: jest.fn().mockImplementation(async (key: string) => ({
+        records: key === 'queryLibrary' ? [{ id: 'rec_official', record: { evt_id: 'test_event' } }] : [], hasMore: false,
+      })),
       batchAddRecords: jest.fn().mockImplementation(async (_instanceKey: string, records: Record<string, unknown>[]) =>
         records.map((_, index) => ({ id: `rec_enum_${index + 1}` })),
       ),
@@ -796,7 +795,7 @@ describe('工作流 Base 回写', () => {
       {
         id: 'rec_official_param',
         record: {
-          '枚举/取值范围': 'old // 原有枚举\nqwe // 原有枚举 2\nabc // 新枚举',
+          '枚举/取值范围': 'old\nqwe\nabc',
         },
       },
     ]);

@@ -1,0 +1,71 @@
+import { webcrypto } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { withBaseWriteGuard, isBaseMutation } from '../../worker/base-write-guard';
+import { reserveBaseCreates, confirmBaseCreates } from '../../worker/base-write-identity';
+import type { D1Database } from '../../worker/ai-tracking';
+
+Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
+const { DatabaseSync } = require('node:sqlite');
+function database(path: string): D1Database {
+  const sqlite = new DatabaseSync(path);
+  return { prepare(query: string) {
+    let parameters: unknown[] = [];
+    const statement = {
+      bind(...values: unknown[]) { parameters = values; return statement; },
+      async run() { return sqlite.prepare(query).run(...parameters); },
+      async first<T>() { return (sqlite.prepare(query).get(...parameters) || null) as T | null; },
+      async all<T>() { return { results: sqlite.prepare(query).all(...parameters) as T[] }; },
+    };
+    return statement;
+  } };
+}
+describe('persistent Base writer coordination using real SQLite constraints', () => {
+  let folder: string;
+  let db: D1Database;
+  beforeEach(() => { folder = mkdtempSync(join(tmpdir(), 'tracking-guard-')); db = database(join(folder, 'test.sqlite')); });
+  afterEach(() => rmSync(folder, { recursive: true, force: true }));
+  it('serializes independent database clients instead of relying on a Worker local mutex', async () => {
+    const other = database(join(folder, 'test.sqlite'));
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const first = withBaseWriteGuard(db, '/api/tracking/records/a', async () => { entered(); await new Promise<void>((resolve) => { release = resolve; }); return new Response('{}'); });
+    await ready;
+    const blocked = jest.fn(async () => new Response('{}'));
+    expect((await withBaseWriteGuard(other, '/api/tracking/params/b', blocked)).status).toBe(409);
+    expect(blocked).not.toHaveBeenCalled();
+    release(); await first;
+    expect((await withBaseWriteGuard(other, '/api/tracking/params/b', blocked)).status).toBe(200);
+  });
+  it('retains an uncertain write lock until an operator reconciles it, without unsafe lease takeover', async () => {
+    await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 502 }));
+    const blocked = jest.fn(async () => new Response('{}'));
+    expect((await withBaseWriteGuard(db, '/archive', blocked)).status).toBe(409);
+    expect(blocked).not.toHaveBeenCalled();
+    const row = await db.prepare('SELECT status FROM tracking_base_writes').first<{ status: string }>();
+    expect(row?.status).toBe('needs_reconciliation');
+  });
+  it('fails closed without the database, while allowing ordinary validation failures to release the lock', async () => {
+    const write = jest.fn(async () => new Response('{}'));
+    expect((await withBaseWriteGuard(undefined, '/archive', write)).status).toBe(503);
+    expect(write).not.toHaveBeenCalled();
+    await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 422 }));
+    expect((await withBaseWriteGuard(db, '/archive', write)).status).toBe(200);
+  });
+  it('records unique create claims permanently so an eventually consistent Base read cannot cause duplicate inserts', async () => {
+    const values = [{ evt_id: 'test_event', 参数名: 'mode', 枚举值: 'Agent' }];
+    const claims = await reserveBaseCreates(db, 'webEnumDictionary', values);
+    await expect(reserveBaseCreates(db, 'webEnumDictionary', values)).rejects.toThrow('未确认');
+    await confirmBaseCreates(db, 'webEnumDictionary', claims, ['enum-1']);
+    await expect(reserveBaseCreates(db, 'webEnumDictionary', values)).rejects.toThrow('已记录');
+    await expect(reserveBaseCreates(db, 'webEnumDictionary', [{ ...values[0], 枚举值: 'agent' }])).resolves.toHaveLength(1);
+  });
+  it('covers parameter edits and AI apply, but does not block read endpoints or long AI generation', () => {
+    expect(isBaseMutation('PATCH', '/api/tracking/records/web:a')).toBe(true);
+    expect(isBaseMutation('POST', '/api/tracking/ai/records/web:a/drafts/d/apply')).toBe(true);
+    expect(isBaseMutation('POST', '/api/tracking/ai/records/web:a/drafts')).toBe(false);
+    expect(isBaseMutation('GET', '/api/tracking/records')).toBe(false);
+  });
+});

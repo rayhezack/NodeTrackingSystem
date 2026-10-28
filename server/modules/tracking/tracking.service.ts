@@ -1,3 +1,4 @@
+import { assertDistinctParams, dictionaryEnums, dictionaryRange, enumIdentity, mergeTrackingEnums, parseTrackingEnums } from '../../../shared/tracking-enums';
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
 import type {
@@ -1472,6 +1473,7 @@ export class TrackingService {
         ...(pageToken ? { pageToken } : {}),
       });
       records.push(...result.records);
+      if (result.hasMore && (!result.pageToken || result.pageToken === pageToken)) throw new BadRequestException('Base 分页不完整，已停止归档');
       pageToken = result.hasMore ? result.pageToken : undefined;
     } while (pageToken);
 
@@ -1514,6 +1516,8 @@ export class TrackingService {
     mode: EnumDictionaryLinkMode,
     paramRecordId: string,
     paramRecord: Record<string, unknown>,
+    enumRecords?: BitableRecord[],
+    labels?: Map<string, { label: string; definition: string }>,
   ): Promise<string[]> {
     const evtId = cellText(paramRecord['evt_id']).trim();
     const paramName = cellText(paramRecord['参数名']).trim();
@@ -1525,10 +1529,10 @@ export class TrackingService {
     const paramInstanceKey = mode === 'design' ? paramDetailKey(source) : officialParamDetailKey(source);
     const linkedField = mode === 'design' ? '关联设计参数' : '关联正式参数';
     const entries = parseEnumDictionaryEntries(evtId, paramName, enumText);
-    const existingRecords = await this.listEnumRecordsForParam(source, evtId, paramName);
+    const existingRecords = enumRecords || await this.listEnumRecordsForParam(source, evtId, paramName);
     const existingByKey = new Map(
       existingRecords
-        .map((record) => [cellText(record.record['枚举主键']).trim().toLowerCase(), record] as const)
+        .map((record) => [enumIdentity(cellText(record.record.evt_id), cellText(record.record['参数名']), cellText(record.record['枚举值'])), record] as const)
         .filter(([key]) => Boolean(key)),
     );
     const isRemoved = mode === 'design' ? isRemovedDesignParam(paramRecord) : isRemovedOfficialParam(paramRecord);
@@ -1539,7 +1543,10 @@ export class TrackingService {
     const insertKeys: string[] = [];
 
     for (const entry of entries) {
-      const normalizedKey = entry.key.toLowerCase();
+      const normalizedKey = enumIdentity(evtId, paramName, entry.value);
+      const matches = existingRecords.filter((item) => enumIdentity(cellText(item.record.evt_id), cellText(item.record['参数名']), cellText(item.record['枚举值'])) === normalizedKey);
+      if (matches.length > 1) throw new BadRequestException(`枚举字典存在重复值 ${entry.key}`);
+      if (matches.length && cellText(matches[0].record['枚举状态']) === '已废弃') throw new BadRequestException(`不能恢复已废弃枚举 ${entry.key}`);
       const existing = existingByKey.get(normalizedKey);
       const recordPatch = {
         evt_id: evtId,
@@ -1570,17 +1577,20 @@ export class TrackingService {
           updates.push({ id: existing.id, record: recordPatch });
         }
       } else {
+        const suggested = labels?.get(enumIdentity(evtId, paramName, entry.value));
         inserts.push({
           枚举主键: entry.key,
           ...recordPatch,
+          枚举中文名: entry.label || suggested?.label || '',
+          枚举定义: entry.definition || suggested?.definition || '',
         });
         insertKeys.push(normalizedKey);
       }
     }
 
-    const linkedEnumRecordIds: string[] = entries
-      .map((entry) => existingByKey.get(entry.key.toLowerCase())?.id || '')
-      .filter(Boolean);
+    const linkedEnumRecordIds: string[] = [...new Set([...previousLinkedIds, ...entries
+      .map((entry) => existingByKey.get(enumIdentity(evtId, paramName, entry.value))?.id || '')
+      .filter(Boolean)])];
 
     for (let index = 0; index < updates.length; index += 200) {
       await this.bitable.batchUpdateRecords(instanceKey, updates.slice(index, index + 200));
@@ -1653,7 +1663,8 @@ export class TrackingService {
       // 正式事件本身的定义、触发时机、负责人、状态等字段保持不变。
     } else {
       const [created] = await this.bitable.batchAddRecords(instanceKey, [officialRecord]);
-      officialEventRecordId = created?.id;
+      if (!created?.id) throw new BadRequestException('正式事件新增未返回记录 ID');
+      officialEventRecordId = created.id;
     }
 
     if (officialEventRecordId) {
@@ -1703,15 +1714,21 @@ export class TrackingService {
     const designParams = designParamRecords.filter((paramRecord) => !isRemovedDesignParam(paramRecord.record));
     const officialParamKey = officialParamDetailKey(source);
     const officialParams = await this.searchAllRecords(officialParamKey, officialParamFields(source));
+    assertDistinctParams(designParams.map((item) => ({ ...item, record: { ...item.record, evt_id: cellText(item.record.evt_id) || evtId } })), '当前需求');
+    assertDistinctParams(officialParams.filter((item) => cellText(item.record.evt_id) === evtId), '正式库');
+    const needsEnums = designParams.some((item) => cellText(item.record['枚举/取值范围']) || cellIds(item.record['枚举字典']).length)
+      || officialParams.some((item) => cellText(item.record.evt_id) === evtId && (cellText(item.record['枚举/取值范围']) || cellIds(item.record['枚举字典']).length));
+    const enumRows = needsEnums ? await this.searchAllRecords(enumDictionaryKey(source), enumDictionaryFields()) : [];
     const existingByParamKey = new Map<string, BitableRecord>();
 
     for (const item of officialParams) {
-      const paramKey = getOfficialParamKey(item.record).toLowerCase();
+      const paramKey = getOfficialParamKey(item.record);
       if (paramKey) {
         existingByParamKey.set(paramKey, item);
       }
     }
 
+    const labels = new Map<string, { label: string; definition: string }>();
     const updates: { id: string; record: Record<string, unknown> }[] = [];
     const inserts: Record<string, unknown>[] = [];
     const enumSyncTargets: Array<{ id: string; record: Record<string, unknown> }> = [];
@@ -1729,8 +1746,15 @@ export class TrackingService {
       const officialParam = toOfficialParamRecord(source, designRecord, designParam.record, officialEventRecordId, officialEvent);
       if (!officialParam) continue;
 
-      const paramKey = cellText(officialParam['参数主键']).trim().toLowerCase();
+      const paramKey = cellText(officialParam['参数主键']).trim();
       const existing = existingByParamKey.get(paramKey);
+      const paramName = cellText(designParam.record['参数名']);
+      for (const entry of parseTrackingEnums(cellText(designParam.record['枚举/取值范围']))) {
+        if (entry.label) labels.set(enumIdentity(evtId, paramName, entry.value), entry);
+      }
+      const rows = existing ? dictionaryEnums(enumRows, evtId, paramName, existing.id, 'official') : [];
+      const previous = mergeTrackingEnums(dictionaryRange(rows), cellText(existing?.record['枚举/取值范围']));
+      officialParam['枚举/取值范围'] = mergeTrackingEnums(previous, cellText(officialParam['枚举/取值范围']), dictionaryRange(dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design')));
       if (existing) {
         const appendOnly = mergeOfficialParamRecord(existing.record, officialParam);
         if (Object.keys(appendOnly.patch).length) {
@@ -1756,7 +1780,7 @@ export class TrackingService {
       }
     }
     for (const target of enumSyncTargets) {
-      await this.syncEnumDictionaryForParam(source, 'official', target.id, target.record);
+      await this.syncEnumDictionaryForParam(source, 'official', target.id, target.record, enumRows, labels);
     }
   }
 
@@ -3627,10 +3651,7 @@ function mergeOfficialParamRecord(
   incoming: Record<string, unknown>,
 ): { patch: Record<string, unknown>; effectiveRecord: Record<string, unknown> } {
   const existingEnumRange = cellText(existing['枚举/取值范围']);
-  const mergedEnumRange = mergeEnumRangeText(
-    existingEnumRange,
-    cellText(incoming['枚举/取值范围']),
-  );
+  const mergedEnumRange = cellText(incoming['枚举/取值范围']);
   const patch: Record<string, unknown> = {};
   if (mergedEnumRange !== existingEnumRange) {
     patch['枚举/取值范围'] = mergedEnumRange;
@@ -3645,103 +3666,8 @@ function mergeOfficialParamRecord(
   };
 }
 
-function mergeEnumRangeText(existingText: string, incomingText: string): string {
-  const existingParts = splitEnumRange(existingText);
-  const incomingParts = splitEnumRange(incomingText);
-  const merged: string[] = [];
-  const seen = new Set<string>();
-  for (const item of [...existingParts, ...incomingParts]) {
-    const key = enumRangeItemKey(item);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(item);
-  }
-  if (!merged.length) return incomingText || existingText || '';
-  return merged.join(detectEnumDelimiter(existingText || incomingText));
-}
-
-function enumRangeItemKey(item: string): string {
-  const parsed = parseEnumDictionaryItem(item);
-  return (parsed.value || item).trim().toLowerCase();
-}
-
 function parseEnumDictionaryEntries(evtId: string, paramName: string, enumRange: string): Array<{ key: string; value: string; label: string; definition: string }> {
-  const text = String(enumRange || '').trim();
-  if (!text) return [];
-
-  return uniqueStrings(splitEnumRangeForDictionary(text))
-    .map((rawItem) => parseEnumDictionaryItem(rawItem))
-    .filter((entry) => isValidEnumDictionaryValue(entry.value))
-    .map((entry) => ({
-      key: `${evtId}.${paramName}.${entry.value}`,
-      value: entry.value,
-      label: entry.label,
-      definition: entry.definition,
-    }));
-}
-
-function splitEnumRangeForDictionary(value: string): string[] {
-  const normalized = value.replace(/\r/g, '\n');
-  if (normalized.includes('\n')) {
-    return normalized.split('\n').map((item) => item.trim()).filter(Boolean);
-  }
-  if (normalized.includes('//')) {
-    return [normalized.trim()];
-  }
-  return normalized.split(/[,，、/|]+/).map((item) => item.trim()).filter(Boolean);
-}
-
-function parseEnumDictionaryItem(rawItem: string): { value: string; label: string; definition: string } {
-  const item = rawItem.trim();
-  const commentMatch = item.match(/^(.+?)\s*(?:\/\/|#|：|:)\s*(.+)$/);
-  if (commentMatch?.[1]) {
-    const value = commentMatch[1].trim();
-    const label = (commentMatch[2] || '').trim();
-    return {
-      value,
-      label,
-      definition: label,
-    };
-  }
-  return {
-    value: item,
-    label: '',
-    definition: '',
-  };
-}
-
-function isValidEnumDictionaryValue(value: string): boolean {
-  const text = value.trim();
-  if (!text) return false;
-  if (['-', '—', '无', '暂无', '待确认', '无特殊参数'].includes(text)) return false;
-  return !/^\.{2,}$/.test(text) && !/^…+$/.test(text);
-}
-
-function splitEnumRange(value: string): string[] {
-  const text = String(value || '').trim();
-  if (!text) return [];
-  if (text.includes('\n')) {
-    return text
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  if (text.includes('//')) return [text];
-  return text
-    .split(/[,，、/|]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function detectEnumDelimiter(value: string): string {
-  if (value.includes('\n')) return '\n';
-  if (value.includes('//')) return '\n';
-  if (value.includes('，')) return '，';
-  if (value.includes('、')) return '、';
-  if (value.includes('/')) return '/';
-  if (value.includes('|')) return '|';
-  return ',';
+  return parseTrackingEnums(enumRange).map((entry) => ({ key: `${evtId}.${paramName}.${entry.value}`, ...entry }));
 }
 
 function isRemovedDesignParam(record: Record<string, unknown>): boolean {

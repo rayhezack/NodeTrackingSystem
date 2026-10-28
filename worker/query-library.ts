@@ -1,3 +1,4 @@
+import { dictionaryEnums, dictionaryRange } from '../shared/tracking-enums';
 import type {
   GetOfficialEventsParams,
   GetOfficialEventsResponse,
@@ -144,9 +145,14 @@ export async function getOfficialParams(
     OFFICIAL_PARAM_VIEW_ID,
     fetchImpl,
   );
+  const enumRows = await searchAllRecords(credentials, ref.source === 'web' ? 'webEnumDictionary' : 'enumDictionary', ['evt_id', '参数名', '枚举值', '枚举状态', '关联正式参数'], undefined, fetchImpl);
   const items = records
     .filter((item) => isOfficialParamForEvent(item, ref.rawId, evtId))
-    .map((item) => toOfficialParam(item, ref.source))
+    .map((item) => {
+      const param = toOfficialParam(item, ref.source);
+      const values = dictionaryEnums(enumRows, evtId, param.paramName, item.id, 'official');
+      return values.length ? { ...param, enumRange: dictionaryRange(values) } : param;
+    })
     .filter((item) => item.paramKey || item.paramName)
     .filter((item) => item.status !== '已废弃')
     .sort((left, right) => left.paramKey.localeCompare(right.paramKey));

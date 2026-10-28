@@ -100,7 +100,8 @@ describe('PolloCloud query library', () => {
           ],
           has_more: false,
         },
-      }));
+      }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, data: { items: [], has_more: false } }));
 
     const result = await getOfficialParams(
       credentials,

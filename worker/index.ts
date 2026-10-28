@@ -1,3 +1,5 @@
+import { TrackingEnumError } from '../shared/tracking-enums';
+import { isBaseMutation, withBaseWriteGuard } from './base-write-guard';
 import { searchBitableRecords } from './feishu-bitable';
 import { streamingGenerationResponse } from './ai-generation-response';
 import {
@@ -80,7 +82,7 @@ export function resolvePolloCloudUser(headers: Headers): PolloCloudUser | null {
   };
 }
 
-export default {
+const app = {
   async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
     const url = new URL(request.url);
 
@@ -153,7 +155,7 @@ export default {
           return json(await generateAiDraft(env, recordId, body, user.id, url.origin));
         }
       } catch (error) {
-        const status = error instanceof TrackingWriteError ? error.status : 502;
+        const status = error instanceof TrackingWriteError ? error.status : error instanceof TrackingEnumError ? 422 : error instanceof SyntaxError ? 400 : 502;
         return json({ message: error instanceof Error ? error.message : 'AI tracking request failed' }, status);
       }
     }
@@ -250,7 +252,7 @@ export default {
           return json(await deleteTrackingParam(env, decodeURIComponent(paramMatch[1]), user.id));
         }
       } catch (error) {
-        const status = error instanceof TrackingWriteError ? error.status : 502;
+        const status = error instanceof TrackingWriteError ? error.status : error instanceof TrackingEnumError ? 422 : error instanceof SyntaxError ? 400 : 502;
         return json({ message: error instanceof Error ? error.message : 'Tracking write failed' }, status);
       }
     }
@@ -402,3 +404,16 @@ function trackingListParams(params: URLSearchParams, source?: TrackingSourceFilt
     pageToken: params.get('pageToken') || undefined,
   };
 }
+
+export default {
+  async fetch(request: Request, env: WorkerEnv = {}): Promise<Response> {
+    const path = new URL(request.url).pathname;
+    if (!isBaseMutation(request.method, path)) return app.fetch(request, env);
+    if (!resolvePolloCloudUser(request.headers)) return json({ message: 'Unauthorized' }, 401);
+    try {
+      return await withBaseWriteGuard(env.DB, path, () => app.fetch(request, env));
+    } catch {
+      return json({ message: 'Base 写入协调失败，请检查归档任务记录后重试' }, 503);
+    }
+  },
+};
