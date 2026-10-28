@@ -75,6 +75,15 @@ describe('archive enum dictionary synchronization', () => {
     expect(records[tables.enums][0].fields['枚举状态']).toBe('正式');
     expect(records[tables.enums][0].fields['关联设计参数']).toEqual(['design-param']);
   });
+  it('allows editing unpublished design enums without retaining removed draft links or changing formal enums', async () => {
+    const { records, fetchMock } = fixture();
+    records[tables.workbench][0].fields['流程阶段'] = '埋点设计';
+    const { updateTrackingParam } = await import('../../worker/tracking-write');
+    await updateTrackingParam(credentials, 'web:design-param', { fields: { enumRange: 'new_value' } }, 'owner', fetchMock);
+    expect(records[tables.design][0].fields['枚举字典']).not.toContain('draft-enum');
+    expect(records[tables.params][0].fields['枚举字典']).toEqual(['old-enum']);
+    expect(records[tables.enums][0].fields['枚举状态']).toBe('正式');
+  });
   it('keeps every sibling in launch when a later event fails, even after an earlier event synchronized', async () => {
     const { records, fetchMock } = fixture();
     records[tables.workbench].push({ record_id: 'later-event', fields: {

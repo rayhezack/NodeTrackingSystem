@@ -1013,7 +1013,7 @@ async function syncEnumDictionary(
     const status = removed ? '已废弃' : mode === 'official' ? '正式' : '草稿';
     const version = text(target.record['版本']) || '1.0.0';
     const entries = parseEnumDictionaryEntries(target.evtId, target.paramName, target.enumText);
-    const linkedIds: string[] = [...target.previousLinkedIds];
+    const linkedIds: string[] = mode === 'official' || !entries.length ? [...target.previousLinkedIds] : [];
 
     for (const entry of entries) {
       const key = enumIdentity(target.evtId, target.paramName, entry.value);

@@ -1588,7 +1588,7 @@ export class TrackingService {
       }
     }
 
-    const linkedEnumRecordIds: string[] = [...new Set([...previousLinkedIds, ...entries
+    const linkedEnumRecordIds: string[] = [...new Set([...(mode === 'official' || !entries.length ? previousLinkedIds : []), ...entries
       .map((entry) => existingByKey.get(enumIdentity(evtId, paramName, entry.value))?.id || '')
       .filter(Boolean)])];
 
