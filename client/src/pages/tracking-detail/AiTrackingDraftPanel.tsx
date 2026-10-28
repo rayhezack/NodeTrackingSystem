@@ -6,7 +6,6 @@ import {
   FileSearch,
   ExternalLink,
   Loader2,
-  Paperclip,
   RefreshCw,
   Sparkles,
   TriangleAlert,
@@ -34,12 +33,12 @@ import {
 } from '@client/src/api/tracking';
 import type {
   AiFeishuAuthStatus,
-  AiTrackingContextFile,
   AiTrackingConfigStatus,
   AiTrackingDraft,
   AiTrackingGenerationProgress,
   TrackingDetail,
 } from '@shared/api.interface';
+import { UploadDropzone, type UploadDocument } from '@client/src/components/bencho/UploadDropzone';
 import { getAiDraftGenerationBlockReason } from './ai-tracking-prd.utils';
 
 interface AiTrackingDraftPanelProps {
@@ -69,8 +68,8 @@ const AiTrackingDraftPanel = ({
   const [generationProgress, setGenerationProgress] = useState<AiTrackingGenerationProgress | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const [applying, setApplying] = useState(false);
-  const [contextFiles, setContextFiles] = useState<AiTrackingContextFile[]>([]);
-  const contextFileInputRef = useRef<HTMLInputElement>(null);
+  const [contextFiles, setContextFiles] = useState<UploadDocument[]>([]);
+  const [readingContext, setReadingContext] = useState(false);
   const pendingGenerateAfterAuthRef = useRef(false);
   const authWindowRef = useRef<Window | null>(null);
   const generationPollRef = useRef(0);
@@ -156,7 +155,7 @@ const AiTrackingDraftPanel = ({
       const result = await generateAiTrackingDraft(detail.recordId, {
         actorId,
         actorLarkId,
-        contextFiles,
+        contextFiles: contextFiles.map(({ name, content }) => ({ name, content })),
       }, { signal: abort.signal, onProgress: setGenerationProgress });
       setActiveDraft(result.draft);
       setDraftDialogOpen(true);
@@ -222,27 +221,8 @@ const AiTrackingDraftPanel = ({
     }
   }, []);
 
-  const handleContextFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const accepted = Array.from(files).slice(0, 5 - contextFiles.length);
-    const nextFiles: AiTrackingContextFile[] = [];
-    for (const file of accepted) {
-      if (!/\.(txt|md|markdown|json|csv)$/i.test(file.name)) {
-        toast.error(`${file.name} 暂不支持，补充上下文请上传 txt、md、json 或 csv 文件`);
-        continue;
-      }
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error(`${file.name} 超过 2MB，无法作为补充上下文`);
-        continue;
-      }
-      const content = (await file.text()).trim();
-      if (!content) continue;
-      nextFiles.push({ name: file.name, content: content.slice(0, 20_000) });
-    }
-    setContextFiles((previous) => [...previous, ...nextFiles].slice(0, 5));
-  };
-
   const handleGenerate = async () => {
+    if (readingContext) { toast.info('请等待上下文文件读取完成'); return; }
     if (draft?.status === 'generating') {
       toast.info('当前草稿仍在生成，请稍候');
       return;
@@ -310,22 +290,22 @@ const AiTrackingDraftPanel = ({
 
   return (
     <>
-      <div className="min-w-0 max-w-full overflow-hidden border-y border-border bg-muted/20 px-4 py-3">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-2xl bg-card px-4 py-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 max-w-full flex-1 items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <Bot className="h-4 w-4" />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-foreground">AI 埋点初稿</span>
                 {config && (
-                  <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-normal">
+                  <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
                     {config.provider} / {config.model}
                   </Badge>
                 )}
                 {auth?.authorized && (
-                  <Badge variant="outline" className="h-5 rounded-sm border-emerald-200 px-1.5 text-[10px] font-normal text-emerald-700">
+                  <Badge variant="outline" className="h-5 rounded-full border-emerald-200 px-1.5 text-xs font-normal text-emerald-700">
                     已授权
                   </Badge>
                 )}
@@ -341,7 +321,7 @@ const AiTrackingDraftPanel = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-sm"
+                className="h-8 rounded-full"
                 onClick={() => setDraftDialogOpen(true)}
               >
                 <FileSearch className="h-3.5 w-3.5" />
@@ -351,8 +331,8 @@ const AiTrackingDraftPanel = ({
             <Button
               type="button"
               size="sm"
-              className="h-8 rounded-sm"
-              disabled={!canEdit || !ready || loading || draft?.status === 'generating'}
+              className="h-8 rounded-full"
+              disabled={!canEdit || !ready || loading || readingContext || draft?.status === 'generating'}
               onClick={() => void handleGenerate()}
             >
               {loading || draft?.status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -360,40 +340,8 @@ const AiTrackingDraftPanel = ({
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <input
-            ref={contextFileInputRef}
-            type="file"
-            accept=".txt,.md,.markdown,.json,.csv,text/plain,text/markdown,application/json,text/csv"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              void handleContextFiles(event.target.files);
-              event.target.value = '';
-            }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 rounded-sm"
-            disabled={!canEdit || loading || contextFiles.length >= 5}
-            onClick={() => contextFileInputRef.current?.click()}
-          >
-            <Paperclip className="h-3.5 w-3.5" />补充上下文文件
-          </Button>
-          <span className="text-xs text-muted-foreground">支持 txt、md、json、csv，最多 5 个文件</span>
-          {contextFiles.map((file) => (
-            <button
-              key={file.name}
-              type="button"
-              className="max-w-48 truncate rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-              title="移除补充上下文"
-              onClick={() => setContextFiles((previous) => previous.filter((item) => item !== file))}
-            >
-              {file.name} ×
-            </button>
-          ))}
+        <div className="mt-4">
+          <UploadDropzone key={detail.recordId} files={contextFiles} onChange={setContextFiles} onBusyChange={setReadingContext} disabled={!canEdit || loading || applying || draft?.status === 'generating'} />
         </div>
         {generationError && <p role="alert" className="mt-2 text-sm text-destructive">{generationError}</p>}
         {loading && generationProgress && (
@@ -416,7 +364,7 @@ const AiTrackingDraftPanel = ({
       </div>
 
       <Dialog open={authDialogOpen} onOpenChange={handleAuthDialogOpenChange}>
-        <DialogContent className="max-w-md rounded-sm">
+        <DialogContent className="max-w-md rounded-lg">
           <DialogHeader>
             <DialogTitle className="text-base">飞书文档授权</DialogTitle>
             <DialogDescription>
@@ -427,7 +375,7 @@ const AiTrackingDraftPanel = ({
             {authUrl && (
               <Button
                 type="button"
-                className="w-full rounded-sm"
+                className="w-full rounded-full"
                 onClick={() => window.open(authUrl, '_blank', 'noopener,noreferrer')}
               >
                 <ExternalLink className="h-4 w-4" />前往飞书授权
@@ -441,14 +389,14 @@ const AiTrackingDraftPanel = ({
       </Dialog>
 
       <Dialog open={draftDialogOpen} onOpenChange={setDraftDialogOpen}>
-        <DialogContent className="grid h-[min(88dvh,840px)] max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-sm p-0">
+        <DialogContent className="grid h-[min(88dvh,840px)] max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-lg p-0">
           {draft && (
             <>
               <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <DialogTitle className="text-base">AI 埋点草稿 v{draft.version}</DialogTitle>
-                  <Badge variant="outline" className="rounded-sm text-[10px]">{draft.events.length} 个事件</Badge>
-                  <Badge variant="outline" className="rounded-sm text-[10px]">{draft.model}</Badge>
+                  <Badge variant="outline" className="rounded-full text-xs">{draft.events.length} 个事件</Badge>
+                  <Badge variant="outline" className="rounded-full text-xs">{draft.model}</Badge>
                 </div>
                 <DialogDescription>{draft.prd.title || draft.prd.url}</DialogDescription>
               </DialogHeader>
@@ -496,7 +444,7 @@ const AiTrackingDraftPanel = ({
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-mono text-xs font-medium text-foreground">{event.evtId}</span>
                               <span className="text-xs text-muted-foreground">{event.eventName}</span>
-                              <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px]">
+                              <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs">
                                 {event.reuseSource ? '复用正式事件' : diff?.scope === 'current_event' ? '填充当前事件' : '新增事件建议'}
                               </Badge>
                             </div>
@@ -571,10 +519,10 @@ const AiTrackingDraftPanel = ({
                   <FileCheck2 className="h-4 w-4" />
                   已选择 {selectedIds.size} / {draft.events.length}
                 </div>
-                <Button type="button" variant="outline" className="rounded-sm" disabled={loading || applying || draft.status === 'generating'} onClick={() => void handleGenerate()}>
+                <Button type="button" variant="outline" className="rounded-full" disabled={loading || applying || draft.status === 'generating'} onClick={() => void handleGenerate()}>
                   <RefreshCw className="h-4 w-4" />生成新版
                 </Button>
-                <Button type="button" className="rounded-sm" disabled={draft.status !== 'draft' || !selectedIds.size || applying} onClick={() => void handleApply()}>
+                <Button type="button" className="rounded-full" disabled={draft.status !== 'draft' || !selectedIds.size || applying} onClick={() => void handleApply()}>
                   {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   {applying ? '录入中...' : '确认并录入需求单'}
                 </Button>
@@ -592,7 +540,7 @@ export default AiTrackingDraftPanel;
 function Spec({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-card px-3 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 whitespace-pre-wrap text-xs text-foreground">{value || '-'}</div>
     </div>
   );

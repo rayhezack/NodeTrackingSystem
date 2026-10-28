@@ -50,19 +50,19 @@ const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
 const PLATFORM_OPTIONS = ['iOS', 'Android', 'App', 'Web'];
 
 const STAGE_VARIANT: Record<string, string> = {
-  埋点提需: 'bg-[hsl(217_91%_96%)] text-[hsl(217_91%_40%)] border-[hsl(217_91%_90%)]',
-  埋点设计: 'bg-[hsl(38_92%_96%)] text-[hsl(38_92%_40%)] border-[hsl(38_92%_90%)]',
-  埋点开发: 'bg-[hsl(217_91%_96%)] text-[hsl(217_91%_40%)] border-[hsl(217_91%_90%)]',
-  埋点验收: 'bg-[hsl(38_92%_96%)] text-[hsl(38_92%_40%)] border-[hsl(38_92%_90%)]',
-  埋点上线: 'bg-[hsl(160_84%_96%)] text-[hsl(160_84%_35%)] border-[hsl(160_84%_90%)]',
-  归档: 'bg-[hsl(220_14%_96%)] text-[hsl(220_9%_46%)] border-[hsl(220_13%_91%)]',
+  埋点提需: 'bg-primary-soft text-primary border-primary/20',
+  埋点设计: 'bg-[var(--status-warning-bg)] text-warning border-warning/25',
+  埋点开发: 'bg-primary-soft text-primary border-primary/20',
+  埋点验收: 'bg-[var(--status-warning-bg)] text-warning border-warning/25',
+  埋点上线: 'bg-[var(--status-success-bg)] text-success border-success/25',
+  归档: 'bg-muted text-muted-foreground border-border',
 };
 
 const PRIORITY_VARIANT: Record<string, string> = {
-  P0: 'bg-[hsl(0_84%_96%)] text-[hsl(0_84%_50%)] border-[hsl(0_84%_90%)]',
-  P1: 'bg-[hsl(38_92%_96%)] text-[hsl(38_92%_45%)] border-[hsl(38_92%_90%)]',
-  P2: 'bg-[hsl(217_91%_96%)] text-[hsl(217_91%_45%)] border-[hsl(217_91%_90%)]',
-  P3: 'bg-[hsl(220_14%_96%)] text-[hsl(220_9%_46%)] border-[hsl(220_13%_91%)]',
+  P0: 'bg-[var(--status-error-bg)] text-destructive border-destructive/25',
+  P1: 'bg-[var(--status-warning-bg)] text-warning border-warning/25',
+  P2: 'bg-primary-soft text-primary border-primary/20',
+  P3: 'bg-muted text-muted-foreground border-border',
 };
 
 function formatTime(ts: number): string {
@@ -137,14 +137,14 @@ const RecordsTable = ({
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-foreground">需求列表</h2>
+        <h2 className="text-base font-semibold text-foreground">需求列表</h2>
         <span className="text-xs text-muted-foreground">
           共 {total} 条 · 按更新时间倒序
         </span>
       </div>
 
       {/* 搜索筛选栏 */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/70 bg-card p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-card p-4 shadow-sm">
         <div className="relative flex-1 min-w-[200px] max-w-[320px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -152,11 +152,11 @@ const RecordsTable = ({
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="h-8 pl-8 text-sm"
+            className="h-9 rounded-md pl-8 text-sm"
           />
         </div>
         <Select value={stage || 'all'} onValueChange={(value) => onStageChange(value === 'all' ? '' : value)}>
-          <SelectTrigger aria-label="筛选阶段" className="h-8 w-[120px] rounded-sm text-xs">
+          <SelectTrigger aria-label="筛选阶段" className="h-9 w-[120px] rounded-md text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -169,7 +169,7 @@ const RecordsTable = ({
           </SelectContent>
         </Select>
         <Select value={priority || 'all'} onValueChange={(value) => onPriorityChange(value === 'all' ? '' : value)}>
-          <SelectTrigger aria-label="筛选优先级" className="h-8 w-[120px] rounded-sm text-xs">
+          <SelectTrigger aria-label="筛选优先级" className="h-9 w-[120px] rounded-md text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -182,7 +182,7 @@ const RecordsTable = ({
           </SelectContent>
         </Select>
         <Select value={platform || 'all'} onValueChange={(value) => onPlatformChange(value === 'all' ? '' : value)}>
-          <SelectTrigger aria-label="筛选平台" className="h-8 w-[110px] rounded-sm text-xs">
+          <SelectTrigger aria-label="筛选平台" className="h-9 w-[110px] rounded-md text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -195,17 +195,9 @@ const RecordsTable = ({
           </SelectContent>
         </Select>
         <Button
-          size="sm"
-          className="h-8 rounded-sm text-xs"
-          onClick={handleSearch}
-          disabled={loading}
-        >
-          搜索
-        </Button>
-        <Button
           variant="ghost"
           size="sm"
-          className="h-8 rounded-sm text-xs text-muted-foreground hover:text-foreground"
+          className="h-9 rounded-full text-xs text-muted-foreground hover:text-foreground"
           onClick={onReset}
         >
           重置
@@ -213,7 +205,7 @@ const RecordsTable = ({
       </div>
 
       {/* 表格 */}
-      <div className="rounded-sm border border-border/70 bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
         {loading ? (
           <div className="p-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -242,7 +234,7 @@ const RecordsTable = ({
               <EmptyDescription className="text-xs">{error}</EmptyDescription>
               <Button
                 size="sm"
-                className="mt-3 h-7 rounded-sm text-xs"
+                className="mt-3 h-7 rounded-full text-xs"
                 onClick={onRetry}
               >
                 重新加载
@@ -314,7 +306,7 @@ const RecordsTable = ({
                           <div className="flex min-w-0 items-center gap-1.5">
                             <button
                               type="button"
-                              className="min-w-0 flex-1 truncate text-left font-mono text-xs text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                              className="min-w-0 flex-1 truncate text-left font-mono text-xs text-primary hover:underline focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                               title={eventTitle(rec.eventIds)}
                               aria-label={`查看${rec.requestName || rec.eventName || rec.evtId || '埋点需求'}详情`}
                               onClick={(event) => {
@@ -325,7 +317,7 @@ const RecordsTable = ({
                               {rec.evtId || '待填写'}
                             </button>
                             {rec.eventCount > 1 && (
-                              <Badge variant="outline" className="h-5 shrink-0 rounded-sm px-1.5 text-[10px] font-medium">
+                              <Badge variant="outline" className="h-5 shrink-0 rounded-full px-1.5 text-xs font-medium">
                                 {rec.eventCount} 个事件
                               </Badge>
                             )}
@@ -333,7 +325,7 @@ const RecordsTable = ({
                         </div>
                       </TableCell>
                       <TableCell className="px-3 py-0">
-                        <Badge variant="outline" className="h-5 rounded-sm px-1.5 text-[10px] font-medium">
+                        <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-medium">
                           {rec.source === 'web' ? 'Web' : 'App'}
                         </Badge>
                       </TableCell>
@@ -342,21 +334,21 @@ const RecordsTable = ({
                           {rec.requestName || rec.eventName || '未命名需求'}
                         </span>
                         {rec.eventCount > 1 && (
-                          <span className="mt-0.5 block min-w-0 truncate text-[11px] text-muted-foreground" title={eventTitle(rec.eventNames)}>
+                          <span className="mt-0.5 block min-w-0 truncate text-xs text-muted-foreground" title={eventTitle(rec.eventNames)}>
                             {rec.eventNames.slice(0, 4).join('、')}
                           </span>
                         )}
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge
-                          className={`h-5 rounded-sm px-1.5 text-[10px] font-medium ${STAGE_VARIANT[displayStage] || ''}`}
+                          className={`h-5 rounded-full px-1.5 text-xs font-medium ${STAGE_VARIANT[displayStage] || ''}`}
                         >
                           {displayStage}
                         </Badge>
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge
-                          className={`h-5 w-8 justify-center rounded-sm px-1 text-[10px] font-medium ${PRIORITY_VARIANT[rec.priority] || PRIORITY_VARIANT.P3}`}
+                          className={`h-5 w-8 justify-center rounded-full px-1 text-xs font-medium ${PRIORITY_VARIANT[rec.priority] || PRIORITY_VARIANT.P3}`}
                         >
                           {rec.priority || '-'}
                         </Badge>
@@ -404,7 +396,7 @@ const RecordsTable = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 rounded-sm text-xs"
+                    className="h-7 rounded-full text-xs"
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={loadingMore || currentPage <= 1}
                   >
@@ -414,7 +406,7 @@ const RecordsTable = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 rounded-sm text-xs"
+                    className="h-7 rounded-full text-xs"
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={loadingMore || !hasMore}
                   >

@@ -125,16 +125,16 @@ const ParamFormDialog = ({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const selectCls = 'h-8 rounded-sm text-xs w-full';
-  const inputCls = 'h-8 rounded-sm text-xs';
-  const textareaCls = 'rounded-sm text-xs min-h-[60px]';
+  const selectCls = 'h-8 rounded-md text-xs w-full';
+  const inputCls = 'h-8 rounded-md text-xs';
+  const textareaCls = 'rounded-md text-xs min-h-[60px]';
   const platformOptions = source === 'web' ? WEB_PLATFORM_OPTIONS : APP_PLATFORM_OPTIONS;
   const autoParamKey = buildParamKey(form.evtId, form.paramName);
   const saving = savingAction !== null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !saving && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-sm">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg">
         <DialogHeader>
           <DialogTitle className="text-base">
             {mode === 'create' ? '新增参数' : '编辑参数'}
@@ -143,7 +143,7 @@ const ParamFormDialog = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
           <FormField label="参数 key（自动生成）">
-            <div className="flex h-8 items-center rounded-sm border border-input bg-muted/30 px-3 font-mono text-xs text-muted-foreground">
+            <div className="flex h-8 items-center rounded-md border border-input bg-muted/30 px-3 font-mono text-xs text-muted-foreground">
               {autoParamKey || '填写 evt_id 和参数名后自动生成'}
             </div>
           </FormField>
@@ -256,7 +256,7 @@ const ParamFormDialog = ({
           <Button
             variant="outline"
             size="sm"
-            className="rounded-sm h-8"
+            className="rounded-full h-8"
             onClick={onClose}
             disabled={saving}
           >
@@ -266,7 +266,7 @@ const ParamFormDialog = ({
             <Button
               variant="outline"
               size="sm"
-              className="rounded-sm h-8"
+              className="rounded-full h-8"
               onClick={() => handleSubmit('continue')}
               disabled={saving}
             >
@@ -280,7 +280,7 @@ const ParamFormDialog = ({
           )}
           <Button
             size="sm"
-            className="rounded-sm h-8"
+            className="rounded-full h-8"
             onClick={() => handleSubmit('close')}
             disabled={saving}
           >

@@ -23,19 +23,6 @@ function runCommand(command, args) {
   });
 }
 
-// 串行依次执行每个任务，全部跑完后再聚合退出码：
-// 降低并发资源占用、让各任务输出按顺序清晰可读，同时保留“一次暴露所有 lint 问题”的行为。
-async function runTasksSerially(taskSpecs) {
-  let exitCode = 0;
-  for (const [command, args] of taskSpecs) {
-    const code = await runCommand(command, args);
-    if (code !== 0) {
-      exitCode = 1;
-    }
-  }
-  return exitCode;
-}
-
 function normalizeProjectFile(filePath) {
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
@@ -76,14 +63,48 @@ function isStylelintTarget(filePath) {
   return filePath.endsWith('.css');
 }
 
-async function runDefaultLint() {
-  const taskSpecs = [
-    [getBinName('npm'), ['run', 'eslint']],
-    [getBinName('npm'), ['run', 'type:check']],
-    [getBinName('npm'), ['run', 'stylelint']],
-  ];
+const STYLELINT_CONFIG_FILES = [
+  '.stylelintrc',
+  '.stylelintrc.js',
+  '.stylelintrc.cjs',
+  '.stylelintrc.json',
+  'stylelint.config.js',
+];
 
-  process.exit(await runTasksSerially(taskSpecs));
+/**
+ * 老模板（fullstack-nestjs-template 1.x 时代）的应用跑不了 stylelint，跑了就挂、把 pre-commit
+ * 卡死。两种形态都实测过：
+ *
+ * - 缺 scripts.stylelint → `npm error Missing script: "stylelint"`
+ * - 缺 .stylelintrc.*    → `ConfigurationError: No configuration provided`
+ *
+ * 注意光判断 stylelint 装没装拦不住：@lark-apaas/fullstack-presets 的 dependencies 里有
+ * stylelint，只要 dep 了 presets 二进制就在。缺任一件就跳过这一步。
+ */
+function canRunStylelint() {
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+  } catch {
+    return false;
+  }
+
+  if (!pkg.scripts || !pkg.scripts.stylelint) return false;
+
+  return STYLELINT_CONFIG_FILES.some(file => fs.existsSync(path.join(cwd, file)));
+}
+
+async function runDefaultLint() {
+  const commands = ['npm run eslint', 'npm run type:check'];
+
+  if (canRunStylelint()) {
+    commands.push('npm run stylelint');
+  } else {
+    console.warn('[lint] Skip stylelint: missing scripts.stylelint or stylelint config');
+  }
+
+  const code = await runCommand(getBinName('npx'), ['concurrently', ...commands]);
+  process.exit(code);
 }
 
 async function runSelectiveLint(inputFiles) {
@@ -114,30 +135,33 @@ async function runSelectiveLint(inputFiles) {
     }
   }
 
-  const taskSpecs = [];
+  const tasks = [];
 
   if (eslintFiles.length > 0) {
-    taskSpecs.push([getBinName('npx'), ['eslint', '--quiet', ...eslintFiles]]);
+    tasks.push(runCommand(getBinName('npx'), ['eslint', '--quiet', ...eslintFiles]));
   }
 
-  if (stylelintFiles.length > 0) {
-    taskSpecs.push([getBinName('npx'), ['stylelint', '--quiet', ...stylelintFiles]]);
+  if (stylelintFiles.length > 0 && !canRunStylelint()) {
+    console.warn('[lint] Skip stylelint: missing scripts.stylelint or stylelint config');
+  } else if (stylelintFiles.length > 0) {
+    tasks.push(runCommand(getBinName('npx'), ['stylelint', '--quiet', ...stylelintFiles]));
   }
 
   if (clientTypeFiles.length > 0) {
-    taskSpecs.push([getBinName('npm'), ['run', 'type:check:client']]);
+    tasks.push(runCommand(getBinName('npm'), ['run', 'type:check:client']));
   }
 
   if (serverTypeFiles.length > 0) {
-    taskSpecs.push([getBinName('npm'), ['run', 'type:check:server']]);
+    tasks.push(runCommand(getBinName('npm'), ['run', 'type:check:server']));
   }
 
-  if (taskSpecs.length === 0) {
+  if (tasks.length === 0) {
     console.log('[lint] No supported files matched for lint');
     process.exit(0);
   }
 
-  process.exit(await runTasksSerially(taskSpecs));
+  const results = await Promise.all(tasks);
+  process.exit(results.some(code => code !== 0) ? 1 : 0);
 }
 
 async function main() {

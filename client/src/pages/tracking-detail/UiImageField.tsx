@@ -124,7 +124,7 @@ export default function UiImageField({
   };
 
   return (
-    <div className="rounded-sm border border-input bg-card p-3">
+    <div className="rounded-md border border-input bg-card p-3">
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -133,7 +133,7 @@ export default function UiImageField({
             multiple
             disabled={disabled || uploading}
             onChange={handleFileChange}
-            className="h-8 max-w-xs rounded-sm text-xs"
+            className="h-8 max-w-xs rounded-md text-xs"
           />
           <span className="text-xs text-muted-foreground">
             {uploading ? (
@@ -172,7 +172,7 @@ export default function UiImageField({
             onChange={(event) => onPageUrlChange?.(event.target.value)}
             disabled={pageUrlDisabled ?? disabled}
             placeholder="粘贴当前 UI 图对应的网页链接（可选）"
-            className="h-8 rounded-sm text-sm"
+            className="h-8 rounded-md text-sm"
           />
         )}
       </div>
@@ -187,12 +187,12 @@ export default function UiImageField({
             return (
               <div
                 key={`${key || file.file_path || file.url || fileName}-${index}`}
-                className="flex min-w-0 items-center gap-2 overflow-hidden rounded-sm border border-border bg-muted/30 px-2 py-1.5"
+                className="flex min-w-0 items-center gap-2 overflow-hidden rounded-md border border-border bg-muted/30 px-2 py-1.5"
               >
                 {url ? (
                   <button
                     type="button"
-                    className="h-10 w-10 shrink-0 overflow-hidden rounded-sm border border-border bg-background"
+                    className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-background"
                     onClick={() => setPreviewFile(file)}
                     aria-label={`预览 ${fileName}`}
                   >
@@ -205,7 +205,7 @@ export default function UiImageField({
                     />
                   </button>
                 ) : (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-background">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background">
                     {isResolving ? (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -225,7 +225,7 @@ export default function UiImageField({
                   ) : (
                     <span className="block truncate text-xs text-foreground">{fileName}</span>
                   )}
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
                     {url ? '点击预览 UI 图' : isResolving ? '正在解析预览链接...' : '暂无可预览链接'}
                   </span>
                 </div>
@@ -234,7 +234,7 @@ export default function UiImageField({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="hidden h-6 rounded-sm px-2 text-xs text-muted-foreground hover:text-primary sm:inline-flex"
+                    className="hidden h-6 rounded-full px-2 text-xs text-muted-foreground hover:text-primary sm:inline-flex"
                     onClick={() => setPreviewFile(file)}
                   >
                     <Eye className="h-3.5 w-3.5" />
@@ -246,7 +246,7 @@ export default function UiImageField({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 rounded-sm p-0 text-muted-foreground hover:text-destructive"
+                    className="h-6 w-6 rounded-full p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => removeAt(index)}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -264,7 +264,7 @@ export default function UiImageField({
       )}
 
       <Dialog open={Boolean(previewFile)} onOpenChange={(open) => !open && setPreviewFile(null)}>
-        <DialogContent className="max-w-5xl gap-0 overflow-hidden rounded-sm p-0">
+        <DialogContent className="max-w-5xl gap-0 overflow-hidden rounded-lg p-0">
           <DialogHeader className="border-b border-border px-4 py-3 pr-12">
             <DialogTitle className="truncate text-sm">{previewName || 'UI 图预览'}</DialogTitle>
             <DialogDescription className="text-xs">查看当前埋点事件关联的 UI 截图或原型图</DialogDescription>
@@ -274,11 +274,11 @@ export default function UiImageField({
               <img
                 src={previewUrl}
                 alt={previewName || 'UI 图预览'}
-                className="mx-auto max-h-[68vh] max-w-full rounded-sm border border-border bg-background object-contain"
+                className="mx-auto max-h-[68vh] max-w-full rounded-md border border-border bg-background object-contain"
                 onError={() => previewFile && retryPreview(previewFile)}
               />
             ) : (
-              <div className="flex h-48 flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card text-xs text-muted-foreground">
+              <div className="flex h-48 flex-col items-center justify-center rounded-md border border-dashed border-border bg-card text-xs text-muted-foreground">
                 <ImageIcon className="mb-2 h-8 w-8" />
                 该 UI 图暂无可预览链接
               </div>
@@ -286,7 +286,7 @@ export default function UiImageField({
           </div>
           <DialogFooter className="border-t border-border px-4 py-3">
             {previewUrl && (
-              <Button asChild variant="outline" size="sm" className="rounded-sm">
+              <Button asChild variant="outline" size="sm" className="rounded-full">
                 <a href={previewUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-3.5 w-3.5" />
                   新窗口打开

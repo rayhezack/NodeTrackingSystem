@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
 import { Input } from '@client/src/components/ui/input';
 import { Textarea } from '@client/src/components/ui/textarea';
+import { SingleDatePicker } from '@client/src/components/ui/single-date-picker';
 import {
   Select,
   SelectContent,
@@ -215,7 +216,7 @@ export function getFieldValue(
   }
   if (field.type === 'attachment') return toTrackingAttachments(val);
   if (val == null) return '';
-  if (field.type === 'date') return toDateTimeInputValue(val);
+  if (field.type === 'date') return toDateInputValue(val);
   if (field.baseField === '端') return toPlatformText(val);
   if (typeof val === 'string') return val;
   if (Array.isArray(val) && val.length > 0) {
@@ -377,6 +378,8 @@ const StageForm = ({
   const busy = saving || completing || draftsBusy;
   const disabled = !canEdit || busy;
   const completionCopy = getCompletionCopy(stageId, stageConfig.label);
+  const checklistFields = stageConfig.fields.filter((field) => field.required);
+  const checklistComplete = checklistFields.filter((field) => Boolean(toTextValue(formData[field.key]).trim())).length;
 
   return (
     <div className="space-y-6">
@@ -386,6 +389,29 @@ const StageForm = ({
           {canEdit ? usesDrafts ? `切换埋点自动保留草稿，完成后统一保存。当前有 ${pendingDraftCount} 个埋点未保存（参数编辑仍即时保存）` : '编辑以下字段，完成后点击保存' : '当前用户无编辑权限，字段为只读状态'}
         </p>
       </div>
+
+      {(stageId === 'review' || stageId === 'acceptance') && checklistFields.length > 0 && (
+        <div className="rounded-lg border border-border/60 bg-card p-4" aria-label="完成检查清单">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">完成检查清单</h3>
+              <p className="mt-1 text-xs text-muted-foreground">提交前确认必填信息已经完整，状态会随表单即时更新。</p>
+            </div>
+            <span className="text-xs font-medium tabular-nums text-primary">{checklistComplete}/{checklistFields.length}</span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {checklistFields.map((field) => {
+              const complete = Boolean(toTextValue(formData[field.key]).trim());
+              return (
+                <div key={field.key} className="flex items-center gap-2 rounded-md bg-card px-3 py-2 text-xs">
+                  <CheckCircle2 className={`h-4 w-4 shrink-0 ${complete ? 'text-emerald-600' : 'text-muted-foreground/40'}`} />
+                  <span className={complete ? 'text-foreground' : 'text-muted-foreground'}>{field.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {stageId === 'design' && (
         <div className="space-y-4">
@@ -433,7 +459,7 @@ const StageForm = ({
                 }
                 disabled={disabled}
                 placeholder={field.placeholder}
-                className="rounded-sm h-8 text-sm"
+                className="h-9 rounded-md text-sm"
               />
             )}
             {field.type === 'url' && (
@@ -446,18 +472,14 @@ const StageForm = ({
                 }
                 disabled={disabled}
                 placeholder={field.placeholder}
-                className="rounded-sm h-8 text-sm"
+                className="h-9 rounded-md text-sm"
               />
             )}
             {field.type === 'date' && (
-              <Input
-                type="datetime-local"
+              <SingleDatePicker
                 value={toTextValue(formData[field.key])}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange(field.key, e.target.value)
-                }
+                onChange={(value) => handleChange(field.key, value)}
                 disabled={disabled}
-                className="rounded-sm h-8 text-sm"
               />
             )}
             {field.type === 'textarea' && (
@@ -469,7 +491,7 @@ const StageForm = ({
                 disabled={disabled}
                 placeholder={field.placeholder}
                 rows={3}
-                className="min-h-20 resize-y rounded-sm text-sm"
+                className="min-h-20 resize-y rounded-md text-sm"
               />
             )}
             {field.type === 'select' && (
@@ -478,7 +500,7 @@ const StageForm = ({
                 onValueChange={(value: string) => handleChange(field.key, value)}
                 disabled={disabled}
               >
-                <SelectTrigger className="rounded-sm h-8 text-sm w-full">
+                <SelectTrigger className="h-9 w-full rounded-md text-sm">
                   <SelectValue placeholder={`请选择${field.label}`} />
                 </SelectTrigger>
                 <SelectContent>
@@ -562,7 +584,7 @@ const StageForm = ({
             disabled={disabled}
             variant="outline"
             size="sm"
-            className="rounded-sm"
+            className="rounded-full"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -577,7 +599,7 @@ const StageForm = ({
               <Button
                 disabled={disabled || !nodeActive || nodeCompleted}
                 size="sm"
-                className="rounded-sm"
+                className="rounded-full"
               >
                 {completing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -591,7 +613,7 @@ const StageForm = ({
                     : '尚未到达'}
               </Button>
             </AlertDialogTrigger>
-            <AlertDialogContent className="rounded-sm">
+            <AlertDialogContent className="rounded-lg">
               <AlertDialogHeader>
                 <AlertDialogTitle>{completionCopy.title}</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -599,9 +621,9 @@ const StageForm = ({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel className="rounded-sm">取消</AlertDialogCancel>
+                <AlertDialogCancel className="rounded-full">取消</AlertDialogCancel>
                 <AlertDialogAction
-                  className="rounded-sm"
+                  className="rounded-full"
                   onClick={handleComplete}
                 >
                   确认完成
@@ -740,6 +762,11 @@ function toDateTimeInputValue(value: unknown): string {
   const date = new Date(timestamp);
   const localTimestamp = date.getTime() - date.getTimezoneOffset() * 60_000;
   return new Date(localTimestamp).toISOString().slice(0, 16);
+}
+
+function toDateInputValue(value: unknown): string {
+  const raw = textValue(value).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
 }
 
 function isHttpUrl(value: string): boolean {

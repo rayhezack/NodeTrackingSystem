@@ -1,12 +1,13 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, InputHTMLAttributes } from "react";
+import { Search } from "lucide-react";
 
 /* ══ Label input ══════════════════════════════════════════
    A field whose label is its placeholder until you are in it.
    The outline stays whole; focus changes its ink and opens the
    gap from the middle outward. The label is the event. */
-const W = 280;
-const H = 52;
+const W = 260;
+const H = 40;
 /* the lifted label's size, against its resting one */
 const S = 0.78;
 /* half a stroke inside the SVG edge prevents clipping */
@@ -30,7 +31,7 @@ export function LabelInput({ label, value, onChange, onKeyDown, disabled }: Labe
 
   const r = 3;
   /* Never open the notch inside the corner's curve. */
-  const lx = Math.max(14, r + 4);
+  const lx = Math.max(32, r + 4);
   const x0 = Math.max(r * 0.6, lx - 5);
   const x1 = lx + lw * S + 5;
   const a = r - IN;
@@ -55,6 +56,7 @@ export function LabelInput({ label, value, onChange, onKeyDown, disabled }: Labe
         <label className="lbi-label" htmlFor={id} ref={lab}>
           {[...label].map((ch, i) => <span key={i} style={{ "--i": i } as CSSProperties}>{ch}</span>)}
         </label>
+        <Search className="lbi-icon" aria-hidden="true" />
         <input
           id={id}
           className="lbi-field"

@@ -5,17 +5,6 @@ set -euo pipefail
 ROOT_DIR="$(pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 
-if [ -f "$ROOT_DIR/.env.local" ]; then
-  while IFS= read -r line || [ -n "$line" ]; do
-    if [[ -z "$line" || "$line" == \#* || "$line" != *=* ]]; then
-      continue
-    fi
-    key="${line%%=*}"
-    value="${line#*=}"
-    export "$key=$value"
-  done < "$ROOT_DIR/.env.local"
-fi
-
 # 记录总开始时间
 TOTAL_START=$(node -e "console.log(Date.now())")
 
@@ -32,7 +21,7 @@ print_time() {
 # ==================== 步骤 0 ====================
 echo "🗑️  [0/6] 安装插件"
 STEP_START=$(node -e "console.log(Date.now())")
-npx -y @lark-apaas/fullstack-cli action-plugin init
+npx fullstack-cli action-plugin init
 print_time $STEP_START
 echo ""
 
@@ -157,6 +146,11 @@ STEP_START=$(node -e "console.log(Date.now())")
 # 使用 mv 而非 cp：HTML 不能上传到公网 CDN，移走后 dist/client 中不再包含 HTML
 if [ -d "$DIST_DIR/client" ]; then
   mkdir -p "$DIST_DIR/dist/client"
+  # public 先进（顶层 client 打包被排除；server setBaseViewsDir + 中间件同源 serve）
+  if [ -d "$ROOT_DIR/client/public" ]; then
+    cp -R "$ROOT_DIR/client/public/." "$DIST_DIR/dist/client/"
+  fi
+  # 构建产物 HTML 随后 move，覆盖 public 里的同名文件（保证入口页是构建版，不被 public 静默覆盖）
   find "$DIST_DIR/client" -maxdepth 1 -name "*.html" -exec mv {} "$DIST_DIR/dist/client/" \;
 fi
 

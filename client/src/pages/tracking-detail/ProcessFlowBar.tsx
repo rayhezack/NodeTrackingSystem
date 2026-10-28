@@ -15,8 +15,8 @@ const ProcessFlowBar = ({
   onNodeClick,
 }: ProcessFlowBarProps) => {
   return (
-    <div className="overflow-x-auto border-b border-border/60 bg-card px-4 py-4 sm:px-6">
-      <div className="flex min-w-[760px] items-center justify-between">
+    <div className="overflow-x-auto border-b border-border/60 bg-card px-4 py-5 sm:px-6">
+      <div className="flex min-w-[760px] items-center justify-between gap-1">
         {UI_STAGE_NODES.map((node, index) => {
           const completed = isUiNodeCompleted(
             baseStage,
@@ -37,27 +37,25 @@ const ProcessFlowBar = ({
               {/* 节点 */}
               <button
                 type="button"
+                aria-label={`${node.label}，${completed ? '已完成' : active ? '进行中' : '待开始'}`}
+                aria-current={active ? 'step' : undefined}
                 onClick={() => onNodeClick?.(node.key)}
-                className="group flex flex-col items-center gap-1.5 focus:outline-none"
+                className="group flex flex-col items-center gap-1.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
               >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors ${
                     active
                       ? 'border-primary bg-primary text-primary-foreground'
                       : completed
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        ? 'border-success/25 bg-[var(--status-success-bg)] text-success'
                         : 'border-border bg-card text-muted-foreground'
                   }`}
-                  style={
-                    completed
-                      ? { borderColor: 'hsl(160, 84%, 39%)', backgroundColor: 'hsl(160, 84%, 39%)' }
-                      : undefined
-                  }
+
                 >
                   {completed ? (
                     <Check className="h-3.5 w-3.5" strokeWidth={3} />
                   ) : (
-                    <span className="text-[10px] font-medium">{index + 1}</span>
+                    <span className="text-xs font-medium">{index + 1}</span>
                   )}
                 </div>
                 <span
@@ -65,10 +63,9 @@ const ProcessFlowBar = ({
                     active
                       ? 'font-medium text-primary'
                       : completed
-                        ? 'text-foreground'
+                        ? 'text-success'
                         : 'text-muted-foreground'
                   }`}
-                  style={completed ? { color: 'hsl(160, 84%, 39%)' } : undefined}
                 >
                   {node.label}
                 </span>
@@ -81,8 +78,8 @@ const ProcessFlowBar = ({
                     className="h-0.5 rounded-full"
                     style={{
                       backgroundColor: completed
-                        ? 'hsl(160, 84%, 39%)'
-                        : 'hsl(220, 13%, 91%)',
+                        ? 'var(--success)'
+                        : 'var(--border)',
                     }}
                   />
                 </div>

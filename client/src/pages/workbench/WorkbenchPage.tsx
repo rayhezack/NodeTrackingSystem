@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { logger } from '@client/src/lib/logger';
 import { useCurrentUser } from '@client/src/hooks/use-current-user';
 import { Plus } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 
+import { OwnerRequestNotifications } from './OwnerRequestNotifications';
 import StageStats from './StageStats';
 import MyTodos from './MyTodos';
 import RecordsTable from './RecordsTable';
@@ -24,6 +25,7 @@ const RECORDS_PAGE_SIZE = 10;
 
 const WorkbenchPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const userProfile = useCurrentUser();
   const actor = getCurrentActor(userProfile);
   const [createOpen, setCreateOpen] = useState(false);
@@ -149,6 +151,12 @@ const WorkbenchPage = () => {
     loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    const targetId = location.hash.replace(/^#/, '');
+    if (!targetId) return;
+    requestAnimationFrame(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [location.hash]);
+
   // 点击阶段卡片筛选
   const handleStageClick = (stage: string) => {
     setStageFilter(stageFilter === stage ? '' : stage);
@@ -174,19 +182,17 @@ const WorkbenchPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-[1400px] px-6 py-6">
+    <div className="space-y-7">
+      <OwnerRequestNotifications actorId={actor.id} actorLarkId={actor.larkId} />
         {/* 页面标题 */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">埋点工作台</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              统一管理多端埋点需求全生命周期，快速定位待办与状态流转
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">埋点工作台</h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">统一管理多端埋点需求全生命周期，快速定位待办与状态流转。</p>
           </div>
           <Button
             size="sm"
-            className="h-8 rounded-sm"
+            className="h-9 rounded-full px-4 shadow-none"
             onClick={() => setCreateOpen(true)}
             disabled={!canCreate}
             title={canCreate ? '新增埋点需求' : '未识别当前用户，无法新增需求'}
@@ -207,6 +213,7 @@ const WorkbenchPage = () => {
         />
 
         {/* 我的待办 */}
+        <div id="my-todos" className="scroll-mt-6">
         <MyTodos
           todos={todos}
           loading={todosLoading}
@@ -214,8 +221,10 @@ const WorkbenchPage = () => {
           onRefresh={loadDashboard}
           onItemClick={goToDetail}
         />
+        </div>
 
         {/* 需求列表 */}
+        <div id="recent-updates" className="scroll-mt-6">
         <RecordsTable
           records={records}
           loading={recordsLoading}
@@ -238,6 +247,7 @@ const WorkbenchPage = () => {
           onPageChange={loadRecordsPage}
           onRowClick={goToDetail}
         />
+        </div>
 
         <NewTrackingRequestDialog
           open={createOpen}
@@ -248,7 +258,6 @@ const WorkbenchPage = () => {
           onClose={() => setCreateOpen(false)}
           onSubmit={handleCreate}
         />
-      </div>
     </div>
   );
 };

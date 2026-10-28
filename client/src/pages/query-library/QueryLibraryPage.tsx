@@ -1,12 +1,13 @@
+import { LiquidToggle } from '@client/src/components/bencho/LiquidToggle';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ClipboardCopy, Database, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronDown, ClipboardCopy, Database, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@client/src/lib/logger";
 import { Button } from "@client/src/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@client/src/components/ui/select";
 import { getOfficialEvents, getOfficialParams } from "@client/src/api/query-library";
 import type { OfficialEvent, OfficialParam, TrackingSource } from "@shared/api.interface";
-import { LabelInput } from "./LabelInput";
+import { SeekSearch } from "./SeekSearch";
 import { RadialMenu } from "./RadialMenu";
 import { ParamDetailPanel } from "./ParamDetailPanel";
 
@@ -25,7 +26,7 @@ function statusClass(status: string) {
 }
 
 export default function QueryLibraryPage() {
-  const [source, setSource] = useState<TrackingSource>("app");
+  const [source, setSource] = useState<TrackingSource>("web");
   const [searchInput, setSearchInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("");
@@ -111,7 +112,7 @@ export default function QueryLibraryPage() {
 
   return (
     <div className="query-library space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-sm">
         <div>
           <h1 className="text-lg font-semibold text-foreground">正式查询库</h1>
           <p className="mt-1 text-xs text-muted-foreground">查询已上线事件、参数定义与枚举值</p>
@@ -119,17 +120,12 @@ export default function QueryLibraryPage() {
         <div className="text-xs tabular-nums text-muted-foreground">{loading ? "正在查询" : `共 ${total} 个事件`}</div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
-        <div className="inline-flex h-10 shrink-0 border border-border bg-card" role="group" aria-label="正式库来源">
-          {(["app", "web"] as const).map((item) => (
-            <button key={item} type="button" aria-pressed={source === item} onClick={() => { setCategory(""); setCategories([]); setSource(item); }}
-              className={`min-w-16 px-3 text-xs focus-visible:outline-2 focus-visible:outline-primary ${source === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
-              {item === "app" ? "App" : "Web"}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
+        <LiquidToggle checked={source === 'app'} onCheckedChange={on => {
+          setCategory(""); setCategories([]); setSource(on ? 'app' : 'web');
+        }} />
         <Select value={category || "all"} onValueChange={(value) => setCategory(value === "all" ? "" : value)} disabled={categories.length === 0}>
-          <SelectTrigger aria-label="筛选一级分类" className="h-10 w-36 rounded-sm text-xs focus-visible:border-primary focus-visible:ring-0">
+          <SelectTrigger aria-label="筛选一级分类" className="h-9 w-32 rounded-full text-xs focus-visible:border-primary focus-visible:ring-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -137,37 +133,54 @@ export default function QueryLibraryPage() {
             {categories.map((item) => <SelectItem key={item} value={item} className="text-xs">{item}</SelectItem>)}
           </SelectContent>
         </Select>
-        <LabelInput label="搜索事件、分类、参数或枚举" value={searchInput} onChange={setSearchInput} onKeyDown={(event) => { if (event.key === "Enter") search(); }} />
-        <Button className="h-10 rounded-sm" onClick={search} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : <Search />}搜索</Button>
+        <SeekSearch
+          value={searchInput}
+          onChange={setSearchInput}
+          onSubmit={search}
+          onClear={() => { setSearchInput(""); setKeyword(""); }}
+          placeholder="搜索事件、分类、参数或枚举"
+          disabled={loading}
+          suggestions={events
+            .filter((event) => {
+              const query = searchInput.trim().toLowerCase();
+              if (!query) return false;
+              return [event.evtId, event.eventName, event.category].some((value) => value?.toLowerCase().includes(query));
+            })
+            .map((event) => ({ id: event.recordId, label: event.evtId, meta: event.eventName }))}
+          onSelectSuggestion={(suggestion) => {
+            setSearchInput(suggestion.label);
+            setKeyword(suggestion.label);
+          }}
+        />
         {keyword && <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:text-primary hover:underline" onClick={() => { setSearchInput(""); setKeyword(""); }}>清除搜索</button>}
       </div>
 
-      <div className="grid min-h-[560px] grid-cols-1 border border-border bg-card lg:grid-cols-[minmax(290px,370px)_minmax(0,1fr)]">
-        <section className="min-w-0 border-b border-border lg:border-b-0 lg:border-r" aria-label="事件搜索结果">
-          <div className="flex h-11 items-center justify-between border-b border-border px-3 text-xs font-medium text-muted-foreground"><span>事件列表</span><span className="tabular-nums">{events.length} / {total}</span></div>
+      <div className="grid min-h-[560px] grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(290px,370px)_minmax(0,1fr)]">
+        <section className="query-results min-w-0 overflow-hidden rounded-2xl bg-card p-2" aria-label="事件搜索结果">
+          <div className="flex h-11 items-center justify-between px-3 text-xs font-medium text-muted-foreground"><span>事件列表</span><span className="tabular-nums">{events.length} / {total}</span></div>
           {loading && events.length === 0 && <div className="flex items-center gap-2 p-5 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在读取正式库...</div>}
           {error && events.length === 0 && <div className="space-y-3 p-5 text-xs"><p className="text-destructive">{error}</p><Button variant="outline" size="sm" onClick={() => void fetchEvents()}><RefreshCw />重试</Button></div>}
           {!loading && !error && events.length === 0 && <div className="p-6 text-center text-xs text-muted-foreground"><Database className="mx-auto mb-3 h-5 w-5" /><p>{keyword || category ? "没有匹配的正式事件" : "正式库暂无事件"}</p></div>}
-          <div className="max-h-[calc(100vh-250px)] min-h-0 overflow-y-auto max-lg:max-h-72">
+          <div className="space-y-1 max-h-[calc(100vh-250px)] min-h-0 overflow-y-auto max-lg:max-h-72">
             {events.map((event) => (
               <button key={event.recordId} type="button" onClick={() => setSelectedId(event.recordId)} aria-current={selectedId === event.recordId ? "true" : undefined}
-                className={`flex w-full flex-col gap-2 border-b border-border px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-primary ${selectedId === event.recordId ? "bg-[var(--status-info-bg)]" : "hover:bg-accent/60"}`}>
-                <span className="flex w-full items-start justify-between gap-2"><span className="min-w-0 break-all font-mono text-xs font-semibold text-foreground">{event.evtId}</span><span className={`shrink-0 px-1.5 py-0.5 text-[11px] ${statusClass(event.status)}`}>{event.status || "未知"}</span></span>
+                className={`flex w-full flex-col gap-2 rounded-xl px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-primary ${selectedId === event.recordId ? "bg-[var(--status-info-bg)]" : "hover:bg-accent/60"}`}>
+                <span className="flex w-full items-start justify-between gap-2"><span className="min-w-0 break-all font-mono text-xs font-semibold text-foreground">{event.evtId}</span><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${statusClass(event.status)}`}>{event.status || "未知"}</span></span>
                 <span className="text-sm text-foreground">{event.eventName}</span>
                 <span className="text-xs text-muted-foreground">{event.category ? `${event.category} · ` : ""}{event.platform || "端未标注"} · {event.version || "版本未标注"}</span>
               </button>
             ))}
           </div>
-          {hasMore && !loading && <div className="p-3"><Button variant="outline" size="sm" className="w-full rounded-sm" disabled={loadingMore} onClick={() => void fetchEvents(pageToken)}>{loadingMore ? <Loader2 className="animate-spin" /> : <ChevronDown />}加载更多</Button></div>}
+          {hasMore && !loading && <div className="p-3"><Button variant="outline" size="sm" className="w-full rounded-full" disabled={loadingMore} onClick={() => void fetchEvents(pageToken)}>{loadingMore ? <Loader2 className="animate-spin" /> : <ChevronDown />}加载更多</Button></div>}
         </section>
 
-        <section className="min-w-0" aria-label="事件及参数详情">
+        <section className="min-w-0 overflow-hidden rounded-2xl bg-card" aria-label="事件及参数详情">
           {!selected && <div className="flex min-h-72 items-center justify-center text-xs text-muted-foreground">选择事件查看正式定义和参数</div>}
           {selected && <>
             <div className="border-b border-border px-4 py-4 sm:px-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0"><div className="break-all font-mono text-xs text-primary">{selected.evtId}</div><h2 className="mt-1 text-base font-semibold text-foreground">{selected.eventName}</h2></div>
-                <Button size="sm" className="rounded-sm" disabled={params.loading || Boolean(params.error)} onClick={copyAll}><ClipboardCopy />复制 AI 上下文</Button>
+                <Button size="sm" className="rounded-full" disabled={params.loading || Boolean(params.error)} onClick={copyAll}><ClipboardCopy />复制 AI 上下文</Button>
               </div>
               <dl className="mt-4 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
                 <Detail label="一级分类" value={selected.category} /><Detail label="端" value={selected.platform} /><Detail label="上线版本" value={selected.version} /><Detail label="状态" value={selected.status} />

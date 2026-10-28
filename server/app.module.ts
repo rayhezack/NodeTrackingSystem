@@ -32,6 +32,10 @@ import { AiTrackingModule } from './modules/ai-tracking/ai-tracking.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Local preview runs over plain HTTP and does not have the platform's
+    // CSRF cookie bootstrap. Keep the protection enabled for deployed builds,
+    // while allowing the local data-backed preview to load without a 403.
+    if (process.env.NODE_ENV === 'development') return;
     consumer
       .apply(CsrfMiddleware)
       .exclude({

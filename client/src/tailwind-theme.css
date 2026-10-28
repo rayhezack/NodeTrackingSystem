@@ -5,56 +5,56 @@
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.08);
 
-  /* Core palette — 飞书蓝 + 中性灰 + 语义色 */
-  --background: hsl(220 14% 96%);
-  --foreground: hsl(222 47% 11%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222 47% 11%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222 47% 11%);
-  --primary: hsl(217 91% 60%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(220 14% 96%);
-  --secondary-foreground: hsl(222 47% 11%);
-  --muted: hsl(220 14% 94%);
-  --muted-foreground: hsl(220 9% 46%);
-  --accent: hsl(220 14% 92%);
-  --accent-foreground: hsl(222 47% 11%);
-  --info: hsl(217 91% 60%);
-  --info-foreground: hsl(0 0% 100%);
-  --destructive: hsl(0 84% 60%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --success: hsl(160 84% 39%);
-  --success-foreground: hsl(0 0% 100%);
-  --warning: hsl(38 92% 50%);
-  --warning-foreground: hsl(0 0% 100%);
-  --border: hsl(220 13% 91%);
-  --input: hsl(220 13% 91%);
-  --ring: hsl(217 91% 60%);
+  /* Meta Light Operations: white canvas, cloud surfaces, cobalt actions */
+  --background: #f6f8fa;
+  --foreground: #0a1317;
+  --card: #ffffff;
+  --card-foreground: #0a1317;
+  --popover: #ffffff;
+  --popover-foreground: #0a1317;
+  --primary: #0866ff;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f4;
+  --secondary-foreground: #0a1317;
+  --muted: #f4f6f8;
+  --muted-foreground: #626d78;
+  --accent: #eaf2ff;
+  --accent-foreground: #0143b5;
+  --info: #0866ff;
+  --info-foreground: #ffffff;
+  --destructive: #c62828;
+  --destructive-foreground: #ffffff;
+  --success: #16835b;
+  --success-foreground: #ffffff;
+  --warning: #8a5a13;
+  --warning-foreground: #ffffff;
+  --border: #e4e7eb;
+  --input: #dfe4e8;
+  --ring: #0866ff;
 
   /* Chart colors */
-  --chart-1: hsl(217 91% 60%);
-  --chart-2: hsl(160 84% 39%);
-  --chart-3: hsl(38 92% 50%);
-  --chart-4: hsl(0 84% 60%);
-  --chart-5: hsl(262 83% 58%);
+  --chart-1: #0866ff;
+  --chart-2: #16835b;
+  --chart-3: #7b61ff;
+  --chart-4: #d64b72;
+  --chart-5: #b7791f;
 
   /* Sidebar (unused for top-nav, kept for shadcn compatibility) */
-  --sidebar: hsl(220 14% 96%);
-  --sidebar-foreground: hsl(222 47% 11%);
-  --sidebar-primary: hsl(217 91% 60%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(220 14% 92%);
-  --sidebar-accent-foreground: hsl(217 91% 60%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(217 91% 60%);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a1317;
+  --sidebar-primary: #0866ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eaf2ff;
+  --sidebar-accent-foreground: #0143b5;
+  --sidebar-border: #e4e7eb;
+  --sidebar-ring: #0866ff;
 
   /* Computed borders */
-  --primary-border: hsl(from hsl(217 91% 60%) h s calc(l + var(--opaque-button-border-intensity)));
-  --secondary-border: hsl(from hsl(220 14% 96%) h s calc(l + var(--opaque-button-border-intensity)));
-  --destructive-border: hsl(from hsl(0 84% 60%) h s calc(l + var(--opaque-button-border-intensity)));
-  --accent-border: hsl(from hsl(220 14% 92%) h s calc(l + var(--opaque-button-border-intensity)));
-  --muted-border: hsl(from hsl(220 14% 94%) h s calc(l + var(--opaque-button-border-intensity)));
+  --primary-border: #0866ff;
+  --secondary-border: #dfe4e8;
+  --destructive-border: #c62828;
+  --accent-border: #cfe0ff;
+  --muted-border: #e4e7eb;
 
   /* Typography — Inter + system fallback */
   --font-sans:
@@ -65,8 +65,8 @@
     ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
 
-  /* Shape — sharp 4px 圆角 (0.25rem = 4px) */
-  --radius: 0.25rem;
+  /* Shape — Meta product surfaces and pill controls */
+  --radius: 0.5rem;
   --shadow-x: 0px;
   --shadow-y: 1px;
   --shadow-blur: 2px;
@@ -85,10 +85,10 @@
   --spacing: 0.25rem;
 
   /* Semantic status backgrounds */
-  --status-success-bg: hsl(160 84% 96%);
-  --status-warning-bg: hsl(38 92% 96%);
-  --status-error-bg: hsl(0 84% 96%);
-  --status-info-bg: hsl(217 91% 96%);
+  --status-success-bg: #e5f5ee;
+  --status-warning-bg: #fff4d6;
+  --status-error-bg: #fff0f0;
+  --status-info-bg: #eaf2ff;
 }
 
 @theme inline {
@@ -100,6 +100,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: #eaf2ff;
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -135,10 +136,10 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
-  --radius-sm: calc(var(--radius) - 1px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
 
   --shadow-2xs: var(--shadow-2xs);
   --shadow-xs: var(--shadow-xs);
@@ -154,6 +155,24 @@
   *, ::before, ::after {
     border-color: var(--border);
   }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "ss02";
+    text-rendering: optimizeLegibility;
+    accent-color: var(--primary);
+  }
+
+  ::selection { background: #cfe0ff; color: #0a1317; }
+
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--muted); }
+  ::-webkit-scrollbar-thumb { background: #c9d0d7; border: 3px solid var(--muted); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #aeb8c2; }
 }
 
 @layer utilities {
@@ -200,10 +219,10 @@
     inset: -1px;
   }
 
-  .hover-elevate:not(.no-default-hover-elevate),
-  .active-elevate:not(.no-default-active-elevate),
-  .hover-elevate-2:not(.no-default-hover-elevate),
-  .active-elevate-2:not(.no-default-active-elevate) {
+  :where(.hover-elevate:not(.no-default-hover-elevate)),
+  :where(.active-elevate:not(.no-default-active-elevate)),
+  :where(.hover-elevate-2:not(.no-default-hover-elevate)),
+  :where(.active-elevate-2:not(.no-default-active-elevate)) {
     position: relative;
     z-index: 0;
   }
