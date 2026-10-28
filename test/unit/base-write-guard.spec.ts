@@ -40,7 +40,7 @@ describe('persistent Base writer coordination using real SQLite constraints', ()
     expect((await withBaseWriteGuard(other, '/api/tracking/params/b', blocked)).status).toBe(200);
   });
   it('retains an uncertain write lock until an operator reconciles it, without unsafe lease takeover', async () => {
-    await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 502 }));
+    await withBaseWriteGuard(db, '/archive', async (state) => { state.uncertain = 1; return new Response('{}', { status: 502 }); });
     const blocked = jest.fn(async () => new Response('{}'));
     const response = await withBaseWriteGuard(db, '/archive', blocked);
     expect(response.status).toBe(409);
@@ -55,6 +55,17 @@ describe('persistent Base writer coordination using real SQLite constraints', ()
     expect(write).not.toHaveBeenCalled();
     await withBaseWriteGuard(db, '/archive', async () => new Response('{}', { status: 422 }));
     expect((await withBaseWriteGuard(db, '/archive', write)).status).toBe(200);
+  });
+  it('releases the writer after a failed read without hiding a genuinely uncertain write', async () => {
+    const { trackBaseMutation } = await import('../../worker/base-write-state');
+    await withBaseWriteGuard(db, '/read-before-save', async () => new Response('{}', { status: 502 }));
+    const next = jest.fn(async () => new Response('{}'));
+    expect((await withBaseWriteGuard(db, '/next', next)).status).toBe(200);
+    await withBaseWriteGuard(db, '/uncertain-write', async (state) => {
+      try { await trackBaseMutation({ BASE_WRITE_STATE: state }, async () => { throw new Error('network lost'); }); } catch { /* Return the API failure after preserving mutation evidence. */ }
+      return new Response('{}', { status: 502 });
+    });
+    expect((await withBaseWriteGuard(db, '/blocked', next)).status).toBe(409);
   });
   it('does not keep a global lock after a missing-event validation response', async () => {
     const rejected = await withBaseWriteGuard(db, '/api/tracking/records/blank', async () => new Response(JSON.stringify({ message: '归档事件缺少 evt_id 或事件名' }), { status: 422 }));

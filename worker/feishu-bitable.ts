@@ -1,3 +1,4 @@
+import { trackBaseMutation } from './base-write-state';
 export class BaseFieldValidationError extends Error { constructor(message: string) { super(message); this.name = 'BaseFieldValidationError'; } }
 import { reserveBaseCreates, confirmBaseCreates } from './base-write-identity';
 import { getFeishuTenantToken, resetFeishuTokenCache, type FeishuCredentials } from './feishu-token';
@@ -153,6 +154,7 @@ export async function createBitableRecords(
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
   const reservations = await reserveBaseCreates(env.DB, instance, records);
+  return trackBaseMutation(env, async () => {
   const response = await fetchImpl(
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/batch_create?user_id_type=user_id`,
     {
@@ -177,6 +179,7 @@ export async function createBitableRecords(
     id: record.record_id || '',
     record: record.fields || {},
   })).filter((record) => record.id);
+  });
 }
 
 export async function updateBitableRecords(
@@ -190,6 +193,7 @@ export async function updateBitableRecords(
   const normalized = records.map(({ id, record }) => ({ record_id: id, fields: normalizeWorkerFields(record) }));
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
+  return trackBaseMutation(env, async () => {
   const response = await fetchImpl(
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/batch_update?user_id_type=user_id`,
     {
@@ -214,6 +218,7 @@ export async function updateBitableRecords(
     id: record.record_id || '',
     record: record.fields || {},
   })).filter((record) => record.id);
+  });
 }
 
 export async function deleteBitableRecords(
@@ -227,6 +232,7 @@ export async function deleteBitableRecords(
   if (ids.length > 500) throw new Error('Feishu bitable batch delete supports at most 500 records');
   const config = BITABLE_INSTANCES[instance];
   const token = await getFeishuTenantToken(env, fetchImpl);
+  return trackBaseMutation(env, async () => {
   const response = await fetchImpl(
     `https://open.feishu.cn/open-apis/bitable/v1/apps/${config.appToken}/tables/${config.tableId}/records/batch_delete`,
     {
@@ -239,6 +245,7 @@ export async function deleteBitableRecords(
   if (!response.ok || payload.code !== 0) {
     throw new Error(`Feishu bitable delete failed: ${response.status} ${payload.msg || 'unknown error'}`);
   }
+  });
 }
 
 export { resetFeishuTokenCache };

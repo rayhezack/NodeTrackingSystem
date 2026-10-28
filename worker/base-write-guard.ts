@@ -1,7 +1,8 @@
+import type { BaseWriteState } from './base-write-state';
 import type { D1Database } from './ai-tracking';
 
 /** A persistent global writer gate: Base has no atomic unique upsert or compare-and-swap. */
-export async function withBaseWriteGuard(db: D1Database | undefined, path: string, operation: () => Promise<Response>): Promise<Response> {
+export async function withBaseWriteGuard(db: D1Database | undefined, path: string, operation: (state: BaseWriteState) => Promise<Response>): Promise<Response> {
   if (!db) return error('Base 写入协调数据库不可用，已停止写入', 503);
   const owner = crypto.randomUUID();
   await db.prepare('CREATE TABLE IF NOT EXISTS tracking_base_writes (id TEXT PRIMARY KEY, path TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, status TEXT NOT NULL)').run();
@@ -17,14 +18,17 @@ export async function withBaseWriteGuard(db: D1Database | undefined, path: strin
   }
   // Do not automatically steal an expired lease: an old HTTP write may still commit at Base.
   let confirmed = false;
+  const state: BaseWriteState = { pending: 0, uncertain: 0 };
   try {
     await db.prepare('INSERT INTO tracking_base_writes(id, path, started_at, status) VALUES(?, ?, ?, ?)').bind(owner, path, Date.now(), 'running').run();
-    const response = await operation();
-    await db.prepare('UPDATE tracking_base_writes SET finished_at = ?, status = ? WHERE id = ?').bind(Date.now(), response.ok ? 'succeeded' : response.status < 500 ? 'rejected' : 'needs_reconciliation', owner).run();
-    confirmed = response.status < 500;
-    return response;
+    const response = await operation(state);
+    const uncertain = state.pending > 0 || state.uncertain > 0;
+    await db.prepare('UPDATE tracking_base_writes SET finished_at = ?, status = ? WHERE id = ?').bind(Date.now(), uncertain ? 'needs_reconciliation' : response.ok ? 'succeeded' : response.status < 500 ? 'rejected' : 'failed_without_uncertain_write', owner).run();
+    confirmed = !uncertain;
+    return uncertain && response.ok ? error(`Base 写入结果待核对，请管理员恢复任务 ${owner}`, 503) : response;
   } catch (cause) {
-    await db.prepare('UPDATE tracking_base_writes SET finished_at = ?, status = ? WHERE id = ?').bind(Date.now(), 'needs_reconciliation', owner).run();
+    confirmed = state.pending === 0 && state.uncertain === 0;
+    await db.prepare('UPDATE tracking_base_writes SET finished_at = ?, status = ? WHERE id = ?').bind(Date.now(), state.pending > 0 || state.uncertain > 0 ? 'needs_reconciliation' : 'failed_without_uncertain_write', owner).run();
     throw cause;
   } finally {
     if (confirmed) await db.prepare('DELETE FROM tracking_base_writer WHERE id = ? AND owner = ?').bind('global', owner).run();

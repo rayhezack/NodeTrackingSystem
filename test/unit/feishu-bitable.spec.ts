@@ -89,6 +89,16 @@ describe('PolloCloud Feishu bitable read client', () => {
     });
   });
 
+  it('marks a lost external update response as uncertain, but not a local URL validation failure', async () => {
+    const state = { pending: 0, uncertain: 0 };
+    const guarded = { ...credentials, BASE_WRITE_STATE: state };
+    const transport = jest.fn().mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 })).mockRejectedValueOnce(new Error('response lost'));
+    await expect(updateBitableRecords(guarded, 'workbench', [{ id: 'record', record: { 事件中文名: '事件' } }], transport)).rejects.toThrow('response lost');
+    expect(state).toEqual({ pending: 0, uncertain: 1 });
+    const local = { pending: 0, uncertain: 0 };
+    await expect(createBitableRecords({ ...credentials, BASE_WRITE_STATE: local }, 'workbench', [{ 需求链接: 'not-a-url' }], transport)).rejects.toThrow('http(s)');
+    expect(local).toEqual({ pending: 0, uncertain: 0 });
+  });
   it('rejects invalid URL fields before calling Feishu', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse({ code: 0, tenant_access_token: 'tenant-token', expire: 7200 }));

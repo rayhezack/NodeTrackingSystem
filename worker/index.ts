@@ -411,7 +411,7 @@ export default {
     if (!isBaseMutation(request.method, path)) return app.fetch(request, env);
     if (!resolvePolloCloudUser(request.headers)) return json({ message: 'Unauthorized' }, 401);
     try {
-      return await withBaseWriteGuard(env.DB, path, () => app.fetch(request, env));
+      return await withBaseWriteGuard(env.DB, path, (state) => app.fetch(request, { ...env, BASE_WRITE_STATE: state }));
     } catch {
       return json({ message: 'Base 写入协调失败，请检查归档任务记录后重试' }, 503);
     }

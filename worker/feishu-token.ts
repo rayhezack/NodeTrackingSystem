@@ -1,6 +1,7 @@
+import type { BaseWriteState } from './base-write-state';
 import type { D1Database } from './ai-tracking';
 
-export type FeishuCredentials = { DB?: D1Database; FEISHU_APP_ID?: string; FEISHU_APP_SECRET?: string };
+export type FeishuCredentials = { BASE_WRITE_STATE?: BaseWriteState; DB?: D1Database; FEISHU_APP_ID?: string; FEISHU_APP_SECRET?: string };
 type FetchLike = typeof fetch;
 let tokenCache: { appId: string; token: string; expiresAt: number } | null = null;
 let tokenPending: { appId: string; promise: Promise<string> } | null = null;
