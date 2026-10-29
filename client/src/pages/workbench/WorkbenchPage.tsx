@@ -184,26 +184,20 @@ const WorkbenchPage = () => {
   return (
     <div className="space-y-7">
       <OwnerRequestNotifications actorId={actor.id} actorLarkId={actor.larkId} />
-        {/* 页面标题 */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">埋点工作台</h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">统一管理多端埋点需求全生命周期，快速定位待办与状态流转。</p>
-          </div>
-          <Button
-            size="sm"
-            className="h-9 rounded-full px-4 shadow-none"
-            onClick={() => setCreateOpen(true)}
-            disabled={!canCreate}
-            title={canCreate ? '新增埋点需求' : '未识别当前用户，无法新增需求'}
-          >
-            <Plus className="h-4 w-4" />
-            新增需求
-          </Button>
-        </div>
-
         {/* 阶段统计卡片 */}
         <StageStats
+          actions={
+            <Button
+              size="sm"
+              className="h-9 rounded-full px-4 shadow-none"
+              onClick={() => setCreateOpen(true)}
+              disabled={!canCreate}
+              title={canCreate ? '新增埋点需求' : '未识别当前用户，无法新增需求'}
+            >
+              <Plus className="h-4 w-4" />
+              新增需求
+            </Button>
+          }
           stats={stats}
           loading={statsLoading}
           error={statsError}

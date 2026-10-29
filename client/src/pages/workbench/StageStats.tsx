@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Skeleton } from '@client/src/components/ui/skeleton';
@@ -14,6 +15,7 @@ const STAGE_LIST = [
 ] as const;
 
 interface StageStatsProps {
+  actions?: ReactNode;
   stats: StageStat[];
   loading: boolean;
   error: string | null;
@@ -23,6 +25,7 @@ interface StageStatsProps {
 }
 
 const StageStats = ({
+  actions,
   stats,
   loading,
   error,
@@ -34,18 +37,21 @@ const StageStats = ({
     <section data-ai-section-type="card-stat">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">阶段总览</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
-          />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+            />
+            刷新
+          </Button>
+          {actions}
+        </div>
       </div>
       {error ? (
         <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-card p-4 text-sm text-destructive">

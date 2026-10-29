@@ -1,4 +1,4 @@
-import { RefreshCw, ChevronRight, Inbox } from 'lucide-react';
+import { ChevronRight, Inbox } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
 import { Badge } from '@client/src/components/ui/badge';
 import { Skeleton } from '@client/src/components/ui/skeleton';
@@ -57,18 +57,6 @@ const MyTodos = ({
             </Badge>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
-          />
-          刷新
-        </Button>
       </div>
       <div>
         {loading ? (
