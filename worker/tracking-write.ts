@@ -1,4 +1,4 @@
-import { TrackingEnumError, assertDistinctParams, dictionaryEnums, dictionaryRange, enumIdentity, mergeTrackingEnums, parseTrackingEnums } from '../shared/tracking-enums';
+import { TrackingEnumError, assertDistinctParams, dictionaryEnums, enumIdentity, mergeTrackingEnums, parameterDictionaryRange, parseTrackingEnums } from '../shared/tracking-enums';
 import type {
   BatchDeleteParamsRequest,
   BatchDeleteParamsResponse,
@@ -343,13 +343,16 @@ export async function updateTrackingRecord(
   // Publish every sibling before marking the request archived. A failed sync remains retryable.
   const archiving = Boolean(body.targetStage) && currentStage === '稳定归档';
   const officialSyncCache: OfficialSyncCache = {};
-  const syncUpdates = async () => {
+  const syncUpdates = async (validateOnly = false) => {
     for (const [id, itemPatch] of updates) {
       const original = related.find((item) => item.id === id)?.record || (id === current.id ? current.record : {});
-      await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl, officialSyncCache);
+      await syncOfficialLibrary(credentials, ref.source, id, { ...original, ...itemPatch }, fetchImpl, officialSyncCache, validateOnly);
     }
   };
-  if (archiving) await syncUpdates();
+  if (archiving) {
+    await syncUpdates(true);
+    await syncUpdates();
+  }
   await updateBitableRecords(credentials, workbenchKey(ref.source), [...updates].map(([id, record]) => ({ id, record })), fetchImpl);
 
   if ('evt_id' in patch && text(patch.evt_id) !== text(current.record.evt_id)) {
@@ -761,6 +764,7 @@ interface OfficialSyncCache {
   params?: BitableRecord[];
   enums?: BitableRecord[];
   labels?: Map<string, { label: string; definition: string }>;
+  designParams?: Map<string, BitableRecord[]>;
 }
 
 async function syncOfficialLibrary(
@@ -770,6 +774,7 @@ async function syncOfficialLibrary(
   record: Record<string, unknown>,
   fetchImpl: FetchLike,
   cache: OfficialSyncCache = {},
+  validateOnly = false,
 ): Promise<void> {
   const stage = text(record['流程阶段']);
   const officialStatus = text(record['正式状态']);
@@ -782,8 +787,11 @@ async function syncOfficialLibrary(
   if (!evtId || !text(record['事件中文名'])) throw new TrackingWriteError('归档事件缺少 evt_id 或事件名，请先补全事件信息', 422);
 
   const officialEvents = cache.events || (cache.events = await listAll(credentials, queryLibraryKey(source), fetchImpl));
-  const existingEvent = officialEvents.find((item) => text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase());
+  const matchingEvents = officialEvents.filter((item) => text(item.record.evt_id).toLocaleLowerCase() === evtId.toLocaleLowerCase());
+  if (matchingEvents.length > 1) throw new TrackingEnumError(`正式库存在重复事件 ${evtId}，不能选择任意一条归档`);
+  const existingEvent = matchingEvents[0];
   if (shouldDeprecate) {
+    if (validateOnly) return;
     await syncDeprecatedLibrary(credentials, source, designId, record, existingEvent, fetchImpl);
     return;
   }
@@ -808,16 +816,10 @@ async function syncOfficialLibrary(
     ...(text(record['公共属性要求']) ? { 公共属性要求: text(record['公共属性要求']) } : {}),
     源事件记录ID: designId,
   };
-  let officialEventId = existingEvent?.id;
-  if (!existingEvent) {
-    const [created] = await createBitableRecords(credentials, queryLibraryKey(source), [eventFields], fetchImpl);
-    if (!created?.id) throw new Error('正式事件新增未返回记录 ID，已停止归档');
-    officialEventId = created.id;
-    if (created?.id) cache.events.push({ id: created.id, record: { ...eventFields, ...created.record } });
-  }
-  if (!officialEventId) throw new Error('正式事件记录 ID 缺失');
-
-  const designParams = (await listParams(credentials, source, designId, evtId, fetchImpl)).filter((item) => !['废弃', '已废弃'].includes(text(item.record['参数状态'])) && !['废弃', '删除'].includes(text(item.record['变更类型'])));
+  let officialEventId = existingEvent?.id || '';
+  cache.designParams ||= new Map();
+  if (!cache.designParams.has(designId)) cache.designParams.set(designId, await listParams(credentials, source, designId, evtId, fetchImpl));
+  const designParams = cache.designParams.get(designId)!.filter((item) => !['废弃', '已废弃'].includes(text(item.record['参数状态'])) && !['废弃', '删除'].includes(text(item.record['变更类型'])));
   const officialEventName = text(existingEvent?.record['事件中文名']) || text(eventFields['事件中文名']);
   const officialParams = cache.params || (cache.params = await listAll(credentials, officialParamKey(source), fetchImpl));
   assertDistinctParams(designParams, '当前需求');
@@ -833,33 +835,46 @@ async function syncOfficialLibrary(
     const paramName = text(designParam.record['参数名']);
     if (!paramName) continue;
     const paramKeyValue = `${evtId}.${paramName}`;
-    const fields = {
-      参数主键: paramKeyValue, evt_id: evtId, 事件中文名: officialEventName, 参数名: paramName,
-      数据类型: normalizeParamType(designParam.record['数据类型']), 必传规则: normalizeRequiredRule(designParam.record['必传规则']),
-      条件说明: text(designParam.record['条件说明']), '枚举/取值范围': text(designParam.record['枚举/取值范围']), 参数定义: text(designParam.record['参数定义']),
-      版本: text(record['版本'] || record['最低版本'] || designParam.record['版本']) || '1.0.0', 参数状态: '正式',
-      事件状态: text(eventFields['状态']), 来源表: '埋点设计库', 关联事件: [officialEventId],
-      [source === 'web' ? 'Web适用性' : 'App适用性']: normalizeApplicability(designParam.record[source === 'web' ? 'Web适用性' : 'App适用性'], source),
-      备注: text(designParam.record['备注']) || (text(designParam.record['默认值/示例']) ? `默认值/示例：${text(designParam.record['默认值/示例'])}` : ''),
-    };
-    const existing = existingByKey.get(paramKeyValue);
-    if (existing && text(existing.record['参数状态']) === '待治理') throw new TrackingEnumError(`正式参数 ${paramKeyValue} 尚待治理，不能自动追加或批准枚举`);
-    const designEnumRows = dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design');
-    cache.labels ||= new Map();
-    for (const entry of parseTrackingEnums(text(designParam.record['枚举/取值范围']))) {
-      if (entry.label) cache.labels.set(enumIdentity(evtId, paramName, entry.value), entry);
+    try {
+      const fields = {
+        参数主键: paramKeyValue, evt_id: evtId, 事件中文名: officialEventName, 参数名: paramName,
+        数据类型: normalizeParamType(designParam.record['数据类型']), 必传规则: normalizeRequiredRule(designParam.record['必传规则']),
+        条件说明: text(designParam.record['条件说明']), '枚举/取值范围': text(designParam.record['枚举/取值范围']), 参数定义: text(designParam.record['参数定义']),
+        版本: text(record['版本'] || record['最低版本'] || designParam.record['版本']) || '1.0.0', 参数状态: '正式',
+        事件状态: text(eventFields['状态']), 来源表: '埋点设计库', 关联事件: [officialEventId],
+        [source === 'web' ? 'Web适用性' : 'App适用性']: normalizeApplicability(designParam.record[source === 'web' ? 'Web适用性' : 'App适用性'], source),
+        备注: text(designParam.record['备注']) || (text(designParam.record['默认值/示例']) ? `默认值/示例：${text(designParam.record['默认值/示例'])}` : ''),
+      };
+      const existing = existingByKey.get(paramKeyValue);
+      if (existing && text(existing.record['参数状态']) === '待治理') throw new TrackingEnumError(`正式参数 ${paramKeyValue} 尚待治理，不能自动追加或批准枚举`);
+      const designEnumRows = dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design');
+      cache.labels ||= new Map();
+      for (const entry of parseTrackingEnums(text(designParam.record['枚举/取值范围']))) {
+        if (entry.label) cache.labels.set(enumIdentity(evtId, paramName, entry.value), entry);
+      }
+      const incoming = mergeTrackingEnums(text(fields['枚举/取值范围']), parameterDictionaryRange(designEnumRows, text(fields['枚举/取值范围'])));
+      const previousRows = existing ? dictionaryEnums(enumRows, evtId, paramName, existing.id, 'official') : [];
+      const previous = mergeTrackingEnums(parameterDictionaryRange(previousRows, text(existing?.record['枚举/取值范围'])), text(existing?.record['枚举/取值范围']));
+      fields['枚举/取值范围'] = mergeTrackingEnums(previous, incoming);
+      if (existing) {
+        const appendOnly = mergeOfficialParamRecord(existing.record, fields);
+        if (Object.keys(appendOnly.patch).length) updates.push({ id: existing.id, record: appendOnly.patch });
+        enumSyncTargets.push({ id: existing.id, record: appendOnly.effectiveRecord });
+      }
+      else creates.push(fields);
+    } catch (error) {
+      if (error instanceof TrackingEnumError) throw new TrackingEnumError(`${paramKeyValue}：${error.message}`);
+      throw error;
     }
-    const incoming = mergeTrackingEnums(text(fields['枚举/取值范围']), dictionaryRange(designEnumRows));
-    const previousRows = existing ? dictionaryEnums(enumRows, evtId, paramName, existing.id, 'official') : [];
-    const previous = mergeTrackingEnums(dictionaryRange(previousRows), text(existing?.record['枚举/取值范围']));
-    fields['枚举/取值范围'] = mergeTrackingEnums(previous, incoming);
-    if (existing) {
-      const appendOnly = mergeOfficialParamRecord(existing.record, fields);
-      if (Object.keys(appendOnly.patch).length) updates.push({ id: existing.id, record: appendOnly.patch });
-      existing.record = appendOnly.effectiveRecord;
-      enumSyncTargets.push({ id: existing.id, record: appendOnly.effectiveRecord });
-    }
-    else creates.push(fields);
+  }
+  validateEnumSyncTargets(enumRows, [...enumSyncTargets, ...creates.map((record) => ({ id: '', record }))]);
+  if (validateOnly) return;
+  if (!officialEventId) {
+    const [created] = await createBitableRecords(credentials, queryLibraryKey(source), [eventFields], fetchImpl);
+    if (!created?.id) throw new Error('正式事件新增未返回记录 ID，已停止归档');
+    officialEventId = created.id;
+    cache.events.push({ id: created.id, record: { ...eventFields, ...created.record } });
+    for (const fields of creates) fields['关联事件'] = [officialEventId];
   }
   if (updates.length) await updateBitableRecords(credentials, officialParamKey(source), updates, fetchImpl);
   if (creates.length) {
@@ -868,6 +883,10 @@ async function syncOfficialLibrary(
     const createdTargets = createdParams.map((item, index) => ({ id: item.id, record: { ...creates[index], ...item.record } }));
     cache.params.push(...createdTargets);
     enumSyncTargets.push(...createdTargets);
+  }
+  for (const target of enumSyncTargets) {
+    const existing = cache.params.find((item) => item.id === target.id);
+    if (existing) existing.record = target.record;
   }
   await syncEnumDictionary(credentials, source, 'official', enumSyncTargets, fetchImpl, cache);
 }
@@ -996,6 +1015,28 @@ function mergeOfficialParamRecord(
   const patch: Record<string, unknown> = {};
   if (mergedEnumRange !== existingEnumRange) patch['枚举/取值范围'] = mergedEnumRange;
   return { patch, effectiveRecord: { ...existing, ...patch } };
+}
+
+/** Validate every known enum conflict before any archive writes, including later siblings. */
+function validateEnumSyncTargets(rows: BitableRecord[], targets: BitableRecord[]): void {
+  const byKey = new Map<string, BitableRecord[]>();
+  for (const row of rows) {
+    const key = enumIdentity(text(row.record.evt_id), text(row.record['参数名']), text(row.record['枚举值']));
+    byKey.set(key, [...(byKey.get(key) || []), row]);
+  }
+  for (const target of targets) {
+    const evtId = text(target.record.evt_id), paramName = text(target.record['参数名']);
+    try {
+      for (const entry of parseTrackingEnums(text(target.record['枚举/取值范围']))) {
+        const matches = byKey.get(enumIdentity(evtId, paramName, entry.value)) || [];
+        if (matches.length > 1) throw new TrackingEnumError(`枚举字典存在重复值 ${entry.value}`);
+        if (matches.some((row) => text(row.record['枚举状态']) === '已废弃')) throw new TrackingEnumError(`不能自动恢复已废弃枚举 ${entry.value}`);
+      }
+    } catch (error) {
+      if (error instanceof TrackingEnumError) throw new TrackingEnumError(`${evtId}.${paramName}：${error.message}`);
+      throw error;
+    }
+  }
 }
 
 async function syncEnumDictionary(

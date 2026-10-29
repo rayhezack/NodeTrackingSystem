@@ -65,6 +65,43 @@ describe('archive enum dictionary synchronization', () => {
     expect(records[tables.enums]).toHaveLength(3);
     expect(records[tables.workbench][0].fields['流程阶段']).toBe('稳定归档');
   });
+  it('archives a dynamic ID range without promoting polluted legacy description rows', async () => {
+    const { records, fetchMock } = fixture();
+    records[tables.design][0].fields['枚举/取值范围'] = '同创作流id';
+    records[tables.params][0].fields['枚举/取值范围'] = '创作流程 ID';
+    records[tables.enums] = [{ record_id: 'draft-enum', fields: {
+      枚举主键: 'scene_capsule_click.page_name.同创作流id', evt_id: 'scene_capsule_click', 参数名: 'page_name', 枚举值: '同创作流id', 枚举状态: '草稿', 关联设计参数: ['design-param'],
+    } }];
+    await updateTrackingRecord(credentials, 'web:design-event', { stageId: 'launch', targetStage: '稳定归档', fields: {} }, 'owner', fetchMock);
+    expect(records[tables.workbench][0].fields['流程阶段']).toBe('稳定归档');
+    expect(records[tables.params][0].fields['枚举/取值范围']).toContain('创作流程 ID');
+    expect(records[tables.params][0].fields['枚举/取值范围']).toContain('同创作流id');
+    expect(records[tables.enums]).toHaveLength(1);
+    expect(records[tables.enums][0].fields['枚举状态']).toBe('草稿');
+  });
+  it('does not promote legacy dictionary samples for a referenced dynamic range', async () => {
+    const { records, fetchMock } = fixture();
+    records[tables.design][0].fields['枚举/取值范围'] = '同 form_type（EntryCodeType），如 TextToVideo / ImageToVideo 等；不另造 snake_case 枚举';
+    records[tables.params][0].fields['枚举/取值范围'] = '-';
+    records[tables.enums] = [{ record_id: 'draft-enum', fields: {
+      evt_id: 'scene_capsule_click', 参数名: 'page_name', 枚举值: 'TextToVideo', 枚举状态: '草稿', 关联设计参数: ['design-param'],
+    } }];
+    await updateTrackingRecord(credentials, 'web:design-event', { stageId: 'launch', targetStage: '稳定归档', fields: {} }, 'owner', fetchMock);
+    expect(records[tables.enums][0].fields['枚举状态']).toBe('草稿');
+    expect(records[tables.params][0].fields['枚举/取值范围']).toContain('同 form_type');
+  });
+  it('validates all sibling ranges before making any Base writes', async () => {
+    const { records, writes, fetchMock } = fixture();
+    records[tables.workbench].push({ record_id: 'later-event', fields: {
+      ...records[tables.workbench][0].fields, evt_id: 'new_event', 事件中文名: '新事件',
+    } });
+    records[tables.design].push({ record_id: 'later-param', fields: {
+      evt_id: 'new_event', 参数名: 'mode', 来源设计记录ID: 'later-event', '枚举/取值范围': 'AI Photo Editor：ai_photo_editor',
+    } });
+    await expect(updateTrackingRecord(credentials, 'web:design-event', { stageId: 'launch', targetStage: '稳定归档', fields: {} }, 'owner', fetchMock)).rejects.toThrow('new_event.mode');
+    expect(writes).toEqual([]);
+    expect(records[tables.workbench].map((row) => row.fields['流程阶段'])).toEqual(['上线监控', '上线监控']);
+  });
   it('does not demote an official enum when another design reuses it', async () => {
     const { records, fetchMock } = fixture();
     records[tables.workbench][0].fields['流程阶段'] = '埋点设计';

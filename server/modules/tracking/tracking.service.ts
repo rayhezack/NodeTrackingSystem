@@ -1,4 +1,4 @@
-import { assertDistinctParams, dictionaryEnums, dictionaryRange, enumIdentity, mergeTrackingEnums, parseTrackingEnums } from '../../../shared/tracking-enums';
+import { assertDistinctParams, dictionaryEnums, enumIdentity, mergeTrackingEnums, parameterDictionaryRange, parseTrackingEnums } from '../../../shared/tracking-enums';
 import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { FileService, type FileMeta } from '@lark-apaas/fullstack-nestjs-core';
 import type {
@@ -1754,8 +1754,8 @@ export class TrackingService {
         if (entry.label) labels.set(enumIdentity(evtId, paramName, entry.value), entry);
       }
       const rows = existing ? dictionaryEnums(enumRows, evtId, paramName, existing.id, 'official') : [];
-      const previous = mergeTrackingEnums(dictionaryRange(rows), cellText(existing?.record['枚举/取值范围']));
-      officialParam['枚举/取值范围'] = mergeTrackingEnums(previous, cellText(officialParam['枚举/取值范围']), dictionaryRange(dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design')));
+      const previous = mergeTrackingEnums(parameterDictionaryRange(rows, cellText(existing?.record['枚举/取值范围'])), cellText(existing?.record['枚举/取值范围']));
+      officialParam['枚举/取值范围'] = mergeTrackingEnums(previous, cellText(officialParam['枚举/取值范围']), parameterDictionaryRange(dictionaryEnums(enumRows, evtId, paramName, designParam.id, 'design'), cellText(officialParam['枚举/取值范围'])));
       if (existing) {
         const appendOnly = mergeOfficialParamRecord(existing.record, officialParam);
         if (Object.keys(appendOnly.patch).length) {
