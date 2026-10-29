@@ -112,14 +112,6 @@ export default function QueryLibraryPage() {
 
   return (
     <div className="query-library space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-sm">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">正式查询库</h1>
-          <p className="mt-1 text-xs text-muted-foreground">查询已上线事件、参数定义与枚举值</p>
-        </div>
-        <div className="text-xs tabular-nums text-muted-foreground">{loading ? "正在查询" : `共 ${total} 个事件`}</div>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
         <LiquidToggle checked={source === 'app'} onCheckedChange={on => {
           setCategory(""); setCategories([]); setSource(on ? 'app' : 'web');
