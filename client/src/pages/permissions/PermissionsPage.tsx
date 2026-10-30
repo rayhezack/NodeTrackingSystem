@@ -27,13 +27,13 @@ const ROLE_CONFIG: Array<{
   {
     key: 'admins',
     label: '管理员',
-    desc: '管理权限配置，并拥有所有需求、设计、开发、验收、上线和归档权限。',
+    desc: '管理权限与所有需求。',
     editable: true,
   },
   {
     key: 'viewers',
     label: '普通用户',
-    desc: '由飞书 Workplace 的应用可见范围自动决定：能进入应用且可被识别的内部成员，都可查看并自由提交新需求。',
+    desc: '可查看和提交需求。',
     editable: false,
   },
 ];
@@ -129,7 +129,7 @@ export default function PermissionsPage() {
               权限配置
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              全局权限只配置管理员和普通用户；数据负责人、研发负责人、埋点校验人等项目角色在每条需求中指定。
+              项目角色在各需求中指定。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -220,8 +220,8 @@ export default function PermissionsPage() {
                     />
                   ) : (
                     <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
-                      普通用户无需逐个添加；当前由 PolloCloud 的公司员工登录范围控制应用访问。
-                      被加入某条需求的需求提出人、数据负责人、研发负责人或埋点校验人，会自动获得对应项目节点权限。
+                      公司员工登录即可访问，无需逐个添加。
+                      参与需求后，按项目角色获得节点权限。
                     </div>
                   )}
                 </div>

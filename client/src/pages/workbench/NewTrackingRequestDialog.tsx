@@ -196,7 +196,7 @@ export default function NewTrackingRequestDialog({
         </DialogHeader>
 
         <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-          提需阶段只录入业务目标、适用端、优先级和项目参与人；evt_id、正式事件名、事件定义、触发时机和参数设计在「埋点设计」节点填写。
+          事件和参数在「埋点设计」阶段配置。
         </div>
 
         <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
@@ -256,7 +256,7 @@ export default function NewTrackingRequestDialog({
             <div className="mb-3">
               <h3 className="text-sm font-medium text-foreground">项目参与人</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                需求提出人默认为当前创建者；数据负责人和埋点校验人已预填默认人员，研发负责人需按需求指定。
+                请确认预填人员，并指定研发负责人。
               </p>
             </div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">

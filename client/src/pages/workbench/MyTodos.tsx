@@ -6,8 +6,6 @@ import {
   Empty,
   EmptyHeader,
   EmptyTitle,
-  EmptyDescription,
-  EmptyContent,
   EmptyMedia,
 } from '@client/src/components/ui/empty';
 import type { TodoItem } from '@shared/api.interface';
@@ -91,11 +89,6 @@ const MyTodos = ({
             <EmptyHeader>
               <EmptyTitle className="text-sm">暂无待办</EmptyTitle>
             </EmptyHeader>
-            <EmptyContent>
-              <EmptyDescription className="text-xs">
-                所有事项都已处理完毕
-              </EmptyDescription>
-            </EmptyContent>
           </Empty>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

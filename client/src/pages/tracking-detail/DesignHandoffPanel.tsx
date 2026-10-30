@@ -110,7 +110,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
     <div className="space-y-4 border-y border-border/60 bg-muted/20 px-3 py-4 sm:px-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-medium text-foreground">研发对接速览</h3>
             <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
@@ -120,9 +120,6 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
               当前事件 {items.length} 个参数
             </Badge>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            只读展示埋点设计口径，开发可直接查阅事件定义、触发时机、参数含义、枚举值和示例。
-          </p>
         </div>
         <Button
           variant="outline"
@@ -132,12 +129,11 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
           disabled={copying}
         >
           {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
-          {copying ? copyProgress : `复制整份需求开发说明（${events.length} 个事件）`}
+          {copying ? copyProgress : '复制整份开发说明'}
         </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-y border-border/60 py-3">
-        <span className="text-xs font-medium">飞书 Base 设计数据</span>
         <Button asChild variant="outline" size="sm" className="h-8 rounded-full">
           <a href={baseLinks.design} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-3.5 w-3.5" />
@@ -151,7 +147,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
           </a>
         </Button>
         <p className="w-full text-xs text-muted-foreground">
-          打开后按当前 evt_id「{selectedEvent?.evtId || '未填写'}」查找；复制开发说明会包含表格链接。AI 读取需具备飞书 Base 访问权限。
+          按 evt_id「{selectedEvent?.evtId || '未填写'}」查找；需有飞书 Base 访问权限。
         </p>
       </div>
 

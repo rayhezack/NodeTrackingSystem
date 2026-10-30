@@ -299,11 +299,6 @@ const AiTrackingDraftPanel = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-foreground">AI 埋点初稿</span>
-                {config && (
-                  <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-normal">
-                    {config.provider} / {config.model}
-                  </Badge>
-                )}
                 {auth?.authorized && (
                   <Badge variant="outline" className="h-5 rounded-full border-emerald-200 px-1.5 text-xs font-normal text-emerald-700">
                     已授权
@@ -368,7 +363,7 @@ const AiTrackingDraftPanel = ({
           <DialogHeader>
             <DialogTitle className="text-base">飞书文档授权</DialogTitle>
             <DialogDescription>
-              首次使用需要授权当前飞书账号读取需求单 PRD。点击下方按钮后会打开飞书授权页，授权成功后自动继续生成；授权失败或文档无权限时不会调用 AI。
+              授权飞书读取 PRD 后自动生成；无文档权限时不会调用 AI。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-3">

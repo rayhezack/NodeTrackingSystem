@@ -150,9 +150,6 @@ const ParamDesigner = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-medium text-foreground">参数设计</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
-            </p>
           </div>
           {canEdit && (
             <Button size="sm" className="rounded-full h-8" disabled>
@@ -177,9 +174,6 @@ const ParamDesigner = ({
       <div className="space-y-4">
         <div>
           <h2 className="text-base font-medium text-foreground">参数设计</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            配置该事件的参数明细；参数 key 将按 evt_id.参数名 自动生成
-          </p>
         </div>
         <div className="flex flex-col items-center justify-center rounded-md border border-border bg-card py-16">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
@@ -210,9 +204,6 @@ const ParamDesigner = ({
               共 {items.length} 个参数
             </span>
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            配置该事件的参数明细；研发可直接查看参数含义、枚举值和示例
-          </p>
         </div>
         <div className="flex items-center gap-2">
           {!isEmpty && (

@@ -225,9 +225,9 @@ export default function UiImageField({
                   ) : (
                     <span className="block truncate text-xs text-foreground">{fileName}</span>
                   )}
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {url ? '点击预览 UI 图' : isResolving ? '正在解析预览链接...' : '暂无可预览链接'}
-                  </span>
+                  {!url && <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {isResolving ? '正在解析预览链接...' : '暂无可预览链接'}
+                  </span>}
                 </div>
                 {url && (
                   <Button
@@ -267,7 +267,7 @@ export default function UiImageField({
         <DialogContent className="max-w-5xl gap-0 overflow-hidden rounded-lg p-0">
           <DialogHeader className="border-b border-border px-4 py-3 pr-12">
             <DialogTitle className="truncate text-sm">{previewName || 'UI 图预览'}</DialogTitle>
-            <DialogDescription className="text-xs">查看当前埋点事件关联的 UI 截图或原型图</DialogDescription>
+            <DialogDescription className="sr-only">查看当前埋点事件关联的 UI 截图或原型图</DialogDescription>
           </DialogHeader>
           <div className="max-h-[72vh] overflow-auto bg-muted/30 p-4">
             {previewUrl ? (

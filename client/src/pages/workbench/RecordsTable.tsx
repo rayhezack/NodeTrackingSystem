@@ -148,6 +148,7 @@ const RecordsTable = ({
         <div className="relative flex-1 min-w-[200px] max-w-[320px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            aria-label="搜索需求"
             placeholder="搜索需求名 / evt_id / 事件名"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
@@ -247,13 +248,9 @@ const RecordsTable = ({
               <Inbox className="h-5 w-5" />
             </EmptyMedia>
             <EmptyHeader>
-              <EmptyTitle className="text-sm">暂无数据</EmptyTitle>
+              <EmptyTitle className="text-sm">没有符合条件的需求</EmptyTitle>
             </EmptyHeader>
-            <EmptyContent>
-              <EmptyDescription className="text-xs">
-                没有找到符合条件的埋点需求
-              </EmptyDescription>
-            </EmptyContent>
+
           </Empty>
         ) : (
           <>

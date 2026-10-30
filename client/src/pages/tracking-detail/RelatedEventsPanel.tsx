@@ -187,9 +187,6 @@ export default function RelatedEventsPanel({
               共 {events.length} 个
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            一个需求可包含多个埋点事件；新增事件会复用当前需求ID、需求背景和项目参与人。
-          </p>
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
@@ -266,7 +263,7 @@ export default function RelatedEventsPanel({
           </DialogHeader>
 
           <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-            该事件会归入当前需求，自动复用需求ID、需求背景、需求链接和项目参与人；这里只填写事件级设计信息。
+            沿用当前需求的背景、链接和参与人。
           </div>
 
           <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">

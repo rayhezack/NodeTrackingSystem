@@ -115,17 +115,15 @@ function getFieldSections(stageId: string, fields: StageConfig['fields']): Field
   const groups: Record<string, { title: string; description?: string; keys: string[] }> = {
     requirement: {
       title: '需求概览',
-      description: '先确认需求范围、优先级与交付时间。',
       keys: ['requestName', 'priority', 'platform', 'expectedCompletionDate'],
     },
     design: {
       title: '事件基本信息',
-      description: '事件标识和处理方用于研发、数仓和查询库之间的统一识别。',
       keys: ['evtId', 'eventName', 'priority', 'platform', 'handler'],
     },
-    review: { title: '评审结论', description: '集中填写评审状态和需要回流的问题。', keys: ['reviewStatus', 'reviewComment'] },
-    dev: { title: '开发状态', description: '研发对接说明在上方只读展示，状态在此更新。', keys: ['devStatus'] },
-    acceptance: { title: '验收记录', description: '记录验收结论、证据和完成时间。', keys: ['acceptanceStatus', 'acceptanceTime', 'acceptanceEvidence'] },
+    review: { title: '评审结论', keys: ['reviewStatus', 'reviewComment'] },
+    dev: { title: '开发状态', keys: ['devStatus'] },
+    acceptance: { title: '验收记录', keys: ['acceptanceStatus', 'acceptanceTime', 'acceptanceEvidence'] },
     launch: { title: '上线监控', keys: ['monitorStatus'] },
     archive: { title: '归档信息', keys: ['officialStatus', 'archiveTime'] },
   };
@@ -135,8 +133,8 @@ function getFieldSections(stageId: string, fields: StageConfig['fields']): Field
     const context = fields.filter((field) => ['requirementLink', 'requirementBackground', 'metricScenario'].includes(field.key));
     return [
       createSection(groups.requirement, fields),
-      { title: '项目参与人', description: '人员选择会同步用于流程通知和负责人展示。', fields: people },
-      { title: '需求上下文', description: '补充可追溯的文档、背景和指标使用场景。', fields: context },
+      { title: '项目参与人', description: '参与人用于节点权限和流程通知。', fields: people },
+      { title: '需求上下文', fields: context },
     ].filter((section) => section.fields.length > 0);
   }
 
@@ -147,8 +145,8 @@ function getFieldSections(stageId: string, fields: StageConfig['fields']): Field
     const version = fields.filter((field) => ['version', 'minVersion', 'changeType'].includes(field.key));
     return [
       base,
-      { title: '事件口径', description: '用短句描述统计边界、触发时机和公共属性。', fields: definition },
-      { title: '设计素材', description: '素材用于评审定位和研发联调，可按需补充。', fields: materials },
+      { title: '事件口径', fields: definition },
+      { title: '设计素材', fields: materials },
       { title: '版本与变更', fields: version },
     ].filter((section) => section.fields.length > 0);
   }
@@ -378,6 +376,7 @@ const StageForm = ({
   const busy = saving || completing || draftsBusy;
   const disabled = !canEdit || busy;
   const completionCopy = getCompletionCopy(stageId, stageConfig.label);
+  const fieldSections = getFieldSections(stageId, stageConfig.fields);
   const checklistFields = stageConfig.fields.filter((field) => field.required);
   const checklistComplete = checklistFields.filter((field) => Boolean(toTextValue(formData[field.key]).trim())).length;
 
@@ -385,9 +384,11 @@ const StageForm = ({
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-medium text-foreground">{stageConfig.label}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {canEdit ? usesDrafts ? `切换埋点自动保留草稿，完成后统一保存。当前有 ${pendingDraftCount} 个埋点未保存（参数编辑仍即时保存）` : '编辑以下字段，完成后点击保存' : '当前用户无编辑权限，字段为只读状态'}
-        </p>
+        {(!canEdit || usesDrafts) && (
+          <p className="mt-1 text-xs text-muted-foreground" role="status">
+            {!canEdit ? '只读 · 无编辑权限' : `${pendingDraftCount ? `${pendingDraftCount} 个埋点未保存 · ` : ''}切换保留草稿，需统一保存；参数即时保存。`}
+          </p>
+        )}
       </div>
 
       {(stageId === 'review' || stageId === 'acceptance') && checklistFields.length > 0 && (
@@ -395,7 +396,6 @@ const StageForm = ({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-foreground">完成检查清单</h3>
-              <p className="mt-1 text-xs text-muted-foreground">提交前确认必填信息已经完整，状态会随表单即时更新。</p>
             </div>
             <span className="text-xs font-medium tabular-nums text-primary">{checklistComplete}/{checklistFields.length}</span>
           </div>
@@ -404,7 +404,8 @@ const StageForm = ({
               const complete = Boolean(toTextValue(formData[field.key]).trim());
               return (
                 <div key={field.key} className="flex items-center gap-2 rounded-md bg-card px-3 py-2 text-xs">
-                  <CheckCircle2 className={`h-4 w-4 shrink-0 ${complete ? 'text-emerald-600' : 'text-muted-foreground/40'}`} />
+                  <span className="sr-only">{complete ? '已完成：' : '未完成：'}</span>
+                  <CheckCircle2 aria-hidden="true" className={`h-4 w-4 shrink-0 ${complete ? 'text-emerald-600' : 'text-muted-foreground/40'}`} />
                   <span className={complete ? 'text-foreground' : 'text-muted-foreground'}>{field.label}</span>
                 </div>
               );
@@ -438,21 +439,24 @@ const StageForm = ({
       )}
 
       <div className="space-y-5">
-        {getFieldSections(stageId, stageConfig.fields).map((section) => (
+        {fieldSections.map((section) => (
           <section key={section.title} className="space-y-3 border-b border-border/60 pb-5 last:border-b-0 last:pb-0">
-            <div>
-              <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
-              {section.description && <p className="mt-0.5 text-xs text-muted-foreground">{section.description}</p>}
-            </div>
+            {(fieldSections.length > 1 || section.title !== stageConfig.label) && (
+              <div>
+                <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
+                {section.description && <p className="mt-0.5 text-xs text-muted-foreground">{section.description}</p>}
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
             {section.fields.map((field) => (
           <div key={field.key} className={field.type === 'textarea' || field.type === 'attachment' ? 'md:col-span-2' : ''}>
-            <Label className="mb-1.5 block text-xs text-muted-foreground">
+            <Label htmlFor={`stage-${stageId}-${field.key}`} className="mb-1.5 block text-xs text-muted-foreground">
               {field.label}
               {field.required && <span className="ml-0.5 text-destructive">*</span>}
             </Label>
             {field.type === 'input' && (
               <Input
+                id={`stage-${stageId}-${field.key}`}
                 value={toTextValue(formData[field.key])}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   handleChange(field.key, e.target.value)
@@ -464,6 +468,7 @@ const StageForm = ({
             )}
             {field.type === 'url' && (
               <Input
+                id={`stage-${stageId}-${field.key}`}
                 type="url"
                 required={field.required}
                 value={toTextValue(formData[field.key])}
@@ -484,6 +489,7 @@ const StageForm = ({
             )}
             {field.type === 'textarea' && (
               <Textarea
+                id={`stage-${stageId}-${field.key}`}
                 value={toTextValue(formData[field.key])}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                   handleChange(field.key, e.target.value)
@@ -500,7 +506,7 @@ const StageForm = ({
                 onValueChange={(value: string) => handleChange(field.key, value)}
                 disabled={disabled}
               >
-                <SelectTrigger className="h-9 w-full rounded-md text-sm">
+                <SelectTrigger id={`stage-${stageId}-${field.key}`} className="h-9 w-full rounded-md text-sm">
                   <SelectValue placeholder={`请选择${field.label}`} />
                 </SelectTrigger>
                 <SelectContent>

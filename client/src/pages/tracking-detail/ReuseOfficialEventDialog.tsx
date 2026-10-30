@@ -189,7 +189,7 @@ export default function ReuseOfficialEventDialog({
         </DialogHeader>
 
         <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-          从{detail.source === 'web' ? ' Web ' : ' App '}正式查询库勾选多个已有事件，点击事件行预览并选择要导入的参数（默认不导入旧参数），系统会回填事件定义、触发时机和版本；只有勾选的正式参数会复制为本次需求的设计参数草稿。{reuseTargetCopy}
+          复用 {detail.source === 'web' ? 'Web' : 'App'} 正式事件；参数默认不导入，仅复制勾选项。{reuseTargetCopy}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
