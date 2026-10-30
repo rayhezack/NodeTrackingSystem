@@ -98,6 +98,7 @@
 .param-spec-list { display: grid; gap: 12px; }
 .param-spec-row { border-radius: 20px; background: var(--muted); padding: 16px; overflow: hidden; }
 .param-spec-row[data-selected] { background: var(--accent); }
+.param-spec-row[data-pending-delete] { background: color-mix(in srgb, var(--primary) 10%, var(--card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent); }
 .param-spec-top { display: flex; align-items: flex-start; gap: 8px; }
 .param-spec-title { min-width: 0; flex: 1; }
 .param-spec-title code { display: block; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; line-height: 1.5; }

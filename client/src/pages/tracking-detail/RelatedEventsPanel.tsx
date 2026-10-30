@@ -283,6 +283,7 @@ export default function RelatedEventsPanel({
             aria-label="搜索同需求事件"
             placeholder="搜索事件"
             value={query}
+            disabled={Boolean(pendingDelete)}
             onChange={(event) => setQuery(event.target.value)}
             className="h-9 pl-9"
           />
@@ -312,7 +313,7 @@ export default function RelatedEventsPanel({
                     paddingBottom: 0,
                   }}
                   transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-foreground text-background' : event.isCurrent ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'}`}
+                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/20' : event.isCurrent ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'}`}
                 >
                   {deleting ? (
                     <div
@@ -323,19 +324,20 @@ export default function RelatedEventsPanel({
                         <div className="truncate text-xs" title={event.evtId}>
                           {event.evtId || event.eventName}
                         </div>
-                        <div className="mt-1 text-xs">
+                        <div className="mt-1 text-xs text-muted-foreground">
                           {pendingDelete.committing
                             ? '正在删除…'
-                            : '将删除事件及设计参数'}
+                            : '5 秒后删除事件及参数'}
                         </div>
                       </div>
                       {pendingDelete.committing ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                       ) : (
                         <Button
+                          autoFocus
                           size="sm"
-                          variant="secondary"
-                          className="h-8 shrink-0 bg-background px-2 text-foreground hover:bg-background/90"
+                          variant="outline"
+                          className="h-8 shrink-0 border-primary/20 bg-card px-2 text-primary hover:bg-primary/10 hover:text-primary"
                           onClick={undoDelete}
                           aria-label={`撤销删除${event.evtId || event.eventName}`}
                         >

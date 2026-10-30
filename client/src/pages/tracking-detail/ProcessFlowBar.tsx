@@ -5,6 +5,8 @@ interface ProcessFlowBarProps {
   baseStage: string;
   reviewStatus?: string;
   officialStatus?: string;
+  viewingNode?: string;
+  disabled?: boolean;
   onNodeClick?: (nodeKey: string) => void;
 }
 
@@ -12,6 +14,8 @@ const ProcessFlowBar = ({
   baseStage,
   reviewStatus = '',
   officialStatus = '',
+  viewingNode,
+  disabled = false,
   onNodeClick,
 }: ProcessFlowBarProps) => {
   return (
@@ -31,6 +35,7 @@ const ProcessFlowBar = ({
             officialStatus,
           );
           const isLast = index === UI_STAGE_NODES.length - 1;
+          const selected = node.key === viewingNode;
 
           return (
             <div key={node.key} className="flex flex-1 items-center last:flex-none">
@@ -39,11 +44,15 @@ const ProcessFlowBar = ({
                 type="button"
                 aria-label={`${node.label}，${completed ? '已完成' : active ? '进行中' : '待开始'}`}
                 aria-current={active ? 'step' : undefined}
+                aria-pressed={selected}
+                data-selected={selected || undefined}
+                disabled={disabled || !onNodeClick}
+                title={`查看${node.label}`}
                 onClick={() => onNodeClick?.(node.key)}
-                className="group flex flex-col items-center gap-1.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                className={`group relative flex min-w-[72px] flex-col items-center gap-1.5 rounded-lg px-3 py-2 transition-[background-color,transform,box-shadow] duration-150 ease-out hover:bg-primary/5 active:scale-[0.96] active:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${selected ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : ''}`}
               >
                 <div
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors ${
+                  className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-[box-shadow,transform] duration-150 group-hover:ring-4 group-hover:ring-primary/10 group-active:scale-95 motion-reduce:transform-none motion-reduce:transition-none ${
                     active
                       ? 'border-primary bg-primary text-primary-foreground'
                       : completed
@@ -60,7 +69,7 @@ const ProcessFlowBar = ({
                 </div>
                 <span
                   className={`text-xs whitespace-nowrap ${
-                    active
+                    selected || active
                       ? 'font-medium text-primary'
                       : completed
                         ? 'text-success'
@@ -69,6 +78,7 @@ const ProcessFlowBar = ({
                 >
                   {node.label}
                 </span>
+                <span aria-hidden="true" className={`absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-primary transition-opacity duration-150 motion-reduce:transition-none ${selected ? 'opacity-100' : 'opacity-0'}`} />
               </button>
 
               {/* 连接线 */}

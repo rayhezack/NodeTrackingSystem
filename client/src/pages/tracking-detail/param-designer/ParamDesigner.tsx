@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { logger } from '@client/src/lib/logger';
 import { Plus, AlertCircle, Wrench, Loader2, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@client/src/components/ui/button';
@@ -16,7 +16,6 @@ import type {
   TrackingSource,
 } from '@shared/api.interface';
 import ParamFormDialog from './ParamFormDialog';
-import DeleteParamDialog from './DeleteParamDialog';
 import ParamSpecTable from './ParamSpecTable';
 import { buildParamClipboardText } from './param-display.utils';
 
@@ -45,11 +44,29 @@ const ParamDesigner = ({
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingParam, setEditingParam] = useState<ParamDetail | null>(null);
 
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletingParam, setDeletingParam] = useState<ParamDetail | null>(null);
-  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [selectedParamIds, setSelectedParamIds] = useState<string[]>([]);
   const [removingIds, setRemovingIds] = useState<string[]>([]);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteBusy = useRef(false);
+  const deletionPending = pendingDeleteIds.length > 0;
+
+  useEffect(() => () => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+  }, []);
+
+  const undoDelete = () => {
+    if (!deleteTimer.current) return;
+    clearTimeout(deleteTimer.current);
+    deleteTimer.current = null;
+    deleteBusy.current = false;
+    setPendingDeleteIds([]);
+  };
+
+  useEffect(() => {
+    // Losing edit access also cancels an uncommitted operation.
+    if (!canEdit) undoDelete();
+  }, [canEdit]);
 
   const loadParams = useCallback(async () => {
     setLoading(true);
@@ -89,8 +106,7 @@ const ParamDesigner = ({
   };
 
   const handleDelete = (param: ParamDetail) => {
-    setDeletingParam(param);
-    setDeleteOpen(true);
+    scheduleDelete([param.recordId]);
   };
 
   const handleFormSubmit = async (data: CreateParamRequest) => {
@@ -111,27 +127,28 @@ const ParamDesigner = ({
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deletingParam) return;
-    const id = deletingParam.recordId;
-    setRemovingIds([id]);
-    try {
-      await deleteParam(id, actorId, actorLarkId);
-      setItems(previous => previous.filter(item => item.recordId !== id));
-      setSelectedParamIds(previous => previous.filter(value => value !== id));
-      setDeletingParam(null);
-    } finally { setRemovingIds([]); }
-  };
-
-  const handleBatchDeleteConfirm = async () => {
-    if (!selectedParamIds.length) return;
-    const idsToDelete = [...selectedParamIds];
-    setRemovingIds(idsToDelete);
-    try {
-      await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
-      setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
-      setSelectedParamIds([]);
-    } finally { setRemovingIds([]); }
+  const scheduleDelete = (ids: string[]) => {
+    if (!canEdit || deleteBusy.current || !ids.length) return;
+    const idsToDelete = [...new Set(ids)];
+    deleteBusy.current = true;
+    setPendingDeleteIds(idsToDelete);
+    deleteTimer.current = setTimeout(async () => {
+      deleteTimer.current = null;
+      setRemovingIds(idsToDelete);
+      try {
+        if (idsToDelete.length === 1) await deleteParam(idsToDelete[0], actorId, actorLarkId);
+        else await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
+        setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
+        setSelectedParamIds(previous => previous.filter(id => !idsToDelete.includes(id)));
+        toast.success(`已删除 ${idsToDelete.length} 个设计参数`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '删除失败，参数已保留，请重试');
+      } finally {
+        deleteBusy.current = false;
+        setPendingDeleteIds([]);
+        setRemovingIds([]);
+      }
+    }, 5000);
   };
 
   const handleCopyParams = async () => {
@@ -222,14 +239,15 @@ const ParamDesigner = ({
               variant="outline"
               size="sm"
               className="h-8 rounded-full text-foreground hover:bg-muted"
-              onClick={() => setBatchDeleteOpen(true)}
+              disabled={deletionPending}
+              onClick={() => scheduleDelete(selectedParamIds)}
             >
               <Trash2 className="h-3.5 w-3.5" />
               删除选中 {selectedParamIds.length}
             </Button>
           )}
           {canEdit && (
-            <Button size="sm" className="h-8 rounded-full" onClick={handleCreate}>
+            <Button size="sm" className="h-8 rounded-full" disabled={deletionPending} onClick={handleCreate}>
               <Plus className="h-3.5 w-3.5" />
               新增参数
             </Button>
@@ -252,6 +270,8 @@ const ParamDesigner = ({
           canEdit={canEdit}
           selectedIds={selectedParamIds}
           removingIds={removingIds}
+          pendingDeleteIds={pendingDeleteIds}
+          onUndoDelete={undoDelete}
           onSelectionChange={setSelectedParamIds}
           onEdit={handleEdit}
           onDelete={handleDelete}
@@ -268,21 +288,6 @@ const ParamDesigner = ({
         onSubmit={handleFormSubmit}
       />
 
-      <DeleteParamDialog
-        open={deleteOpen}
-        paramKey={deletingParam?.paramKey || ''}
-        onClose={() => setDeleteOpen(false)}
-        onConfirm={handleDeleteConfirm}
-      />
-
-      <DeleteParamDialog
-        open={batchDeleteOpen}
-        paramKeys={items
-          .filter((item) => selectedParamIds.includes(item.recordId))
-          .map((item) => item.paramKey)}
-        onClose={() => setBatchDeleteOpen(false)}
-        onConfirm={handleBatchDeleteConfirm}
-      />
     </div>
   );
 };

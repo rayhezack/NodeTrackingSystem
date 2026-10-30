@@ -454,6 +454,8 @@ const TrackingDetailPage = () => {
           baseStage={detail.stage}
           reviewStatus={detail.reviewStatus}
           officialStatus={officialStatus}
+          viewingNode={SIDEBAR_STAGES.find((stage) => stage.id === activeStage)?.uiNode}
+          disabled={savingDrafts}
           onNodeClick={handleNodeClick}
         />
 
