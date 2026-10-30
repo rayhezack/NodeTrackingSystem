@@ -78,7 +78,7 @@
 /* Rows stay in flow. Selection never collapses or resets real records. */
 .chk-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 56px; position: relative; padding: 6px 4px; border: 0; border-radius: 12px; background: none; color: inherit; text-align: left; }
 .chk-row:hover { background: var(--muted); }
-.chk-row[data-active], .chk-row[data-checked] { background: var(--accent); }
+.chk:not(.chk-checkbox-selection) .chk-row[data-active], .chk:not(.chk-checkbox-selection) .chk-row[data-checked] { background: var(--accent); }
 .chk-toggle { flex: none; display: grid; place-items: center; width: 32px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: none; cursor: pointer; }
 .chk-content { flex: 1; min-width: 0; padding: 4px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
 .chk-content:disabled, .chk-toggle:disabled { cursor: not-allowed; opacity: 0.55; }

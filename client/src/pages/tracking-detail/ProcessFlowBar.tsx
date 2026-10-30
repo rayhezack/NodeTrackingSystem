@@ -49,15 +49,17 @@ const ProcessFlowBar = ({
                 disabled={disabled || !onNodeClick}
                 title={`查看${node.label}`}
                 onClick={() => onNodeClick?.(node.key)}
-                className={`group relative flex min-w-[72px] flex-col items-center gap-1.5 rounded-lg px-3 py-2 transition-[background-color,transform,box-shadow] duration-150 ease-out hover:bg-primary/5 active:scale-[0.96] active:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none ${selected ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : ''}`}
+                className="group relative flex min-w-[72px] flex-col items-center gap-1.5 rounded-lg px-3 py-2 transition-[background-color,transform,box-shadow] duration-150 ease-out hover:bg-primary/5 active:scale-[0.96] active:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transform-none motion-reduce:transition-none"
               >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-[box-shadow,transform] duration-150 group-hover:ring-4 group-hover:ring-primary/10 group-active:scale-95 motion-reduce:transform-none motion-reduce:transition-none ${
-                    active
+                    selected || (!viewingNode && active)
                       ? 'border-primary bg-primary text-primary-foreground'
                       : completed
                         ? 'border-success/25 bg-[var(--status-success-bg)] text-success'
-                        : 'border-border bg-card text-muted-foreground'
+                        : active
+                          ? 'border-primary/40 bg-primary/5 text-primary'
+                          : 'border-border bg-card text-muted-foreground'
                   }`}
 
                 >
@@ -69,7 +71,7 @@ const ProcessFlowBar = ({
                 </div>
                 <span
                   className={`text-xs whitespace-nowrap ${
-                    selected || active
+                    active
                       ? 'font-medium text-primary'
                       : completed
                         ? 'text-success'
@@ -78,7 +80,6 @@ const ProcessFlowBar = ({
                 >
                   {node.label}
                 </span>
-                <span aria-hidden="true" className={`absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-primary transition-opacity duration-150 motion-reduce:transition-none ${selected ? 'opacity-100' : 'opacity-0'}`} />
               </button>
 
               {/* 连接线 */}

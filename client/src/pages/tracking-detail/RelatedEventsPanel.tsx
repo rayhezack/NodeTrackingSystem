@@ -79,7 +79,7 @@ export default function RelatedEventsPanel({
   const [open, setOpen] = useState(false);
   const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const pendingDeleteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteSubmittingRef = useRef(false);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
     committing: boolean;
@@ -159,13 +159,9 @@ export default function RelatedEventsPanel({
     onDeletionBusyChange?.(Boolean(pendingDelete));
   }, [pendingDelete, onDeletionBusyChange]);
 
-  useEffect(
-    () => () => {
-      // Leaving this workspace cancels an uncommitted deletion; never write from a stale timer.
-      if (pendingDeleteRef.current) clearTimeout(pendingDeleteRef.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    if (!canEdit && !deleteSubmittingRef.current) setPendingDelete(null);
+  }, [canEdit]);
 
   useEffect(() => {
     const row = listRef.current?.querySelector<HTMLElement>(
@@ -176,7 +172,12 @@ export default function RelatedEventsPanel({
   }, [detail.recordId]);
 
   const commitDelete = async (event: RelatedTrackingEvent) => {
-    pendingDeleteRef.current = null;
+    if (
+      deleteSubmittingRef.current ||
+      pendingDelete?.id !== event.recordId ||
+      eventDeletionRestriction(event, remainingEvents.length, canEdit)
+    ) return;
+    deleteSubmittingRef.current = true;
     setPendingDelete({ id: event.recordId, committing: true });
     try {
       const result = await deleteTrackingEvent(event.recordId, {
@@ -195,12 +196,13 @@ export default function RelatedEventsPanel({
       toast.error(
         error instanceof Error ? error.message : '删除失败，事件已保留，请重试',
       );
+    } finally {
+      deleteSubmittingRef.current = false;
     }
   };
 
   const undoDelete = () => {
-    if (pendingDeleteRef.current) clearTimeout(pendingDeleteRef.current);
-    pendingDeleteRef.current = null;
+    if (deleteSubmittingRef.current) return;
     setPendingDelete(null);
   };
 
@@ -215,7 +217,6 @@ export default function RelatedEventsPanel({
     )
       return;
     setPendingDelete({ id: event.recordId, committing: false });
-    pendingDeleteRef.current = setTimeout(() => void commitDelete(event), 5000);
   };
 
   const remainingEvents = events.filter(
@@ -313,7 +314,7 @@ export default function RelatedEventsPanel({
                     paddingBottom: 0,
                   }}
                   transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/20' : event.isCurrent ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'}`}
+                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/20' : 'text-foreground hover:bg-muted/70'}`}
                 >
                   {deleting ? (
                     <div
@@ -327,23 +328,35 @@ export default function RelatedEventsPanel({
                         <div className="mt-1 text-xs text-muted-foreground">
                           {pendingDelete.committing
                             ? '正在删除…'
-                            : '5 秒后删除事件及参数'}
+                            : '确认后删除事件及参数'}
                         </div>
                       </div>
                       {pendingDelete.committing ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                       ) : (
-                        <Button
-                          autoFocus
-                          size="sm"
-                          variant="outline"
-                          className="h-8 shrink-0 border-primary/20 bg-card px-2 text-primary hover:bg-primary/10 hover:text-primary"
-                          onClick={undoDelete}
-                          aria-label={`撤销删除${event.evtId || event.eventName}`}
-                        >
-                          <Undo2 className="h-3.5 w-3.5" />
-                          撤销
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            autoFocus
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 shrink-0 border-primary/20 bg-card text-primary hover:bg-primary/10 hover:text-primary"
+                            onClick={undoDelete}
+                            title="撤回删除"
+                            aria-label={`撤回删除${event.evtId || event.eventName}`}
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+                            onClick={() => void commitDelete(event)}
+                            title="确认删除事件及设计参数"
+                            aria-label={`确认删除${event.evtId || event.eventName}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ) : (

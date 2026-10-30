@@ -14,12 +14,13 @@ interface ParamSpecTableProps {
   removingIds?: string[];
   pendingDeleteIds?: string[];
   onUndoDelete?: () => void;
+  onConfirmDelete?: () => void;
   onSelectionChange?: (ids: string[]) => void;
   onEdit?: (item: ParamDetail) => void;
   onDelete?: (item: ParamDetail) => void;
 }
 
-const ParamSpecTable = ({ items, source, canEdit = false, selectedIds = [], removingIds = [], pendingDeleteIds = [], onUndoDelete, onSelectionChange, onEdit, onDelete }: ParamSpecTableProps) => {
+const ParamSpecTable = ({ items, source, canEdit = false, selectedIds = [], removingIds = [], pendingDeleteIds = [], onUndoDelete, onConfirmDelete, onSelectionChange, onEdit, onDelete }: ParamSpecTableProps) => {
   const selectable = canEdit && Boolean(onSelectionChange);
   const still = Boolean(useReducedMotion());
   const selected = new Set(selectedIds), removing = new Set(removingIds), pending = new Set(pendingDeleteIds);
@@ -47,9 +48,12 @@ const ParamSpecTable = ({ items, source, canEdit = false, selectedIds = [], remo
         {pending.has(item.recordId) ? <div className="flex min-w-0 items-center gap-3" role="status">
           <div className="min-w-0 flex-1">
             <code className="break-all text-xs font-medium">{item.paramKey}</code>
-            <p className="mt-1 text-xs text-muted-foreground">{removing.has(item.recordId) ? '正在删除…' : pendingDeleteIds.length > 1 ? `将删除 ${pendingDeleteIds.length} 个设计参数，5 秒内可撤销` : '将删除此设计参数，5 秒内可撤销'}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{removing.has(item.recordId) ? '正在删除…' : pendingDeleteIds.length > 1 ? `确认后删除 ${pendingDeleteIds.length} 个设计参数` : '确认后删除此设计参数'}</p>
           </div>
-          {removing.has(item.recordId) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" /> : <Button autoFocus={pendingDeleteIds[0] === item.recordId} variant="outline" size="sm" className="h-8 shrink-0 border-primary/20 bg-card px-3 text-primary hover:bg-primary/10 hover:text-primary" aria-label={`撤销删除参数 ${item.paramKey}`} onClick={onUndoDelete}><Undo2 className="h-3.5 w-3.5" />{pendingDeleteIds.length > 1 ? '全部撤销' : '撤销'}</Button>}
+          {removing.has(item.recordId) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" /> : <div className="flex shrink-0 items-center gap-1">
+            <Button autoFocus={pendingDeleteIds[0] === item.recordId} variant="outline" size="icon" className="h-8 w-8 shrink-0 border-primary/20 bg-card text-primary hover:bg-primary/10 hover:text-primary" title={pendingDeleteIds.length > 1 ? '撤回本次批量删除' : '撤回删除'} aria-label={`撤回删除参数 ${item.paramKey}`} onClick={onUndoDelete}><Undo2 className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive" title={pendingDeleteIds.length > 1 ? `确认删除选中的 ${pendingDeleteIds.length} 个参数` : '确认删除参数'} aria-label={`确认删除参数 ${item.paramKey}`} onClick={onConfirmDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>}
         </div> : <>
         <div className="param-spec-top">
           {selectable && <ChecklistCheckbox checked={selected.has(item.recordId)} disabled={busy} label={`选择参数 ${item.paramKey}`} onChange={checked => toggle(item.recordId, checked)} />}

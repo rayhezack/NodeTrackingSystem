@@ -47,19 +47,11 @@ const ParamDesigner = ({
   const [selectedParamIds, setSelectedParamIds] = useState<string[]>([]);
   const [removingIds, setRemovingIds] = useState<string[]>([]);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
-  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deleteBusy = useRef(false);
   const deletionPending = pendingDeleteIds.length > 0;
 
-  useEffect(() => () => {
-    if (deleteTimer.current) clearTimeout(deleteTimer.current);
-  }, []);
-
   const undoDelete = () => {
-    if (!deleteTimer.current) return;
-    clearTimeout(deleteTimer.current);
-    deleteTimer.current = null;
-    deleteBusy.current = false;
+    if (deleteBusy.current) return;
     setPendingDeleteIds([]);
   };
 
@@ -106,7 +98,7 @@ const ParamDesigner = ({
   };
 
   const handleDelete = (param: ParamDetail) => {
-    scheduleDelete([param.recordId]);
+    prepareDelete([param.recordId]);
   };
 
   const handleFormSubmit = async (data: CreateParamRequest) => {
@@ -127,28 +119,29 @@ const ParamDesigner = ({
     }
   };
 
-  const scheduleDelete = (ids: string[]) => {
-    if (!canEdit || deleteBusy.current || !ids.length) return;
-    const idsToDelete = [...new Set(ids)];
+  const prepareDelete = (ids: string[]) => {
+    if (!canEdit || deleteBusy.current || deletionPending || !ids.length) return;
+    setPendingDeleteIds([...new Set(ids)]);
+  };
+
+  const confirmDelete = async () => {
+    if (!canEdit || deleteBusy.current || !pendingDeleteIds.length) return;
+    const idsToDelete = [...pendingDeleteIds];
     deleteBusy.current = true;
-    setPendingDeleteIds(idsToDelete);
-    deleteTimer.current = setTimeout(async () => {
-      deleteTimer.current = null;
-      setRemovingIds(idsToDelete);
-      try {
-        if (idsToDelete.length === 1) await deleteParam(idsToDelete[0], actorId, actorLarkId);
-        else await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
-        setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
-        setSelectedParamIds(previous => previous.filter(id => !idsToDelete.includes(id)));
-        toast.success(`已删除 ${idsToDelete.length} 个设计参数`);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : '删除失败，参数已保留，请重试');
-      } finally {
-        deleteBusy.current = false;
-        setPendingDeleteIds([]);
-        setRemovingIds([]);
-      }
-    }, 5000);
+    setRemovingIds(idsToDelete);
+    try {
+      if (idsToDelete.length === 1) await deleteParam(idsToDelete[0], actorId, actorLarkId);
+      else await batchDeleteParams(recordId, { paramRecordIds: idsToDelete, actorId, actorLarkId });
+      setItems(previous => previous.filter(item => !idsToDelete.includes(item.recordId)));
+      setSelectedParamIds(previous => previous.filter(id => !idsToDelete.includes(id)));
+      toast.success(`已删除 ${idsToDelete.length} 个设计参数`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除失败，参数已保留，请重试');
+    } finally {
+      deleteBusy.current = false;
+      setPendingDeleteIds([]);
+      setRemovingIds([]);
+    }
   };
 
   const handleCopyParams = async () => {
@@ -240,7 +233,7 @@ const ParamDesigner = ({
               size="sm"
               className="h-8 rounded-full text-foreground hover:bg-muted"
               disabled={deletionPending}
-              onClick={() => scheduleDelete(selectedParamIds)}
+              onClick={() => prepareDelete(selectedParamIds)}
             >
               <Trash2 className="h-3.5 w-3.5" />
               删除选中 {selectedParamIds.length}
@@ -272,6 +265,7 @@ const ParamDesigner = ({
           removingIds={removingIds}
           pendingDeleteIds={pendingDeleteIds}
           onUndoDelete={undoDelete}
+          onConfirmDelete={() => void confirmDelete()}
           onSelectionChange={setSelectedParamIds}
           onEdit={handleEdit}
           onDelete={handleDelete}

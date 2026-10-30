@@ -234,7 +234,7 @@ export default function ReuseOfficialEventDialog({
               </div>
               {loading && !events.length ? <div className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />正在加载正式事件...</div>
                 : events.length ? <div className="max-h-[50vh] overflow-y-auto rounded-2xl">
-                  <Checklist label="可复用正式事件" activeId={selected?.recordId}
+                  <Checklist className="chk-checkbox-selection" label="可复用正式事件" activeId={selected?.recordId}
                     items={events.map(event => ({ id: event.recordId, label: event.evtId,
                       description: `${event.eventName} · ${event.version || '未标注版本'}`,
                       meta: <Badge variant="outline" className="border-0 bg-muted text-xs font-normal">{event.status || '-'}</Badge>,
@@ -299,7 +299,7 @@ export default function ReuseOfficialEventDialog({
                         正在加载参数...
                       </div>
                     ) : params.length ? (
-                      <Checklist label="可导入正式参数" items={params.map(param => ({
+                      <Checklist className="chk-checkbox-selection" label="可导入正式参数" items={params.map(param => ({
                         id: paramKeyOf(param), label: param.paramKey || param.paramName || '',
                         description: `${param.paramType || '-'} · ${param.requiredRule || '非必传'}${param.enumRange ? ` · 枚举：${param.enumRange}` : ''}`,
                         checked: selectedParamKeys.includes(paramKeyOf(param)), disabled: saving,
