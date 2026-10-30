@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { GitBranch, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import {
+  GitBranch,
+  Loader2,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  Undo2,
+  LockKeyhole,
+  ChevronDown,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@client/src/components/ui/badge';
 import { Button } from '@client/src/components/ui/button';
 import {
   Dialog,
@@ -19,7 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@client/src/components/ui/select';
-import { createSiblingTrackingEvent, deleteTrackingEvent } from '@client/src/api/tracking';
+import {
+  createSiblingTrackingEvent,
+  deleteTrackingEvent,
+} from '@client/src/api/tracking';
 import type {
   CreateSiblingTrackingEventRequest,
   ReuseOfficialEventResponse,
@@ -27,10 +39,17 @@ import type {
   TrackingDetail,
 } from '@shared/api.interface';
 import ReuseOfficialEventDialog from './ReuseOfficialEventDialog';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import {
+  eventDeletionRestriction,
+  filterEvents,
+} from './event-navigation.utils';
+import './event-navigation.css';
 
 interface RelatedEventsPanelProps {
   detail: TrackingDetail;
   canEdit: boolean;
+  onDeletionBusyChange?: (busy: boolean) => void;
   actorId?: string;
   actorLarkId?: string;
   onSelectEvent?: (recordId: string) => void;
@@ -54,27 +73,42 @@ export default function RelatedEventsPanel({
   actorId,
   actorLarkId,
   onSelectEvent,
+  onDeletionBusyChange,
   onChanged,
 }: RelatedEventsPanelProps) {
   const [open, setOpen] = useState(false);
   const [reuseOpen, setReuseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const pendingDeleteRef = useRef<{ event: RelatedTrackingEvent; timer: ReturnType<typeof setTimeout>; toastId: string | number } | null>(null);
-  const [hiddenEventIds, setHiddenEventIds] = useState<Set<string>>(() => new Set());
+  const pendingDeleteRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    committing: boolean;
+  } | null>(null);
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
+  const reduceMotion = useReducedMotion();
+  const [hiddenEventIds, setHiddenEventIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [form, setForm] = useState<EventForm>(() => defaultForm(detail));
   const events = detail.relatedEvents?.length
     ? detail.relatedEvents
-    : [{
-        recordId: detail.recordId,
-        source: detail.source,
-        evtId: detail.evtId,
-        eventName: detail.eventName,
-        stage: detail.stage,
-        uiStage: detail.uiStage,
-        priority: detail.priority,
-        platform: detail.platform,
-        isCurrent: true,
-      }];
+    : [
+        {
+          recordId: detail.recordId,
+          source: detail.source,
+          evtId: detail.evtId,
+          eventName: detail.eventName,
+          stage: detail.stage,
+          uiStage: detail.uiStage,
+          priority: detail.priority,
+          platform: detail.platform,
+          isCurrent: true,
+        },
+      ];
 
   useEffect(() => {
     if (open) {
@@ -121,142 +155,258 @@ export default function RelatedEventsPanel({
     await onChanged?.(result.recordId);
   };
 
+  useEffect(() => {
+    onDeletionBusyChange?.(Boolean(pendingDelete));
+  }, [pendingDelete, onDeletionBusyChange]);
+
+  useEffect(
+    () => () => {
+      // Leaving this workspace cancels an uncommitted deletion; never write from a stale timer.
+      if (pendingDeleteRef.current) clearTimeout(pendingDeleteRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const row = listRef.current?.querySelector<HTMLElement>(
+      '[aria-current="true"]',
+    );
+    if (row && listRef.current)
+      listRef.current.scrollTop = row.offsetTop - listRef.current.offsetTop;
+  }, [detail.recordId]);
+
   const commitDelete = async (event: RelatedTrackingEvent) => {
+    pendingDeleteRef.current = null;
+    setPendingDelete({ id: event.recordId, committing: true });
     try {
       const result = await deleteTrackingEvent(event.recordId, {
         actorId,
         actorLarkId,
       });
-      if (pendingDeleteRef.current?.event.recordId === event.recordId) {
-        pendingDeleteRef.current = null;
-      }
-      if (event.isCurrent && result.redirectRecordId) {
-        await onChanged?.(result.redirectRecordId);
-      } else {
-        await onChanged?.(detail.recordId);
-      }
+      setHiddenEventIds((current) => new Set(current).add(event.recordId));
+      setPendingDelete(null);
+      toast.success('事件及其设计参数已删除');
+      const selectedId = detailRef.current.recordId;
+      await onChanged?.(
+        event.recordId === selectedId ? result.redirectRecordId : selectedId,
+      );
     } catch (error) {
-      setHiddenEventIds((current) => {
-        const next = new Set(current);
-        next.delete(event.recordId);
-        return next;
-      });
-      const msg = error instanceof Error ? error.message : '删除事件失败';
-      toast.error(msg);
+      setPendingDelete(null);
+      toast.error(
+        error instanceof Error ? error.message : '删除失败，事件已保留，请重试',
+      );
     }
   };
 
-  const undoDelete = (event: RelatedTrackingEvent, toastId: string | number) => {
-    const pending = pendingDeleteRef.current;
-    if (!pending || pending.event.recordId !== event.recordId) return;
-    clearTimeout(pending.timer);
+  const undoDelete = () => {
+    if (pendingDeleteRef.current) clearTimeout(pendingDeleteRef.current);
     pendingDeleteRef.current = null;
-    setHiddenEventIds((current) => {
-      const next = new Set(current);
-      next.delete(event.recordId);
-      return next;
-    });
-    toast.dismiss(toastId);
+    setPendingDelete(null);
   };
 
   const handleDeleteEvent = (event: RelatedTrackingEvent) => {
-    if (pendingDeleteRef.current) return;
-    setHiddenEventIds((current) => new Set(current).add(event.recordId));
-    const toastId = toast('事件已删除', {
-      duration: 2600,
-      className: '!border-[#0a1317] !bg-[#0a1317] !text-white',
-      action: {
-        label: '撤销',
-        onClick: () => undoDelete(event, toastId),
-      },
-    });
-    const timer = setTimeout(() => void commitDelete(event), 2600);
-    pendingDeleteRef.current = { event, timer, toastId };
+    if (
+      pendingDelete ||
+      eventDeletionRestriction(
+        event,
+        events.length - hiddenEventIds.size,
+        canEdit,
+      )
+    )
+      return;
+    setPendingDelete({ id: event.recordId, committing: false });
+    pendingDeleteRef.current = setTimeout(() => void commitDelete(event), 5000);
   };
 
-  const visibleEvents = events.filter((event) => !hiddenEventIds.has(event.recordId));
+  const remainingEvents = events.filter(
+    (event) => !hiddenEventIds.has(event.recordId),
+  );
+  const visibleEvents = filterEvents(remainingEvents, query);
 
   return (
-    <div className="rounded-md border border-border/70 bg-muted/20 p-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <GitBranch className="h-4 w-4 text-primary" />
-            同需求埋点事件
-            <span className="text-xs font-normal text-muted-foreground">
-              共 {events.length} 个
-            </span>
-          </div>
-        </div>
+    <div className="min-w-0 rounded-xl border border-border/70 bg-card p-3 xl:sticky xl:top-20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <GitBranch aria-hidden="true" className="h-4 w-4 text-primary" />
+          同需求事件{' '}
+          <span className="text-xs font-normal tabular-nums text-muted-foreground">
+            {remainingEvents.length}
+          </span>
+        </h3>
+        <button
+          type="button"
+          aria-label={expanded ? '收起事件列表' : '展开事件列表'}
+          aria-expanded={expanded}
+          aria-controls="request-event-navigation"
+          onClick={() => setExpanded((value) => !value)}
+          className="rounded-md p-2 focus-visible:ring-2 focus-visible:ring-primary xl:hidden"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`}
+          />
+        </button>
         {canEdit && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               size="sm"
-              variant="outline"
-              className="h-8 rounded-full"
+              variant="ghost"
+              className="h-8 px-2"
+              disabled={Boolean(pendingDelete)}
               onClick={() => setReuseOpen(true)}
             >
               <GitBranch className="h-3.5 w-3.5" />
-              复用已有事件
+              复用
             </Button>
             <Button
               size="sm"
-              variant="outline"
-              className="h-8 rounded-full"
+              variant="ghost"
+              className="h-8 px-2"
+              disabled={Boolean(pendingDelete)}
               onClick={() => setOpen(true)}
             >
               <Plus className="h-3.5 w-3.5" />
-              新增事件
+              新增
             </Button>
           </div>
         )}
       </div>
-
-      <div className="mt-3 divide-y divide-border/60 overflow-hidden rounded-md border border-border/60 bg-card">
-        {visibleEvents.map((event) => (
-          <div
-            key={event.recordId}
-            className={`group flex min-w-0 items-center gap-3 px-3 py-2 text-left text-xs transition-colors ${
-              event.isCurrent
-                ? 'bg-primary/5 text-primary'
-                : 'text-foreground hover:bg-accent/60'
-            }`}
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => !event.isCurrent && onSelectEvent?.(event.recordId)}
-                className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 truncate font-mono font-medium">
-                    {event.evtId || '待填写 evt_id'}
-                  </span>
-                  <Badge variant="outline" className="h-5 shrink-0 rounded-full border-border/60 px-1.5 text-xs">
-                    {event.uiStage || event.stage || '-'}
-                  </Badge>
-                </div>
-                <div className="mt-0.5 truncate text-muted-foreground">
-                  {event.eventName || '未命名事件'}
-                </div>
-              </button>
-              {canDeleteEvent(event, events.length, canEdit) && (
-                <button
-                  type="button"
-                  className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
-                  onClick={() => handleDeleteEvent(event)}
-                  title="删除该设计事件"
-                  aria-label={`删除${event.evtId || event.eventName || '埋点事件'}`}
+      <div
+        id="request-event-navigation"
+        className={expanded || pendingDelete ? '' : 'hidden xl:block'}
+      >
+        <div className="relative my-3">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground"
+          />
+          <Input
+            aria-label="搜索同需求事件"
+            placeholder="搜索事件"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="h-9 pl-9"
+          />
+        </div>
+        <div
+          ref={listRef}
+          aria-label="同需求事件列表"
+          className="relative max-h-56 space-y-1 overflow-y-auto overscroll-contain xl:max-h-[min(60vh,40rem)]"
+        >
+          <AnimatePresence initial={false}>
+            {visibleEvents.map((event) => {
+              const restriction = eventDeletionRestriction(
+                event,
+                remainingEvents.length,
+                canEdit,
+              );
+              const deleting = pendingDelete?.id === event.recordId;
+              return (
+                <motion.div
+                  key={event.recordId}
+                  layout={!reduceMotion}
+                  exit={{
+                    opacity: 0,
+                    height: 0,
+                    minHeight: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                  }}
+                  transition={{ duration: reduceMotion ? 0 : 0.18 }}
+                  className={`group flex min-h-16 min-w-0 items-center gap-1 rounded-lg px-2 py-2 ${deleting ? 'bg-foreground text-background' : event.isCurrent ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'}`}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+                  {deleting ? (
+                    <div
+                      className="flex min-w-0 flex-1 items-center gap-2"
+                      role="status"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs" title={event.evtId}>
+                          {event.evtId || event.eventName}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          {pendingDelete.committing
+                            ? '正在删除…'
+                            : '将删除事件及设计参数'}
+                        </div>
+                      </div>
+                      {pendingDelete.committing ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 shrink-0 bg-background px-2 text-foreground hover:bg-background/90"
+                          onClick={undoDelete}
+                          aria-label={`撤销删除${event.evtId || event.eventName}`}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          撤销
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        aria-current={event.isCurrent ? 'true' : undefined}
+                        title={event.evtId || event.eventName}
+                        onClick={() => {
+                          if (!event.isCurrent) onSelectEvent?.(event.recordId);
+                          setExpanded(false);
+                        }}
+                        className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <div className="truncate font-mono text-xs font-medium">
+                          {event.evtId || '待填写 evt_id'}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {event.eventName || '未命名事件'}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {event.uiStage || event.stage || '-'}
+                        </div>
+                      </button>
+                      {restriction ? (
+                        <span
+                          tabIndex={0}
+                          title={restriction}
+                          aria-label={restriction}
+                          className="rounded p-2 text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          <LockKeyhole
+                            aria-hidden="true"
+                            className="h-3.5 w-3.5"
+                          />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={Boolean(pendingDelete)}
+                          className="event-row-delete shrink-0 rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                          onClick={() => handleDeleteEvent(event)}
+                          title="删除该设计事件"
+                          aria-label={`删除${event.evtId || event.eventName}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          {!visibleEvents.length && (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              没有匹配的事件
+            </p>
+          )}
+        </div>
       </div>
-
-      <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && !saving && setOpen(false)}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => !nextOpen && !saving && setOpen(false)}
+      >
         <DialogContent className="max-w-3xl rounded-lg">
           <DialogHeader>
             <DialogTitle className="text-base">新增同需求埋点事件</DialogTitle>
@@ -280,31 +430,48 @@ export default function RelatedEventsPanel({
               <Input
                 className="h-8 rounded-md text-xs"
                 value={form.eventName}
-                onChange={(event) => updateField('eventName', event.target.value)}
+                onChange={(event) =>
+                  updateField('eventName', event.target.value)
+                }
                 placeholder="如：视频播放按钮点击"
                 disabled={saving}
               />
             </Field>
             <Field label="优先级">
-              <Select value={form.priority} onValueChange={(value) => updateField('priority', value)} disabled={saving}>
+              <Select
+                value={form.priority}
+                onValueChange={(value) => updateField('priority', value)}
+                disabled={saving}
+              >
                 <SelectTrigger className="h-8 rounded-md text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {['P0', 'P1', 'P2'].map((value) => (
-                    <SelectItem key={value} value={value}>{value}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
             <Field label="端">
-              <Select value={form.platform} onValueChange={(value) => updateField('platform', value)} disabled={saving}>
+              <Select
+                value={form.platform}
+                onValueChange={(value) => updateField('platform', value)}
+                disabled={saving}
+              >
                 <SelectTrigger className="h-8 rounded-md text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(detail.source === 'web' ? ['Web'] : ['iOS', 'Android', 'iOS、Android']).map((value) => (
-                    <SelectItem key={value} value={value}>{value}</SelectItem>
+                  {(detail.source === 'web'
+                    ? ['Web']
+                    : ['iOS', 'Android', 'iOS、Android']
+                  ).map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -322,7 +489,9 @@ export default function RelatedEventsPanel({
               <Input
                 className="h-8 rounded-md text-xs"
                 value={form.minVersion}
-                onChange={(event) => updateField('minVersion', event.target.value)}
+                onChange={(event) =>
+                  updateField('minVersion', event.target.value)
+                }
                 placeholder="如：1.0.0"
                 disabled={saving}
               />
@@ -331,7 +500,9 @@ export default function RelatedEventsPanel({
               <Textarea
                 className="min-h-[72px] rounded-md text-xs"
                 value={form.eventDefinition}
-                onChange={(event) => updateField('eventDefinition', event.target.value)}
+                onChange={(event) =>
+                  updateField('eventDefinition', event.target.value)
+                }
                 placeholder="定义事件统计口径和边界..."
                 disabled={saving}
               />
@@ -340,7 +511,9 @@ export default function RelatedEventsPanel({
               <Textarea
                 className="min-h-[72px] rounded-md text-xs"
                 value={form.triggerTiming}
-                onChange={(event) => updateField('triggerTiming', event.target.value)}
+                onChange={(event) =>
+                  updateField('triggerTiming', event.target.value)
+                }
                 placeholder="描述事件触发的具体时机..."
                 disabled={saving}
               />
@@ -357,8 +530,17 @@ export default function RelatedEventsPanel({
             >
               取消
             </Button>
-            <Button size="sm" className="h-8 rounded-full" onClick={handleCreate} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            <Button
+              size="sm"
+              className="h-8 rounded-full"
+              onClick={handleCreate}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
               {saving ? '创建中...' : '创建事件'}
             </Button>
           </DialogFooter>
@@ -373,7 +555,6 @@ export default function RelatedEventsPanel({
         onClose={() => setReuseOpen(false)}
         onReused={handleReuseSuccess}
       />
-
     </div>
   );
 }
@@ -383,16 +564,21 @@ function defaultForm(detail: TrackingDetail): EventForm {
     evtId: '',
     eventName: '',
     priority: detail.priority || 'P2',
-    platform: detail.source === 'web' ? 'Web' : normalizeAppPlatform(detail.platform),
+    platform:
+      detail.source === 'web' ? 'Web' : normalizeAppPlatform(detail.platform),
     eventDefinition: '',
     triggerTiming: '',
     version: textValue(detail.designFields['版本']) || '1.0.0',
-    minVersion: textValue(detail.designFields['最低版本']) || textValue(detail.designFields['版本']) || '1.0.0',
+    minVersion:
+      textValue(detail.designFields['最低版本']) ||
+      textValue(detail.designFields['版本']) ||
+      '1.0.0',
   };
 }
 
 function normalizeAppPlatform(platform: string): string {
-  if (platform.includes('iOS') && platform.includes('Android')) return 'iOS、Android';
+  if (platform.includes('iOS') && platform.includes('Android'))
+    return 'iOS、Android';
   if (platform.includes('iOS')) return 'iOS';
   if (platform.includes('Android')) return 'Android';
   return 'iOS、Android';
@@ -400,15 +586,11 @@ function normalizeAppPlatform(platform: string): string {
 
 function textValue(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join('、');
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  if (Array.isArray(value))
+    return value.map(textValue).filter(Boolean).join('、');
   return '';
-}
-
-function canDeleteEvent(event: RelatedTrackingEvent, eventCount: number, canEdit: boolean): boolean {
-  if (!canEdit || eventCount <= 1) return false;
-  const stage = event.uiStage || event.stage || '';
-  return !['埋点上线', '归档', '上线监控', '稳定归档', '已上线', '已废弃'].includes(stage);
 }
 
 function Field({

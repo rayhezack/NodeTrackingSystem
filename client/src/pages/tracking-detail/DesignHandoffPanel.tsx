@@ -9,6 +9,8 @@ import type { ParamDetail, TrackingDetail } from '@shared/api.interface';
 import ParamSpecTable from './param-designer/ParamSpecTable';
 import { buildDevelopmentContext, loadDevelopmentContext } from './development-context';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@client/src/components/ui/dialog';
+import { Input } from '@client/src/components/ui/input';
+import { filterEvents } from './event-navigation.utils';
 import { Textarea } from '@client/src/components/ui/textarea';
 import UiImageField from './UiImageField';
 import {
@@ -27,6 +29,7 @@ interface DesignHandoffPanelProps {
 
 const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanelProps) => {
   const [copying, setCopying] = useState(false);
+  const [eventQuery, setEventQuery] = useState('');
   const copyBusy = useRef(false);
   const [copyProgress, setCopyProgress] = useState('');
   const [copyFallback, setCopyFallback] = useState('');
@@ -166,9 +169,12 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
 
       {events.length > 1 && (
         <div className="border-y border-border/60 bg-card/70 py-3">
-          <div className="mb-2 text-xs font-medium text-foreground">同需求埋点事件</div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {events.map((event) => (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-medium text-foreground">同需求埋点事件</h4>
+            <Input aria-label="搜索研发对接事件" placeholder="搜索事件" value={eventQuery} onChange={event => setEventQuery(event.target.value)} className="h-8 w-full sm:w-56" />
+          </div>
+          <div className="grid max-h-48 gap-2 overflow-y-auto overscroll-contain md:grid-cols-2 xl:grid-cols-3">
+            {filterEvents(events, eventQuery).map((event) => (
               <EventSelector
                 key={event.recordId}
                 event={event}
@@ -176,6 +182,7 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
                 onClick={() => setSelectedRecordId(event.recordId)}
               />
             ))}
+            {!filterEvents(events, eventQuery).length && <p className="py-4 text-xs text-muted-foreground">没有匹配的事件</p>}
           </div>
         </div>
       )}

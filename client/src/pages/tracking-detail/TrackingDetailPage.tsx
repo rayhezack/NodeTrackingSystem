@@ -473,7 +473,7 @@ const TrackingDetailPage = () => {
           {/* 右侧内容区 */}
           <div className="min-h-[500px] min-w-0 flex-1 border-t border-border/60 bg-card p-4 sm:p-6 md:border-t-0 md:border-l md:border-border/60">
             <StageForm
-              key={`${activeStage}-${detail.recordId}`}
+              key={`${activeStage}-${detail.source}-${detail.requestId || detail.recordId}`}
               stageId={activeStage}
               detail={detail}
               canEdit={

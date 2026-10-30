@@ -4,6 +4,8 @@ import {
   Loader2,
   CheckCircle2,
   LockKeyhole,
+  ChevronDown,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
@@ -250,6 +252,8 @@ const StageForm = ({
   const [localDirtyFieldNames, setDirtyFieldNames] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [eventDeletionBusy, setEventDeletionBusy] = useState(false);
+  const [designView, setDesignView] = useState<'event' | 'params'>('event');
   const usesDrafts = stageId === 'design' && Boolean(onDraftChange);
   const initial = Object.fromEntries((stageConfig?.fields || []).map((field) => [field.key, getFieldValue(detail, field)]));
   const formData = usesDrafts ? { ...initial, ...draft?.formData } : localFormData;
@@ -374,7 +378,7 @@ const StageForm = ({
     officialStatus,
   );
   const busy = saving || completing || draftsBusy;
-  const disabled = !canEdit || busy;
+  const disabled = !canEdit || busy || eventDeletionBusy;
   const completionCopy = getCompletionCopy(stageId, stageConfig.label);
   const fieldSections = getFieldSections(stageId, stageConfig.fields);
   const checklistFields = stageConfig.fields.filter((field) => field.required);
@@ -415,30 +419,59 @@ const StageForm = ({
       )}
 
       {stageId === 'design' && (
-        <div className="space-y-4">
+        <details className="group rounded-xl border border-border/70 bg-card">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <Sparkles aria-hidden="true" className="h-4 w-4 text-primary" />AI 埋点设计
+            <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          <div className="border-t border-border/60 p-3">
           <AiTrackingDraftPanel
+            key={detail.recordId}
             detail={detail}
-            canEdit={canEdit && !busy}
+            canEdit={canEdit && !busy && !eventDeletionBusy}
             actorId={actorId}
             actorLarkId={actorLarkId}
             onApplied={onRelatedEventsChanged || onSaved}
           />
-          <RelatedEventsPanel
-            detail={detail}
-            canEdit={canEdit && !busy}
-            actorId={actorId}
-            actorLarkId={actorLarkId}
-            onSelectEvent={onSelectEvent}
-            onChanged={onRelatedEventsChanged || onSaved}
-          />
-        </div>
+          </div>
+        </details>
       )}
 
       {stageId === 'dev' && (
         <DesignHandoffPanel detail={detail} actorId={actorId} actorLarkId={actorLarkId} />
       )}
 
-      <div className="space-y-5">
+      <div className={stageId === 'design' ? 'grid items-start gap-5 xl:grid-cols-[15rem_minmax(0,1fr)]' : ''}>
+        {stageId === 'design' && (
+          <RelatedEventsPanel
+            detail={detail}
+            canEdit={canEdit && !busy}
+            actorId={actorId}
+            actorLarkId={actorLarkId}
+            onSelectEvent={onSelectEvent}
+            onDeletionBusyChange={setEventDeletionBusy}
+            onChanged={onRelatedEventsChanged || onSaved}
+          />
+        )}
+        <div className="min-w-0 space-y-5">
+          {stageId === 'design' && (
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate font-mono text-sm font-medium" title={toTextValue(formData.evtId) || detail.evtId}>{toTextValue(formData.evtId) || detail.evtId || '待填写 evt_id'}</h3>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{detail.eventName || '未命名事件'}</p>
+              </div>
+              <div role="group" aria-label="设计内容" className="flex rounded-full bg-muted p-1">
+                {(['event', 'params'] as const).map(view => (
+                  <button key={view} type="button" aria-pressed={designView === view} aria-controls={`design-${view}`} onClick={() => setDesignView(view)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${designView === view ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                    {view === 'event' ? '事件信息' : '参数设计'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+      <div id="design-event" hidden={stageId === 'design' && designView !== 'event'} className="space-y-5">
+
         {fieldSections.map((section) => (
           <section key={section.title} className="space-y-3 border-b border-border/60 pb-5 last:border-b-0 last:pb-0">
             {(fieldSections.length > 1 || section.title !== stageConfig.label) && (
@@ -534,6 +567,7 @@ const StageForm = ({
             )}
             {field.type === 'attachment' && (
               <UiImageField
+                key={detail.recordId}
                 value={toTrackingAttachments(formData[field.key])}
                 source={detail.source}
                 pageUrl={toTextValue(formData.uiPageUrl)}
@@ -552,17 +586,21 @@ const StageForm = ({
       </div>
 
       {stageId === 'design' && (
-        <div className="border-t border-border pt-6">
+        <div id="design-params" hidden={designView !== 'params'}>
           <ParamDesigner
+            key={detail.recordId}
             recordId={detail.recordId}
             source={detail.source}
             evtId={toTextValue(formData.evtId) || detail.evtId}
-            canEdit={detail.permissions.canEditParams && !busy}
+            canEdit={detail.permissions.canEditParams && !busy && !eventDeletionBusy}
             actorId={actorId}
             actorLarkId={actorLarkId}
           />
         </div>
       )}
+
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -1,0 +1,10 @@
+/* Pointer users discover the row action on hover; touch and keyboard keep an equivalent route. */
+@media (hover: hover) and (pointer: fine) {
+  .event-row-delete {
+    opacity: 0;
+  }
+  .group:hover > .event-row-delete,
+  .group:focus-within > .event-row-delete {
+    opacity: 1;
+  }
+}
