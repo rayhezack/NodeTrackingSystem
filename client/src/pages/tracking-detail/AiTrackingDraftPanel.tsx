@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Bot,
   Check,
   FileCheck2,
   FileSearch,
@@ -293,9 +292,6 @@ const AiTrackingDraftPanel = ({
       <div className="min-w-0 max-w-full overflow-hidden rounded-2xl bg-card px-4 py-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 max-w-full flex-1 items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <Bot className="h-4 w-4" />
-            </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-foreground">AI 埋点初稿</span>

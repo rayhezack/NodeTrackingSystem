@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   LockKeyhole,
   ChevronDown,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
@@ -425,7 +424,7 @@ const StageForm = ({
       {stageId === 'design' && (
         <details className="group rounded-xl border border-border/70 bg-card">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-            <Sparkles aria-hidden="true" className="h-4 w-4 text-primary" />AI 埋点设计
+            AI 埋点设计
             <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" />
           </summary>
           <div className="border-t border-border/60 p-3">
