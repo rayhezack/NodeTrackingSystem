@@ -628,7 +628,7 @@ const StageForm = ({
 
         <div className="flex items-center gap-2">
           {stageId === 'design' ? <SaveChangesButton onSave={handleSave} disabled={disabled}
-            contextKey={detail.recordId} label={usesDrafts ? `保存全部修改${pendingDraftCount ? `（${pendingDraftCount}）` : ''}` : '保存修改'} /> : <Button
+            contextKey={detail.recordId} label="保存" /> : <Button
             onClick={handleSave}
             disabled={disabled}
             variant="outline"

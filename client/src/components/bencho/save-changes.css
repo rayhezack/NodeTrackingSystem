@@ -1,12 +1,12 @@
-.save-changes-slot { display: inline-flex; width: 168px; justify-content: flex-end; flex-shrink: 0; }
-.save-changes-button { position: relative; display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--foreground); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; overflow: hidden; transition: background-color 150ms ease-out; }
+.save-changes-slot { display: inline-flex; width: 96px; justify-content: flex-end; flex-shrink: 0; }
+.save-changes-button { position: relative; display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--foreground); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; overflow: hidden; transition: background-color 150ms ease-out; }
 .save-changes-button:hover:not(:disabled) { background: var(--muted); }
 .save-changes-button:active:not(:disabled) { background: var(--accent); }
 .save-changes-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .save-changes-button:disabled { cursor: not-allowed; opacity: 0.5; }
 .save-changes-button[data-state="saving"] { cursor: wait; opacity: 1; }
 .save-changes-content { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
-.save-changes-slats { display: flex; align-items: center; gap: 6px; height: 18px; }
-.save-changes-slats > span { width: 3px; height: 14px; border-radius: 2px; background: currentColor; opacity: 0.35; animation: save-slat-wave 1.1s ease-in-out infinite; }
+.save-changes-slats { display: flex; align-items: center; gap: 3px; height: 16px; }
+.save-changes-slats > span { width: 2px; height: 12px; border-radius: 2px; background: currentColor; opacity: 0.35; animation: save-slat-wave 1.1s ease-in-out infinite; }
 @keyframes save-slat-wave { 0%, 65%, 100% { transform: skewX(0deg); opacity: 0.35; } 25%, 40% { transform: skewX(-25deg); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .save-changes-slats > span { animation: none; opacity: 0.65; } .save-changes-button { transition: none; } }

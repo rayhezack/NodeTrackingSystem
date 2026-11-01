@@ -46,7 +46,7 @@ export function SaveChangesButton({ onSave, disabled, label, contextKey }: {
   return <span className="save-changes-slot">
     <motion.button type="button" className="save-changes-button" data-state={state}
       aria-label={text} aria-busy={state === 'saving'} disabled={disabled || state === 'saving'}
-      onClick={() => void save()} animate={{ width: state === 'saved' ? 104 : 168 }}
+      onClick={() => void save()} animate={{ width: state === 'saved' ? 88 : 96 }}
       transition={{ duration: still ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.span key={state} className="save-changes-content" aria-hidden="true"
