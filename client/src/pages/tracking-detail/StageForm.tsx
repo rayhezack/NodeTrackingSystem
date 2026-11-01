@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@client/src/components/ui/button';
+import { SaveChangesButton } from '@client/src/components/bencho/SaveChangesButton';
 import { Input } from '@client/src/components/ui/input';
 import { Textarea } from '@client/src/components/ui/textarea';
 import { SingleDatePicker } from '@client/src/components/ui/single-date-picker';
@@ -293,17 +294,18 @@ const StageForm = ({
     return fields;
   };
 
-  const handleSave = async () => {
-    if (!canEdit) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!canEdit) return false;
     if (usesDrafts && onSaveAllDrafts) {
-      try { await onSaveAllDrafts(); } catch (error) {
+      if (!pendingDraftCount) { toast.info('没有需要保存的修改'); return false; }
+      try { await onSaveAllDrafts(); return true; } catch (error) {
         toast.error(error instanceof Error ? error.message : '保存失败');
       }
-      return;
+      return false;
     }
     if (dirtyFieldNames.size === 0) {
       toast.info('没有需要保存的修改');
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -322,9 +324,11 @@ const StageForm = ({
       toast.success('保存成功');
       setDirtyFieldNames(new Set());
       onSavedPatch?.(getDirtyLocalFields(), response.currentStage);
+      return true;
     } catch (error) {
       const msg = error instanceof Error ? error.message : '保存失败';
       toast.error(msg);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -623,7 +627,8 @@ const StageForm = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
+          {stageId === 'design' ? <SaveChangesButton onSave={handleSave} disabled={disabled}
+            contextKey={detail.recordId} label={usesDrafts ? `保存全部修改${pendingDraftCount ? `（${pendingDraftCount}）` : ''}` : '保存修改'} /> : <Button
             onClick={handleSave}
             disabled={disabled}
             variant="outline"
@@ -636,7 +641,7 @@ const StageForm = ({
               <Save className="h-4 w-4" />
             )}
             {saving || draftsBusy ? '处理中...' : usesDrafts ? `保存全部修改${pendingDraftCount ? `（${pendingDraftCount}）` : ''}` : '保存'}
-          </Button>
+          </Button>}
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
