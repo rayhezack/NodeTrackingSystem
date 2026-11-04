@@ -1,6 +1,6 @@
 # 埋点设计规范 V1（历史讨论稿）
 
-> 当前 AI 执行规范以 [埋点设计 Skill](../skills/pollo-tracking-design/SKILL.md) 及其参考资料为准。本文件的旧复用流程和枚举注释格式不用于生成。
+> 当前 AI 执行规范以 [埋点设计 Skill](../skills/pollo-tracking-design/SKILL.md) 为准。本文件仅作历史讨论材料，不用于生成。
 
 ## 核心结论
 
