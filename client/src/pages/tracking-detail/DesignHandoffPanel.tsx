@@ -187,18 +187,32 @@ const DesignHandoffPanel = ({ detail, actorId, actorLarkId }: DesignHandoffPanel
         </div>
       )}
 
-      <div className="grid gap-x-4 gap-y-3 border-y border-border/60 py-3 md:grid-cols-4">
-        {presentation.summaryItems.map((item) => (
-          <SummaryCell key={item.label} label={item.label} value={item.value} />
-        ))}
-      </div>
+      <section aria-label="事件信息" className="min-w-0 py-1">
+        <div className="mb-4 min-w-0">
+          <h4 className="break-words font-mono text-base font-medium leading-6 text-foreground [overflow-wrap:anywhere]">
+            {selectedEvent?.evtId || '待填写 evt_id'}
+          </h4>
+          <p className="mt-1 break-words text-sm text-muted-foreground">
+            {selectedEvent?.eventName || '未命名事件'}
+          </p>
+        </div>
 
-      <div className="grid gap-4 border-b border-border/60 pb-4 md:grid-cols-3">
-        <LongSpec label="事件定义" value={handoffTextValue(selectedDetail?.designFields['事件定义'])} />
-        <LongSpec label="触发时机" value={handoffTextValue(selectedDetail?.designFields['触发时机'])} />
-        <LongSpec label="本次需求补充说明" value={handoffTextValue(selectedDetail?.designFields['本次需求补充说明'])} />
-        <LongSpec label="公共属性要求" value={handoffTextValue(selectedDetail?.designFields['公共属性要求'])} />
-      </div>
+        <dl className="grid gap-x-6 gap-y-3 border-y border-border/60 py-3 sm:grid-cols-2 xl:grid-cols-3">
+          {presentation.summaryItems.filter((item) => item.label !== 'evt_id' && item.label !== '事件名').map((item) => (
+            <div key={item.label} className="grid min-w-0 grid-cols-[4rem_minmax(0,1fr)] items-baseline gap-2 text-xs leading-5">
+              <dt className="text-muted-foreground">{item.label}</dt>
+              <dd className="min-w-0 break-words text-foreground [overflow-wrap:anywhere]">{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <dl className="divide-y divide-border/60 border-b border-border/60">
+          <LongSpec label="事件定义" value={handoffTextValue(selectedDetail?.designFields['事件定义'])} />
+          <LongSpec label="触发时机" value={handoffTextValue(selectedDetail?.designFields['触发时机'])} />
+          <LongSpec label="本次需求补充说明" value={handoffTextValue(selectedDetail?.designFields['本次需求补充说明'])} />
+          <LongSpec label="公共属性要求" value={handoffTextValue(selectedDetail?.designFields['公共属性要求'])} />
+        </dl>
+      </section>
 
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground">
@@ -280,22 +294,13 @@ function EventSelector({
   );
 }
 
-function SummaryCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-l-2 border-primary/30 bg-card/60 px-3 py-1.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words text-xs text-foreground">{value}</div>
-    </div>
-  );
-}
-
 function LongSpec({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-l-2 border-border bg-card/60 px-3 py-1.5">
-      <div className="mb-1 text-xs text-muted-foreground">{label}</div>
-      <div className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
-        {value || <span className="text-muted-foreground">未填写</span>}
-      </div>
+    <div className="grid min-w-0 grid-cols-1 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-6">
+      <dt className="text-xs leading-6 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 max-w-[75ch] whitespace-pre-wrap break-words text-sm leading-6 text-foreground [overflow-wrap:anywhere]">
+        {value || <span aria-label="未填写" className="text-muted-foreground">—</span>}
+      </dd>
     </div>
   );
 }
