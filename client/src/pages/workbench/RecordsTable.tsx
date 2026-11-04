@@ -258,13 +258,10 @@ const RecordsTable = ({
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead className="h-9 w-56 px-3 text-xs font-medium text-muted-foreground">
-                    埋点事件
+                    需求名称
                   </TableHead>
                   <TableHead className="h-9 w-16 px-3 text-xs font-medium text-muted-foreground">
                     库
-                  </TableHead>
-                  <TableHead className="h-9 px-3 text-xs font-medium text-muted-foreground">
-                    需求/事件名
                   </TableHead>
                   <TableHead className="h-9 w-24 px-3 text-xs font-medium text-muted-foreground">
                     阶段
@@ -303,15 +300,15 @@ const RecordsTable = ({
                           <div className="flex min-w-0 items-center gap-1.5">
                             <button
                               type="button"
-                              className="min-w-0 flex-1 truncate text-left font-mono text-xs text-primary hover:underline focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                              title={eventTitle(rec.eventIds)}
-                              aria-label={`查看${rec.requestName || rec.eventName || rec.evtId || '埋点需求'}详情`}
+                              className="min-w-0 flex-1 truncate text-left text-xs text-primary hover:underline focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                              title={rec.requestName || '未命名需求'}
+                              aria-label={`查看${rec.requestName || '未命名需求'}详情`}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 onRowClick(rec.recordId);
                               }}
                             >
-                              {rec.evtId || '待填写'}
+                              {rec.requestName || '未命名需求'}
                             </button>
                             {rec.eventCount > 1 && (
                               <Badge variant="outline" className="h-5 shrink-0 rounded-full px-1.5 text-xs font-medium">
@@ -325,16 +322,6 @@ const RecordsTable = ({
                         <Badge variant="outline" className="h-5 rounded-full px-1.5 text-xs font-medium">
                           {rec.source === 'web' ? 'Web' : 'App'}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="px-3 py-2 text-xs text-foreground">
-                        <span className="block min-w-0 truncate">
-                          {rec.requestName || rec.eventName || '未命名需求'}
-                        </span>
-                        {rec.eventCount > 1 && (
-                          <span className="mt-0.5 block min-w-0 truncate text-xs text-muted-foreground" title={eventTitle(rec.eventNames)}>
-                            {rec.eventNames.slice(0, 4).join('、')}
-                          </span>
-                        )}
                       </TableCell>
                       <TableCell className="px-3 py-0">
                         <Badge
@@ -456,8 +443,4 @@ function OwnerDisplay({ names, ids, avatars = [] }: { names: string[]; ids: stri
 function normalizeOwnerName(name: string | undefined): string {
   const value = String(name || '').trim();
   return value && !/^\d+$/.test(value) && !value.startsWith('ou_') ? value : '';
-}
-
-function eventTitle(values: string[]): string {
-  return values.filter(Boolean).join('\n');
 }
