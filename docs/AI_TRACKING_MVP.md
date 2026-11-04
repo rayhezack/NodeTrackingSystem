@@ -2,7 +2,7 @@
 
 ## Pollo 埋点治理 Skill
 
-专用 Skill 入口为 [`skills/pollo-tracking-design/SKILL.md`](../skills/pollo-tracking-design/SKILL.md)，复用契约和阶段协议放在其 `references/` 下。生产 Worker 与 Nest 服务按阶段加载 Skill 和对应参考资料，`shared/official-first-workflow.ts` 负责确定性校验，工作流版本为 `official-first-v3`。
+专用 Skill 的唯一文件为 [`skills/pollo-tracking-design/SKILL.md`](../skills/pollo-tracking-design/SKILL.md)，包含复用契约、事件目录和两个阶段的输出协议。生产 Worker 与 Nest 服务按阶段加载同一文件并附加当前阶段约束，`shared/official-first-workflow.ts` 负责确定性校验，工作流版本为 `official-first-v3`。
 
 `npm run skill:tracking:prepare` 将 Markdown 原文打包到 `shared/tracking-skill.generated.ts`；构建前自动执行，测试与提交前检查产物是否与源文件一致。`shared/pollo-tracking-policy.ts` 仅负责按阶段装配，不再维护独立的规则摘录。Worker 没有本地文件系统，因此运行时使用这个由 Skill 源文件生成的包。
 

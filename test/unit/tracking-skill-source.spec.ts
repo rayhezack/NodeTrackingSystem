@@ -6,24 +6,22 @@ import { loadTrackingDesignSkill as loadWorkerSkill } from '../../worker/pollo-t
 import { loadTrackingDesignSkill as loadServerSkill } from '../../server/modules/ai-tracking/tracking-design-guidelines';
 
 describe('repository tracking Skill delivery', () => {
-  it('ships the actual Markdown sources without omitting references or using a stale generated copy', () => {
-    const sources = Object.fromEntries(Object.keys(TRACKING_SKILL_DOCUMENTS).map((path) => [path,
-      readFileSync(`skills/pollo-tracking-design/${path}`, 'utf8').replace(/\r\n/g, '\n'),
-    ]));
+  it('ships the self-contained single Markdown source without a stale generated copy', () => {
+    const sources = {
+      'SKILL.md': readFileSync('skills/pollo-tracking-design/SKILL.md', 'utf8').replace(/\r\n/g, '\n'),
+    };
     expect(TRACKING_SKILL_DOCUMENTS).toEqual(sources);
     expect(TRACKING_SKILL_SOURCE_HASH).toBe(createHash('sha256').update(JSON.stringify(sources)).digest('hex'));
-    const links = [...sources['SKILL.md'].matchAll(/\]\((references\/[^)]+)\)/g)].map((match) => match[1]);
-    expect(new Set(links)).toEqual(new Set(Object.keys(sources).filter((path) => path !== 'SKILL.md')));
+    expect(Object.keys(TRACKING_SKILL_DOCUMENTS)).toEqual(['SKILL.md']);
+    expect(sources['SKILL.md']).not.toMatch(/\]\((?:\.\.\/)?references\//);
   });
 
-  it.each(['planning', 'design'] as const)('loads the same Skill in both runtimes for %s, with only the current stage protocol', (stage) => {
+  it.each(['planning', 'design'] as const)('loads the same single Skill in both runtimes for %s, with the current stage instruction', (stage) => {
     const text = loadTrackingDesignSkill(stage);
     expect(loadWorkerSkill(stage)).toBe(text);
     expect(loadServerSkill(stage)).toBe(text);
     expect(text).toContain(TRACKING_SKILL_DOCUMENTS['SKILL.md']);
-    expect(text).toContain(TRACKING_SKILL_DOCUMENTS['references/reuse-contract.md']);
-    expect(text).toContain(TRACKING_SKILL_DOCUMENTS[`references/${stage}.md`]);
-    const other = stage === 'planning' ? 'design' : 'planning';
-    expect(text).not.toContain(TRACKING_SKILL_DOCUMENTS[`references/${other}.md`]);
+    expect(text).toContain(`执行当前阶段：${stage}`);
+    expect(text).toContain(stage === 'planning' ? '只返回复用规划 JSON' : '只返回事件与参数增量 JSON');
   });
 });

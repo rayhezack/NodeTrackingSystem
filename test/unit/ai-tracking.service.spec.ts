@@ -147,9 +147,8 @@ describe('AI 埋点草稿', () => {
       expect(model.generateJson).toHaveBeenCalledTimes(2);
       for (const [index, stage] of ['planning', 'design'].entries()) {
         const system = model.generateJson.mock.calls[index][0][0].content;
-        for (const file of ['SKILL.md', 'references/reuse-contract.md', `references/${stage}.md`]) {
-          expect(system).toContain(readFileSync(`skills/pollo-tracking-design/${file}`, 'utf8'));
-        }
+        expect(system).toContain(readFileSync('skills/pollo-tracking-design/SKILL.md', 'utf8'));
+        expect(system).toContain(`执行当前阶段：${stage}`);
       }
       expect(model.generateJson.mock.calls[0][0][1].content).toContain("完整正式事件目录");
       expect(model.generateJson.mock.calls[1][0][1].content).toContain("完整公共属性");
